@@ -33,7 +33,7 @@ interface Props {
   onFocusFile: (path: string) => void
   onDiffSideChange: (side: DiffSide) => void
   onRefresh: () => Promise<void>
-  onError: (msg: string) => void
+  onError: (msg: string | null) => void
   onBrowseHistory?: () => void
   onEditIdentity?: () => void
   identity?: GitIdentity | null
@@ -131,6 +131,7 @@ export function WorkingTreeDetailPane({
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true)
+    onError(null)
     try {
       await fn()
       await onRefresh()
