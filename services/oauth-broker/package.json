@@ -1,0 +1,9 @@
+{
+  "name": "git-manager-oauth-broker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx server.ts",
+    "start:node": "node --experimental-strip-types server.ts"
+  }
+}

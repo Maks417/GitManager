@@ -1,0 +1,55 @@
+# Feature: Branches & sync
+
+## Purpose
+
+Operate on branches and remotes: checkout, create/delete, fetch/pull/push, merge, and rebase (including continue/abort while rebasing).
+
+## User flow
+
+1. Sidebar shows the current branch and an expandable branch list with ahead/behind.
+2. Create branch modal; checkout by clicking a branch; delete with optional force confirm.
+3. Sync menu: Fetch, Pull, Push.
+4. Merge / Rebase open a branch picker; conflicts open the merge editor.
+5. While rebasing, continue/abort are available from the merge editor chrome.
+
+## Key modules & files
+
+| Piece | File |
+|---|---|
+| Shell actions | [`src/renderer/src/App.tsx`](../../src/renderer/src/App.tsx) |
+| Create branch | [`src/renderer/src/features/branches/CreateBranchModal.tsx`](../../src/renderer/src/features/branches/CreateBranchModal.tsx) |
+| Branch pick (merge/rebase) | [`src/renderer/src/features/branches/BranchPickModal.tsx`](../../src/renderer/src/features/branches/BranchPickModal.tsx) |
+| Git ops | [`src/git-worker/operations.ts`](../../src/git-worker/operations.ts) |
+
+## Data touched
+
+- Refs and branch tip commits
+- Upstream tracking (`BranchInfo.ahead` / `behind`)
+- Working tree may gain conflicts from merge/rebase
+- Rebase state under `.git` (`isRebaseInProgress`)
+
+## Edge cases & rules
+
+- Soft delete failure can prompt force delete.
+- Merge/rebase return `{ conflicts: string[] }`; non-empty list opens merge UI.
+- Push/pull/fetch require configured remotes and credentials outside the app (SSH agent / credential helper).
+
+## Diagram
+
+```mermaid
+sequenceDiagram
+  actor User
+  participant UI as App
+  participant Main as Main IPC
+  participant Git as git-worker
+  User->>UI: Merge / Rebase / Sync
+  UI->>Main: git.merge / rebase / fetch / pull / push
+  Main->>Git: operation
+  alt conflicts
+    Git-->>UI: conflicts[]
+    UI->>UI: open MergeEditorModal
+  else clean
+    Git-->>UI: ok
+    UI->>UI: afterGitMutation
+  end
+```

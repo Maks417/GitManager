@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Git Manager">
+  <!-- Ink & Ember app mark: charcoal plate + ember commit graph -->
+  <rect width="1024" height="1024" rx="224" ry="224" fill="#12110F"/>
+  <!-- Left lane -->
+  <line x1="352" y1="220" x2="352" y2="804" stroke="#E85D04" stroke-width="72" stroke-linecap="round"/>
+  <!-- Merge curve into right lane -->
+  <path
+    d="M 352 520 C 352 640, 672 640, 672 760"
+    fill="none"
+    stroke="#E85D04"
+    stroke-width="72"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Right stub lane -->
+  <line x1="672" y1="760" x2="672" y2="804" stroke="#E85D04" stroke-width="72" stroke-linecap="round"/>
+  <!-- Head commit node -->
+  <circle cx="352" cy="360" r="96" fill="#E85D04"/>
+  <!-- Inner hole for readability at small sizes -->
+  <circle cx="352" cy="360" r="36" fill="#12110F"/>
+</svg>

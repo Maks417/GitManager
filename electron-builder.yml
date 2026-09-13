@@ -1,0 +1,56 @@
+appId: com.gitmanager.app
+productName: Git Manager
+copyright: Copyright © Git Manager
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+  - from: build/icon.ico
+    to: icon.ico
+asar: true
+asarUnpack:
+  - "**/*.node"
+publish:
+  provider: github
+  owner: example
+  repo: git-manager
+  releaseType: release
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+mac:
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+dmg:
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+linux:
+  icon: build/icon.png
+  target:
+    - AppImage
+  category: Development
