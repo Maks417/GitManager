@@ -20,15 +20,18 @@ When preference `liveStatusWatch` is enabled (default), the main process recursi
 |---|---|
 | Watcher | [`src/main/repo-watcher.ts`](../../src/main/repo-watcher.ts) |
 | IPC | `repo:watch` / `repo:unwatch` / `repo:on-changed` |
-| UI subscription | [`src/renderer/src/App.tsx`](../../src/renderer/src/App.tsx) |
+| UI subscription | [`src/renderer/src/hooks/useRepoSession.ts`](../../src/renderer/src/hooks/useRepoSession.ts) |
 
 ## Key modules & files
 
 | Piece | File |
 |---|---|
 | Changes pane | [`src/renderer/src/features/changes/WorkingTreeDetailPane.tsx`](../../src/renderer/src/features/changes/WorkingTreeDetailPane.tsx) |
+| Working-tree hook | [`src/renderer/src/hooks/useWorkingTree.ts`](../../src/renderer/src/hooks/useWorkingTree.ts) |
 | Identity modal | [`src/renderer/src/features/identity/IdentityModal.tsx`](../../src/renderer/src/features/identity/IdentityModal.tsx) |
-| Status / stage / commit / stash / identity | [`src/git-worker/operations.ts`](../../src/git-worker/operations.ts) |
+| Status / stage / commit | [`src/git-worker/ops/status.ts`](../../src/git-worker/ops/status.ts) |
+| Stash | [`src/git-worker/ops/stash.ts`](../../src/git-worker/ops/stash.ts) |
+| Identity | [`src/git-worker/ops/identity.ts`](../../src/git-worker/ops/identity.ts) |
 | IPC surface | [`src/shared/ipc/channels.ts`](../../src/shared/ipc/channels.ts) (`git:*`, `history:working-tree-diff`) |
 
 ## Data touched

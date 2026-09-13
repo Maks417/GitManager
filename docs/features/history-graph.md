@@ -30,9 +30,11 @@ History-first view of commits: a multi-lane topology graph, searchable log, and 
 | Commit detail | [`src/renderer/src/features/commit-detail/CommitDetailPane.tsx`](../../src/renderer/src/features/commit-detail/CommitDetailPane.tsx) |
 | Diff viewer | [`src/renderer/src/features/diff/FileDiffViewer.tsx`](../../src/renderer/src/features/diff/FileDiffViewer.tsx) |
 | Lane layout | [`src/history-core/layout.ts`](../../src/history-core/layout.ts) |
-| Load / detail / diff | [`src/git-worker/operations.ts`](../../src/git-worker/operations.ts) (`loadHistory`, `getCommitDetail`, `getFileDiff`) |
+| History hook | [`src/renderer/src/hooks/useHistory.ts`](../../src/renderer/src/hooks/useHistory.ts) |
+| Load / detail / diff | [`src/git-worker/ops/history.ts`](../../src/git-worker/ops/history.ts) |
 | Stream parse / capped show | [`src/git-worker/git-runner.ts`](../../src/git-worker/git-runner.ts) |
 | Utility process client | [`src/git-worker/client.ts`](../../src/git-worker/client.ts), [`src/git-worker/utility-entry.ts`](../../src/git-worker/utility-entry.ts) |
+| History IPC | [`src/main/ipc/history-handlers.ts`](../../src/main/ipc/history-handlers.ts) |
 
 ## Data touched
 

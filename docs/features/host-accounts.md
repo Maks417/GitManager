@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Connect GitHub, GitLab, or Bitbucket with a personal access token (or app password), list remote repositories, and feed clone URLs into the clone flow. Optional separate OAuth broker exists for confidential-client flows; v1 desktop connect uses token save.
+Connect GitHub, GitLab, or Bitbucket with a personal access token (or app password), list remote repositories, and feed clone URLs into the clone flow. An optional separate OAuth broker exists for confidential-client flows; the desktop app connects via `providers:save-token` (PAT / app password).
 
 ## User flow
 
@@ -18,7 +18,7 @@ Connect GitHub, GitLab, or Bitbucket with a personal access token (or app passwo
 | Accounts UI | [`src/renderer/src/features/accounts/AccountsModal.tsx`](../../src/renderer/src/features/accounts/AccountsModal.tsx) |
 | Provider REST | [`src/main/providers/index.ts`](../../src/main/providers/index.ts) |
 | Token storage | [`src/main/storage.ts`](../../src/main/storage.ts) |
-| IPC | [`src/main/ipc.ts`](../../src/main/ipc.ts) (`providers:*`) |
+| IPC | [`src/main/ipc/providers-handlers.ts`](../../src/main/ipc/providers-handlers.ts) (`providers:*`) |
 | OAuth broker | [`services/oauth-broker/server.ts`](../../services/oauth-broker/server.ts) |
 
 ## Data touched
@@ -29,7 +29,7 @@ Connect GitHub, GitLab, or Bitbucket with a personal access token (or app passwo
 
 ## Edge cases & rules
 
-- `providers.connect` currently throws and directs callers to token connect / oauth-broker ([`ipc.ts`](../../src/main/ipc.ts)).
+- Desktop IPC exposes `listAccounts`, `saveToken`, `disconnect`, and `listRepos` only — no in-app OAuth code exchange yet (use the optional broker for confidential clients).
 - Listed accounts never include plaintext tokens over IPC.
 - If `safeStorage` is unavailable, tokens fall back to base64 encoding (weaker) — same helpers still used.
 - Broker does not store long-lived user tokens; it only exchanges codes.

@@ -84,15 +84,14 @@ export function useRepoSession({
   const currentBranch = useMemo(() => branches.find((b) => b.current) ?? null, [branches])
   const localBranchNames = useMemo(() => new Set(branches.map((b) => b.name)), [branches])
 
-  const refreshRepos = useCallback(
-    async (opts?: { activateFirst?: boolean }) => {
-      const list = await window.gitManager.repo.list()
-      setRepos(list)
-      const activateFirst = opts?.activateFirst !== false
-      if (activateFirst && !activeRepo && list[0]) setActiveRepo(list[0])
-    },
-    [activeRepo]
-  )
+  const refreshRepos = useCallback(async (opts?: { activateFirst?: boolean }) => {
+    const list = await window.gitManager.repo.list()
+    setRepos(list)
+    const activateFirst = opts?.activateFirst !== false
+    // Use ref so this callback stays stable — depending on `activeRepo` recreated the
+    // boot effect and re-listed repos forever (inspect → watch → setActiveRepo → …).
+    if (activateFirst && !activeRepoRef.current && list[0]) setActiveRepo(list[0])
+  }, [])
 
   const refreshRepoMeta = useCallback(async (repo: Repository) => {
     const [b, remoteB, s, fresh, id, rebasing] = await Promise.all([
@@ -109,7 +108,18 @@ export function useRepoSession({
     setIdentity(id)
     setRebaseInProgress(rebasing)
     if (fresh) {
-      setActiveRepo(fresh)
+      setActiveRepo((prev) => {
+        if (
+          prev &&
+          prev.id === fresh.id &&
+          prev.path === fresh.path &&
+          prev.currentBranch === fresh.currentBranch &&
+          prev.name === fresh.name
+        ) {
+          return prev
+        }
+        return fresh
+      })
       setRepos((prev) => {
         let replaced = false
         const next = prev.map((r) => {
@@ -138,28 +148,33 @@ export function useRepoSession({
 
   const afterGitMutation = useCallback(
     async (opts?: { history?: HistoryRefreshMode }): Promise<void> => {
-      if (!activeRepo) return
-      await refreshRepoMeta(activeRepo)
+      const repo = activeRepoRef.current
+      if (!repo) return
+      await refreshRepoMeta(repo)
       const mode = opts?.history ?? 'tip'
       const fns = historyFnsRef.current
       if (!fns) return
-      if (mode === 'full') await fns.loadHistory(activeRepo)
-      else if (mode === 'tip') await fns.refreshHistoryTip(activeRepo)
+      if (mode === 'full') await fns.loadHistory(repo)
+      else if (mode === 'tip') await fns.refreshHistoryTip(repo)
     },
-    [activeRepo, refreshRepoMeta, historyFnsRef]
+    [refreshRepoMeta, historyFnsRef]
   )
 
   const removeRepoFromList = useCallback(
     async (repo: Repository, deleteFiles = false): Promise<void> => {
       await runWithBusy(
         async () => {
+          const removingActive = activeRepoRef.current?.id === repo.id
           await window.gitManager.repo.remove(repo.id, { deleteFiles: Boolean(deleteFiles) })
-          const list = await window.gitManager.repo.list()
-          setRepos(list)
+          // Update local list without re-inspecting every repo (avoids fs.watch storms).
+          setRepos((prev) => {
+            const next = prev.filter((r) => r.id !== repo.id)
+            if (removingActive) setActiveRepo(next[0] ?? null)
+            return next
+          })
           setRepoPendingRemove(null)
           setRepoRemoveError(null)
-          if (activeRepo?.id === repo.id) {
-            setActiveRepo(list[0] ?? null)
+          if (removingActive) {
             setSelection(null)
             setViewMode('history')
           }
@@ -173,7 +188,7 @@ export function useRepoSession({
         }
       )
     },
-    [activeRepo?.id, setError, setSelection, setViewMode]
+    [setError, setSelection, setViewMode]
   )
 
   useEffect(() => {
@@ -181,6 +196,7 @@ export function useRepoSession({
       setError('App bridge failed to load. Restart the app after a clean npm install.')
       return
     }
+    let cancelled = false
     void (async () => {
       try {
         const [p, a, u, probe] = await Promise.all([
@@ -189,6 +205,7 @@ export function useRepoSession({
           window.gitManager.updater.status(),
           window.gitManager.git.probe()
         ])
+        if (cancelled) return
         hydrateFromPrefs(p)
         setAccounts(a)
         setUpdateStatus(u)
@@ -202,14 +219,17 @@ export function useRepoSession({
         setGitMissing(false)
         await refreshRepos()
       } catch (err) {
-        setError(toErrorMessage(err))
+        if (!cancelled) setError(toErrorMessage(err))
       }
     })()
     const off = window.gitManager.updater.onStatus(setUpdateStatus)
-    return off
-    // Boot once when bridge is ready; refreshRepos identity updates on later calls.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- match prior App boot deps
-  }, [refreshRepos])
+    return () => {
+      cancelled = true
+      off()
+    }
+    // Boot once on mount. refreshRepos is stable (empty deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot boot
+  }, [])
 
   useEffect(() => {
     if (!window.gitManager?.repo?.watch) return

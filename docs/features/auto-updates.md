@@ -16,6 +16,8 @@ Check for and install signed updates published to GitHub Releases via `electron-
 |---|---|
 | Updater logic | [`src/main/updater.ts`](../../src/main/updater.ts) |
 | Updates modal | [`src/renderer/src/features/updates/UpdatesModal.tsx`](../../src/renderer/src/features/updates/UpdatesModal.tsx) |
+| About (version + check) | [`src/renderer/src/features/about/AboutModal.tsx`](../../src/renderer/src/features/about/AboutModal.tsx) |
+| App / updater IPC | [`src/main/ipc/app-handlers.ts`](../../src/main/ipc/app-handlers.ts) |
 | Release packaging | [`.github/workflows/release.yml`](../../.github/workflows/release.yml) |
 | Builder config | [`electron-builder.yml`](../../electron-builder.yml) |
 

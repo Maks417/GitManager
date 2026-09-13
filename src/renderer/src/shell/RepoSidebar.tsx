@@ -102,7 +102,6 @@ export function RepoSidebar({
                 <IconButton
                   label={`Remove ${r.name} from list`}
                   hint="Remove from list"
-                  className="has-hint-end"
                   disabled={busy}
                   onClick={() => onRequestRemove(r)}
                 >

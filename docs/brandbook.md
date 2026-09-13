@@ -56,7 +56,9 @@ Resolved via CSS variables on `[data-theme="dark"]` and `[data-theme="light"]` i
 | `--border-strong` | `#B8C0CC` | Stronger dividers |
 | `--text` | `#1A1D21` | Primary text |
 | `--text-muted` | `#5C6672` | Secondary text |
+| `--text-inverse` | `#FFFFFF` | Text on accent fills |
 | `--accent` | `#E85D04` | Same ember accent |
+| `--accent-hover` | `#D45203` | Primary hover (light) |
 | `--row-selected` | `rgba(232, 93, 4, 0.14)` | Selection |
 
 ### Graph lanes
@@ -95,7 +97,7 @@ Layout prefs remain: `--sidebar-width`, `--inspector-height`, `--detail-width`, 
 
 - **Label + leading icon** for primary actions (`Button` with `icon`).
 - **Icon-only** (`IconButton`) for dense chrome: sidebar toggle, new branch, branch Merge/Rebase/Del, inspector dock.
-- **Focus/hover hints:** every icon control sets `data-hint` (and `title` / `aria-label`). CSS `.has-hint` shows a tooltip on `:hover` and `:focus-visible` so keyboard users get the same affordance as pointer users. Use `.has-hint-above` when the control sits at the bottom edge of a clipped region (e.g. toolbar tabs).
+- **Focus/hover hints:** every icon control sets `data-hint` (and `title` / `aria-label`). CSS `.has-hint` shows a tooltip on `:hover` and `:focus-visible` so keyboard users get the same affordance as pointer users. Use `.has-hint-above` when the control sits at the bottom edge of a clipped region (e.g. toolbar tabs). Use `.has-hint-leading` (or row-action scoped rules) when the control sits in an `overflow: auto` list so the hint does not force a scrollbar.
 
 ### Chrome inventory
 

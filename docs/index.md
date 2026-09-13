@@ -2,7 +2,7 @@
 
 Cross-platform Git desktop client (Electron + React) with a history-first UI. Browse commit topology, inspect diffs, manage the working tree, sync remotes, resolve conflicts, and connect host accounts for cloning.
 
-Public repo: [github.com/Maks417/GitManager](https://github.com/Maks417/GitManager) · start at the root [README](../README.md).
+Start at the root [README](../README.md).
 
 ## Documentation
 

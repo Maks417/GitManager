@@ -15,10 +15,12 @@ Keep a list of local repositories the user works with: open existing folders, cr
 
 | Piece | File |
 |---|---|
-| Shell / sidebar | [`src/renderer/src/App.tsx`](../../src/renderer/src/App.tsx) |
+| App coordinator | [`src/renderer/src/App.tsx`](../../src/renderer/src/App.tsx) |
+| Welcome / sidebar | [`src/renderer/src/shell/WelcomeScreen.tsx`](../../src/renderer/src/shell/WelcomeScreen.tsx), [`RepoSidebar.tsx`](../../src/renderer/src/shell/RepoSidebar.tsx) |
+| Repo session hook | [`src/renderer/src/hooks/useRepoSession.ts`](../../src/renderer/src/hooks/useRepoSession.ts) |
 | Clone modal | [`src/renderer/src/features/clone/CloneModal.tsx`](../../src/renderer/src/features/clone/CloneModal.tsx) |
-| IPC + dialogs | [`src/main/ipc.ts`](../../src/main/ipc.ts) |
-| Inspect / init / clone | [`src/git-worker/operations.ts`](../../src/git-worker/operations.ts) |
+| IPC | [`src/main/ipc/repo-handlers.ts`](../../src/main/ipc/repo-handlers.ts) |
+| Inspect / init / clone | [`src/git-worker/ops/repo.ts`](../../src/git-worker/ops/repo.ts) |
 | Persistence | [`src/main/storage.ts`](../../src/main/storage.ts) |
 
 ## Data touched

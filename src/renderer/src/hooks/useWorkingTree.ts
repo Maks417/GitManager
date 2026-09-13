@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
   Commit,
   CommitDetail,
@@ -105,6 +105,11 @@ export function useWorkingTree({
   selectCommit: (sha: string) => void
   goHistory: () => void
 } {
+  const selectedInHistory = useMemo(
+    () => Boolean(selectedSha && commits.some((c) => c.sha === selectedSha)),
+    [commits, selectedSha]
+  )
+
   useEffect(() => {
     if (!workingCopySelected) return
     if (focusedStatusPath && status.some((s) => s.path === focusedStatusPath)) return
@@ -126,15 +131,17 @@ export function useWorkingTree({
       }
       return
     }
-    if (!commits.some((c) => c.sha === selectedSha)) {
+    if (!selectedInHistory) {
       setDetail(null)
       setSelectedFile(null)
       return
     }
+    const repoPath = activeRepo.path
+    const sha = selectedSha
     let cancelled = false
     void (async () => {
       try {
-        const d = await window.gitManager.history.commitDetail(activeRepo.path, selectedSha)
+        const d = await window.gitManager.history.commitDetail(repoPath, sha)
         if (cancelled) return
         setDetail(d)
         setSelectedFile(d.files[0] || null)
@@ -143,10 +150,9 @@ export function useWorkingTree({
         const message = toErrorMessage(err)
         setDetail(null)
         setSelectedFile(null)
+        // Drop dead selection so we do not retry the same missing SHA forever.
+        setSelection((prev) => (prev?.kind === 'commit' && prev.sha === sha ? null : prev))
         if (/bad object|invalid commit|unknown revision|commit not found/i.test(message)) {
-          setSelection((prev) =>
-            prev?.kind === 'commit' && prev.sha === selectedSha ? null : prev
-          )
           return
         }
         setError(message)
@@ -159,7 +165,7 @@ export function useWorkingTree({
     activeRepo?.path,
     selection?.kind,
     selectedSha,
-    commits,
+    selectedInHistory,
     setError,
     setDetail,
     setSelectedFile,

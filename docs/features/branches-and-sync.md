@@ -2,29 +2,31 @@
 
 ## Purpose
 
-Operate on branches and remotes: checkout, create/delete, fetch/pull/push, merge, and rebase (including continue/abort while rebasing).
+Operate on branches and remotes: checkout (local and remote-tracking), create/delete, fetch/pull/push, merge, and rebase (including continue/abort while rebasing).
 
 ## User flow
 
-1. Sidebar shows the current branch and an expandable branch list with ahead/behind.
-2. Create branch modal; checkout by clicking a branch; delete with optional force confirm.
+1. Sidebar shows the current branch and expandable local / remote branch lists with ahead/behind.
+2. Create branch modal; checkout by clicking a branch; checkout a remote branch via `git:checkout-remote-branch`; delete with optional force confirm.
 3. Sync menu: Fetch, Pull, Push.
 4. Merge / Rebase open a branch picker; conflicts open the merge editor.
-5. While rebasing, continue/abort are available from the merge editor chrome.
+5. While rebasing, continue/abort are available from the merge editor chrome and Changes UI.
 
 ## Key modules & files
 
 | Piece | File |
 |---|---|
-| Shell actions | [`src/renderer/src/App.tsx`](../../src/renderer/src/App.tsx) |
+| Shell / actions | [`src/renderer/src/App.tsx`](../../src/renderer/src/App.tsx), [`RepoSidebar.tsx`](../../src/renderer/src/shell/RepoSidebar.tsx) |
 | Create branch | [`src/renderer/src/features/branches/CreateBranchModal.tsx`](../../src/renderer/src/features/branches/CreateBranchModal.tsx) |
 | Branch pick (merge/rebase) | [`src/renderer/src/features/branches/BranchPickModal.tsx`](../../src/renderer/src/features/branches/BranchPickModal.tsx) |
-| Git ops | [`src/git-worker/operations.ts`](../../src/git-worker/operations.ts) |
+| Branch / sync ops | [`src/git-worker/ops/branches.ts`](../../src/git-worker/ops/branches.ts) |
+| Git IPC | [`src/main/ipc/git-handlers.ts`](../../src/main/ipc/git-handlers.ts) |
 
 ## Data touched
 
 - Refs and branch tip commits
 - Upstream tracking (`BranchInfo.ahead` / `behind`)
+- Remote-tracking names (`RemoteBranchInfo`)
 - Working tree may gain conflicts from merge/rebase
 - Rebase state under `.git` (`isRebaseInProgress`)
 

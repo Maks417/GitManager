@@ -17,7 +17,8 @@ Resolve merge and rebase conflicts with a VS Code-style flow: list conflicted fi
 |---|---|
 | Modal UI | [`src/renderer/src/features/merge-editor/MergeEditorModal.tsx`](../../src/renderer/src/features/merge-editor/MergeEditorModal.tsx) |
 | Marker parse / resolve | [`src/merge-core/conflict.ts`](../../src/merge-core/conflict.ts) |
-| Git sides + save | [`src/git-worker/operations.ts`](../../src/git-worker/operations.ts) (`listConflictFiles`, `getMergeSides`, `saveMergeResult`) |
+| Git sides + save | [`src/git-worker/ops/merge.ts`](../../src/git-worker/ops/merge.ts) |
+| Merge IPC | [`src/main/ipc/merge-handlers.ts`](../../src/main/ipc/merge-handlers.ts) |
 
 ## Data touched
 

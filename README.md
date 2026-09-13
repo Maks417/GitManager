@@ -18,30 +18,6 @@
 
 ---
 
-## Screenshots
-
-Add PNGs under [`docs/assets/`](docs/assets/), then uncomment the images below:
-
-| File | Shows |
-|---|---|
-| `history.png` | History graph view |
-| `changes.png` | Working tree and changes |
-| `merge.png` | Merge conflict editor |
-
-<!--
-<p align="center">
-  <img src="docs/assets/history.png" alt="History graph view" width="800" />
-</p>
-
-<p align="center">
-  <img src="docs/assets/changes.png" alt="Working tree and changes" width="800" />
-</p>
-
-<p align="center">
-  <img src="docs/assets/merge.png" alt="Merge conflict editor" width="800" />
-</p>
--->
-
 ## Features
 
 | | |
@@ -64,6 +40,26 @@ The app probes for Git at startup and guides you to install it if missing.
 ## Install
 
 Download the latest build from **[Releases](https://github.com/Maks417/GitManager/releases)**.
+
+## Connect host accounts
+
+Use **Host accounts** from the welcome screen, or **Accounts** in the app menu, to link GitHub, GitLab, or Bitbucket. The app stores the token in OS secure storage and lists remote repos so you can clone them (HTTPS or SSH).
+
+1. Open **Host accounts**.
+2. Choose a provider.
+3. Paste a personal access token (Bitbucket also asks for your username).
+4. Click **Connect**.
+5. Select an account in the list to load remote repositories, then **Clone** a repo.
+
+| Provider | Credential | Notes |
+|---|---|---|
+| **GitHub** | [Personal access token](https://github.com/settings/tokens) | Classic or fine-grained. Needs permission to read your profile and list repositories (private repos need repo access). |
+| **GitLab** | [Personal access token](https://gitlab.com/-/user_settings/personal_access_tokens) | Needs API access to read your user and projects (e.g. `read_api`). Hosted on `gitlab.com`. |
+| **Bitbucket** | [App password](https://bitbucket.org/account/settings/app-passwords/) | Enter your Bitbucket **username** plus the app password. Needs permission to read account and repositories. |
+
+Clone, fetch, and push still use your normal Git credentials: **HTTPS** via Git Credential Manager, **SSH** via your OpenSSH agent and keys. Connecting an account only unlocks browsing and one-click clone from the host listing.
+
+More detail: [`docs/features/host-accounts.md`](docs/features/host-accounts.md).
 
 ## Develop
 
@@ -120,4 +116,4 @@ Full write-up: [`docs/architecture.md`](docs/architecture.md).
 
 ## License
 
-[MIT](LICENSE) © Maks417
+[MIT](LICENSE)

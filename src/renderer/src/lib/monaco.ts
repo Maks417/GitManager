@@ -8,23 +8,56 @@ import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 
 const F1 = monaco.KeyCode.F1
 const CTRL_SHIFT_P = monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP
+const QUICK_COMMAND_ID = 'editor.action.quickCommand'
+const SEPARATOR_ID = 'vs.actions.separator'
+
+type MenuActionLike = { id?: string }
+
+/**
+ * Monaco has no public API to drop a single context-menu item. Patch the
+ * context-menu contribution so Command Palette never appears.
+ */
+function stripCommandPaletteFromContextMenu(editor: monaco.editor.ICodeEditor): void {
+  const contribution = editor.getContribution('editor.contrib.contextmenu') as {
+    _getMenuActions?: (...args: unknown[]) => MenuActionLike[]
+  } | null
+  if (!contribution?._getMenuActions) return
+
+  const original = contribution._getMenuActions.bind(contribution)
+  contribution._getMenuActions = (...args: unknown[]) => {
+    const filtered = original(...args).filter((item) => item.id !== QUICK_COMMAND_ID)
+    const cleaned: MenuActionLike[] = []
+    for (const item of filtered) {
+      if (item.id === SEPARATOR_ID && (cleaned.length === 0 || cleaned[cleaned.length - 1]?.id === SEPARATOR_ID)) {
+        continue
+      }
+      cleaned.push(item)
+    }
+    while (cleaned.length > 0 && cleaned[cleaned.length - 1]?.id === SEPARATOR_ID) {
+      cleaned.pop()
+    }
+    return cleaned
+  }
+}
 
 /**
  * Monaco ships an F1 / Ctrl+Shift+P "Command Palette" (quick command). Unbind it
- * globally and no-op it on every editor so it never appears in diffs or merge UI.
+ * globally and remove it from the editor context menu in diffs / merge UI.
  */
 function disableCommandPalette(m: typeof monaco): void {
   m.editor.addKeybindingRule({ keybinding: F1, command: null })
   m.editor.addKeybindingRule({ keybinding: CTRL_SHIFT_P, command: null })
 
   m.editor.onDidCreateEditor((editor) => {
+    // Contribution may not be attached synchronously in every Monaco build.
+    queueMicrotask(() => stripCommandPaletteFromContextMenu(editor))
+
     const standalone = editor as monaco.editor.IStandaloneCodeEditor
     if (typeof standalone.addCommand !== 'function') return
     standalone.addCommand(F1, () => undefined)
     standalone.addCommand(CTRL_SHIFT_P, () => undefined)
-    // Replace the built-in action so it stays out of the editor context menu.
     standalone.addAction({
-      id: 'editor.action.quickCommand',
+      id: QUICK_COMMAND_ID,
       label: 'Command Palette',
       precondition: 'false',
       run: () => undefined
