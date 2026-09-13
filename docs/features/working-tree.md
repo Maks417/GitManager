@@ -34,6 +34,7 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 - Conflicted paths surface in status and typically open the merge editor from the shell.
 - Empty repo (no HEAD) forces Changes view after history load.
 - Identity email must be a valid email when setting via `SetGitIdentityRequestSchema`.
+- Commit with an empty index shows guidance to Stage / Stage all (not raw `git commit` stderr); amend without staged changes is still allowed for message-only amends.
 
 ## Diagram
 

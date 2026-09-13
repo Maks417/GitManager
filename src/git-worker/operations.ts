@@ -466,10 +466,27 @@ export async function discardPaths(repoPath: string, paths: string[]): Promise<v
   await gitOk(repoPath, ['restore', '--worktree', '--', ...paths])
 }
 
+/** Maps raw `git commit` stderr into actionable UI copy. */
+export function friendlyCommitError(raw: string, amend = false): string {
+  if (/no changes added to commit|nothing added to commit/i.test(raw)) {
+    return 'Nothing is staged. Select files under Changes, click Stage or Stage all, then commit.'
+  }
+  if (/nothing to commit/i.test(raw)) {
+    if (amend) return 'Nothing to amend — stage changes or edit the message and try again.'
+    return 'Nothing to commit — the working tree is clean.'
+  }
+  return raw.trim() || 'Commit failed'
+}
+
 export async function commit(repoPath: string, message: string, amend = false): Promise<string> {
   const args = ['commit', '-m', message]
   if (amend) args.push('--amend')
-  await gitOk(repoPath, args)
+  try {
+    await gitOk(repoPath, args)
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err)
+    throw new Error(friendlyCommitError(raw, amend))
+  }
   const sha = await resolveHeadSha(repoPath)
   if (!sha) throw new Error('Commit succeeded but HEAD could not be resolved')
   return sha

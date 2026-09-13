@@ -61,6 +61,16 @@ function formatIdentity(id: GitIdentity | null | undefined): string {
   return `${id.name} <${id.email}>`
 }
 
+/** Strip Electron IPC wrapper so banners show the actionable message. */
+function formatActionError(err: unknown): string {
+  let msg = err instanceof Error ? err.message : String(err)
+  msg = msg.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/i, '')
+  return msg.trim() || 'Something went wrong'
+}
+
+const STAGE_BEFORE_COMMIT =
+  'Nothing is staged. Select files under Changes, click Stage or Stage all, then commit.'
+
 export function WorkingTreeDetailPane({
   repoPath,
   status,
@@ -125,11 +135,13 @@ export function WorkingTreeDetailPane({
       await onRefresh()
       await loadStashes()
     } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
+      onError(formatActionError(err))
     } finally {
       setBusy(false)
     }
   }
+
+  const needsStageBeforeCommit = !amend && stagedEntries.length === 0
 
   const toggleChecked = (path: string): void => {
     setChecked((prev) => (prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]))
@@ -487,6 +499,11 @@ export function WorkingTreeDetailPane({
               Set your name and email before committing.
             </p>
           )}
+          {needsStageBeforeCommit && changesEntries.length > 0 && (
+            <p className="muted text-sm" style={{ margin: 0 }}>
+              Stage files with <strong>Stage</strong> or <strong>Stage all</strong> before committing.
+            </p>
+          )}
           <textarea
             rows={3}
             placeholder="Commit message"
@@ -516,11 +533,27 @@ export function WorkingTreeDetailPane({
                 <Check size={16} strokeWidth={1.75} />
               )
             }
-            hint={amend ? 'Amend the last commit' : 'Create a new commit'}
-            title={amend ? 'Amend the last commit' : 'Create a new commit'}
+            hint={
+              needsStageBeforeCommit && changesEntries.length > 0
+                ? STAGE_BEFORE_COMMIT
+                : amend
+                  ? 'Amend the last commit'
+                  : 'Create a new commit'
+            }
+            title={
+              needsStageBeforeCommit && changesEntries.length > 0
+                ? STAGE_BEFORE_COMMIT
+                : amend
+                  ? 'Amend the last commit'
+                  : 'Create a new commit'
+            }
             disabled={busy || !message.trim() || !identityReady}
             onClick={() =>
               void run(async () => {
+                if (needsStageBeforeCommit) {
+                  if (changesEntries.length > 0) throw new Error(STAGE_BEFORE_COMMIT)
+                  throw new Error('Nothing to commit — the working tree is clean.')
+                }
                 await window.gitManager.git.commit(repoPath, message.trim(), amend)
                 setMessage('')
                 setAmend(false)
