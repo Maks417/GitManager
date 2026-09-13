@@ -1,3 +1,25 @@
+export const MenuChannels = {
+  addRepo: 'menu:add-repo',
+  cloneRepo: 'menu:clone-repo',
+  accounts: 'menu:accounts',
+  identity: 'menu:identity',
+  createBranch: 'menu:create-branch',
+  merge: 'menu:merge',
+  rebase: 'menu:rebase',
+  focusSearch: 'menu:focus-search',
+  fetch: 'menu:fetch',
+  pull: 'menu:pull',
+  push: 'menu:push',
+  updates: 'menu:updates',
+  about: 'menu:about',
+  viewHistory: 'menu:view-history',
+  viewChanges: 'menu:view-changes',
+  toggleDock: 'menu:toggle-dock',
+  toggleSidebar: 'menu:toggle-sidebar'
+} as const
+
+export type MenuChannel = (typeof MenuChannels)[keyof typeof MenuChannels]
+
 export const IpcChannels = {
   repo: {
     list: 'repo:list',
@@ -54,7 +76,6 @@ export const IpcChannels = {
   },
   providers: {
     listAccounts: 'providers:list-accounts',
-    connect: 'providers:connect',
     disconnect: 'providers:disconnect',
     listRepos: 'providers:list-repos',
     saveToken: 'providers:save-token'

@@ -13,13 +13,15 @@ import {
   Pencil,
   Play,
   Plus,
-  Trash2,
-  X
+  Trash2
 } from 'lucide-react'
 import type { DiffResult, GitIdentity, StashEntry, StatusEntry } from '@shared/ipc'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
+import { RebaseProgressBar } from '../../components/RebaseProgressBar'
 import { Splitter } from '../../components/Splitter'
 import { Button, RefPill } from '../../components/ui'
+import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
+import { toErrorMessage } from '../../lib/errors'
 
 export type DiffSide = 'staged' | 'unstaged'
 
@@ -61,15 +63,7 @@ function formatIdentity(id: GitIdentity | null | undefined): string {
   return `${id.name} <${id.email}>`
 }
 
-/** Strip Electron IPC wrapper so banners show the actionable message. */
-function formatActionError(err: unknown): string {
-  let msg = err instanceof Error ? err.message : String(err)
-  msg = msg.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/i, '')
-  return msg.trim() || 'Something went wrong'
-}
-
-const STAGE_BEFORE_COMMIT =
-  'Nothing is staged. Select files under Changes, click Stage or Stage all, then commit.'
+const STAGE_BEFORE_COMMIT = NOTHING_STAGED_COMMIT
 
 export function WorkingTreeDetailPane({
   repoPath,
@@ -137,7 +131,7 @@ export function WorkingTreeDetailPane({
       await onRefresh()
       await loadStashes()
     } catch (err) {
-      onError(formatActionError(err))
+      onError(toErrorMessage(err))
     } finally {
       setBusy(false)
     }
@@ -251,35 +245,12 @@ export function WorkingTreeDetailPane({
 
   const rebaseBar =
     rebaseInProgress && (onRebaseContinue || onRebaseAbort) ? (
-      <div className="rebase-bar">
-        <span className="muted">Rebase in progress</span>
-        {onRebaseContinue && (
-          <Button
-            variant="primary"
-            icon={<Play size={16} strokeWidth={1.75} />}
-            hint="Continue rebase"
-            title="Continue rebase"
-            disabled={busy}
-            onClick={() => void run(() => onRebaseContinue())}
-          >
-            Continue rebase
-          </Button>
-        )}
-        {onRebaseAbort && (
-          <Button
-            icon={<X size={16} strokeWidth={1.75} />}
-            hint="Abort the in-progress rebase"
-            title="Abort the in-progress rebase"
-            disabled={busy}
-            onClick={() => {
-              if (!confirm('Abort the in-progress rebase?')) return
-              void run(() => onRebaseAbort())
-            }}
-          >
-            Abort rebase
-          </Button>
-        )}
-      </div>
+      <RebaseProgressBar
+        variant="pane"
+        busy={busy}
+        onContinue={onRebaseContinue ? () => run(() => onRebaseContinue()) : undefined}
+        onAbort={onRebaseAbort ? () => run(() => onRebaseAbort()) : undefined}
+      />
     ) : null
 
   const stashPanel = (

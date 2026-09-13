@@ -2,48 +2,13 @@
  * Electron utilityProcess entry for git ops (Windows + macOS).
  * Receives `{ id, method, args }` and replies `{ id, ok, result | error }`.
  */
-import * as ops from './operations'
+import { GIT_METHODS } from './method-registry'
 import { cancelAllGit } from './git-runner'
 
 type RpcRequest = { id: number; method: string; args: unknown[] }
 
 const handlers: Record<string, (...args: never[]) => unknown> = {
-  inspectRepository: ops.inspectRepository,
-  initRepository: ops.initRepository,
-  cloneRepository: ops.cloneRepository,
-  loadHistory: ops.loadHistory,
-  getCommitDetail: ops.getCommitDetail,
-  getFileDiff: ops.getFileDiff,
-  getWorkingTreeDiff: ops.getWorkingTreeDiff,
-  getStatus: ops.getStatus,
-  getBranches: ops.getBranches,
-  getRemoteBranches: ops.getRemoteBranches,
-  stagePaths: ops.stagePaths,
-  unstagePaths: ops.unstagePaths,
-  discardPaths: ops.discardPaths,
-  commit: ops.commit,
-  fetchRemote: ops.fetchRemote,
-  pullRemote: ops.pullRemote,
-  pushRemote: ops.pushRemote,
-  checkoutRef: ops.checkoutRef,
-  checkoutRemoteBranch: ops.checkoutRemoteBranch,
-  createBranch: ops.createBranch,
-  mergeRef: ops.mergeRef,
-  rebaseOnto: ops.rebaseOnto,
-  rebaseContinue: ops.rebaseContinue,
-  rebaseAbort: ops.rebaseAbort,
-  isRebaseInProgress: ops.isRebaseInProgress,
-  deleteBranch: ops.deleteBranch,
-  stashSave: ops.stashSave,
-  listStashes: ops.listStashes,
-  stashApply: ops.stashApply,
-  stashPop: ops.stashPop,
-  stashDrop: ops.stashDrop,
-  listConflictFiles: ops.listConflictFiles,
-  getMergeSides: ops.getMergeSides,
-  saveMergeResult: ops.saveMergeResult,
-  getGitIdentity: ops.getGitIdentity,
-  setGitIdentity: ops.setGitIdentity,
+  ...GIT_METHODS,
   cancelAllGit: () => {
     cancelAllGit()
   }

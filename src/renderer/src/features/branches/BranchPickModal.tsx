@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type React from 'react'
 import type { BranchInfo } from '@shared/ipc'
 import { Banner, Button, Field, Modal, Select } from '../../components/ui'
+import { useAsyncAction } from '../../lib/useAsyncAction'
 
 interface Props {
   title: string
@@ -27,24 +28,17 @@ export function BranchPickModal({
     [branches, excludeCurrent]
   )
   const [selected, setSelected] = useState(options[0]?.name ?? '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, setError, run } = useAsyncAction()
 
-  const submit = async (): Promise<void> => {
+  const submit = (): void => {
     if (!selected) {
       setError('Select a branch')
       return
     }
-    setBusy(true)
-    setError(null)
-    try {
+    void run(async () => {
       await onPick(selected)
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   return (
@@ -59,7 +53,7 @@ export function BranchPickModal({
           <Button
             variant="primary"
             disabled={busy || !selected || options.length === 0}
-            onClick={() => void submit()}
+            onClick={submit}
           >
             {busy ? 'Working…' : confirmVerb}
           </Button>

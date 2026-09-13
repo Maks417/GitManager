@@ -75,7 +75,6 @@ const api = {
   },
   providers: {
     listAccounts: () => ipcRenderer.invoke(IpcChannels.providers.listAccounts),
-    connect: (provider: string) => ipcRenderer.invoke(IpcChannels.providers.connect, provider),
     disconnect: (accountId: string) => ipcRenderer.invoke(IpcChannels.providers.disconnect, accountId),
     listRepos: (accountId: string) => ipcRenderer.invoke(IpcChannels.providers.listRepos, accountId),
     saveToken: (provider: string, token: string, username?: string) =>

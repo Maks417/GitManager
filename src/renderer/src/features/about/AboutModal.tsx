@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type React from 'react'
 import type { AppInfo, UpdateStatus } from '@shared/ipc'
 import { Banner, Button, Modal } from '../../components/ui'
+import { toErrorMessage } from '../../lib/errors'
 import logoUrl from '../../../favicon.svg'
 
 interface Props {
@@ -25,7 +26,7 @@ export function AboutModal({ status, onClose, onStatus }: Props): React.JSX.Elem
         const next = await window.gitManager.app.getInfo()
         if (!cancelled) setInfo(next)
       } catch (err) {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err))
+        if (!cancelled) setLoadError(toErrorMessage(err))
       }
     })()
     return () => {

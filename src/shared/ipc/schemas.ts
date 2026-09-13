@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { PROVIDER_IDS } from '../providers'
+import { HISTORY_PAGE_SIZE, LAYOUT_DEFAULTS } from '../layout-defaults'
 
 export const RepositorySchema = z.object({
   id: z.string(),
@@ -139,9 +141,11 @@ export const MergeSidesSchema = z.object({
 })
 export type MergeSides = z.infer<typeof MergeSidesSchema>
 
+export const ProviderIdSchema = z.enum(PROVIDER_IDS)
+
 export const ProviderAccountSchema = z.object({
   id: z.string(),
-  provider: z.enum(['github', 'gitlab', 'bitbucket']),
+  provider: ProviderIdSchema,
   username: z.string(),
   displayName: z.string(),
   avatarUrl: z.string().optional(),
@@ -188,14 +192,14 @@ export const AppPreferencesSchema = z.object({
   sidebarCollapsed: z.boolean().default(false),
   branchesExpanded: z.boolean().default(false),
   remoteBranchesExpanded: z.boolean().default(false),
-  sidebarWidth: z.number().min(140).max(480).default(200),
-  inspectorHeight: z.number().min(180).max(900).default(320),
-  detailWidth: z.number().min(280).max(900).default(480),
-  inspectorFilesWidth: z.number().min(140).max(480).default(200),
-  changesFilesWidth: z.number().min(200).max(560).default(300),
-  historyGraphColWidth: z.number().min(80).max(560).default(140),
-  historyDateColWidth: z.number().min(72).max(220).default(110),
-  historyAuthorColWidth: z.number().min(100).max(360).default(180),
+  sidebarWidth: z.number().min(140).max(480).default(LAYOUT_DEFAULTS.sidebarWidth),
+  inspectorHeight: z.number().min(180).max(900).default(LAYOUT_DEFAULTS.inspectorHeight),
+  detailWidth: z.number().min(280).max(900).default(LAYOUT_DEFAULTS.detailWidth),
+  inspectorFilesWidth: z.number().min(140).max(480).default(LAYOUT_DEFAULTS.inspectorFilesWidth),
+  changesFilesWidth: z.number().min(200).max(560).default(LAYOUT_DEFAULTS.changesFilesWidth),
+  historyGraphColWidth: z.number().min(80).max(560).default(LAYOUT_DEFAULTS.historyGraphColWidth),
+  historyDateColWidth: z.number().min(72).max(220).default(LAYOUT_DEFAULTS.historyDateColWidth),
+  historyAuthorColWidth: z.number().min(100).max(360).default(LAYOUT_DEFAULTS.historyAuthorColWidth),
   /** Prefer `normal` for large trees; `all` lists every untracked path recursively. */
   statusUntracked: z.enum(['normal', 'all']).default('normal'),
   /** Watch the working tree and refresh status when files change (Windows + macOS). */
@@ -223,7 +227,7 @@ export const HistoryQuerySchema = z.object({
   cursor: z.string().optional(),
   /** Offset for branch-filtered paging (`git log --skip`); ignored in `--all` cursor mode. */
   skip: z.number().int().min(0).max(1_000_000).optional(),
-  limit: z.number().min(1).max(500).default(200)
+  limit: z.number().min(1).max(500).default(HISTORY_PAGE_SIZE)
 })
 export type HistoryQuery = z.infer<typeof HistoryQuerySchema>
 

@@ -5,7 +5,8 @@
 import { app, utilityProcess, type UtilityProcess } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
-import * as ops from './operations'
+import type * as ops from './operations'
+import { getGitMethod, type GitMethodName } from './method-registry'
 import { cancelAllGit as cancelAllGitLocal, probeGit } from './git-runner'
 
 type Pending = {
@@ -85,7 +86,7 @@ async function waitReady(timeoutMs = 5000): Promise<boolean> {
   return childReady
 }
 
-async function invoke(method: string, args: unknown[]): Promise<unknown> {
+async function invoke(method: GitMethodName | 'cancelAllGit', args: unknown[]): Promise<unknown> {
   ensureWorker()
   if (useInline || !child) {
     return invokeInline(method, args)
@@ -111,45 +112,11 @@ async function invoke(method: string, args: unknown[]): Promise<unknown> {
 }
 
 async function invokeInline(method: string, args: unknown[]): Promise<unknown> {
-  const map: Record<string, (...a: never[]) => unknown> = {
-    inspectRepository: ops.inspectRepository,
-    initRepository: ops.initRepository,
-    cloneRepository: ops.cloneRepository,
-    loadHistory: ops.loadHistory,
-    getCommitDetail: ops.getCommitDetail,
-    getFileDiff: ops.getFileDiff,
-    getWorkingTreeDiff: ops.getWorkingTreeDiff,
-    getStatus: ops.getStatus,
-    getBranches: ops.getBranches,
-    getRemoteBranches: ops.getRemoteBranches,
-    stagePaths: ops.stagePaths,
-    unstagePaths: ops.unstagePaths,
-    discardPaths: ops.discardPaths,
-    commit: ops.commit,
-    fetchRemote: ops.fetchRemote,
-    pullRemote: ops.pullRemote,
-    pushRemote: ops.pushRemote,
-    checkoutRef: ops.checkoutRef,
-    checkoutRemoteBranch: ops.checkoutRemoteBranch,
-    createBranch: ops.createBranch,
-    mergeRef: ops.mergeRef,
-    rebaseOnto: ops.rebaseOnto,
-    rebaseContinue: ops.rebaseContinue,
-    rebaseAbort: ops.rebaseAbort,
-    isRebaseInProgress: ops.isRebaseInProgress,
-    deleteBranch: ops.deleteBranch,
-    stashSave: ops.stashSave,
-    listStashes: ops.listStashes,
-    stashApply: ops.stashApply,
-    stashPop: ops.stashPop,
-    stashDrop: ops.stashDrop,
-    listConflictFiles: ops.listConflictFiles,
-    getMergeSides: ops.getMergeSides,
-    saveMergeResult: ops.saveMergeResult,
-    getGitIdentity: ops.getGitIdentity,
-    setGitIdentity: ops.setGitIdentity
+  if (method === 'cancelAllGit') {
+    cancelAllGitLocal()
+    return
   }
-  const fn = map[method]
+  const fn = getGitMethod(method)
   if (!fn) throw new Error(`Unknown git method: ${method}`)
   return (fn as (...a: unknown[]) => Promise<unknown> | unknown)(...args)
 }
@@ -163,77 +130,46 @@ export function cancelAllGit(): void {
 
 export { probeGit }
 
-export const inspectRepository = (...args: Parameters<typeof ops.inspectRepository>) =>
-  invoke('inspectRepository', args) as ReturnType<typeof ops.inspectRepository>
-export const initRepository = (...args: Parameters<typeof ops.initRepository>) =>
-  invoke('initRepository', args) as ReturnType<typeof ops.initRepository>
-export const cloneRepository = (...args: Parameters<typeof ops.cloneRepository>) =>
-  invoke('cloneRepository', args) as ReturnType<typeof ops.cloneRepository>
-export const loadHistory = (...args: Parameters<typeof ops.loadHistory>) =>
-  invoke('loadHistory', args) as ReturnType<typeof ops.loadHistory>
-export const getCommitDetail = (...args: Parameters<typeof ops.getCommitDetail>) =>
-  invoke('getCommitDetail', args) as ReturnType<typeof ops.getCommitDetail>
-export const getFileDiff = (...args: Parameters<typeof ops.getFileDiff>) =>
-  invoke('getFileDiff', args) as ReturnType<typeof ops.getFileDiff>
-export const getWorkingTreeDiff = (...args: Parameters<typeof ops.getWorkingTreeDiff>) =>
-  invoke('getWorkingTreeDiff', args) as ReturnType<typeof ops.getWorkingTreeDiff>
-export const getStatus = (...args: Parameters<typeof ops.getStatus>) =>
-  invoke('getStatus', args) as ReturnType<typeof ops.getStatus>
-export const getBranches = (...args: Parameters<typeof ops.getBranches>) =>
-  invoke('getBranches', args) as ReturnType<typeof ops.getBranches>
-export const getRemoteBranches = (...args: Parameters<typeof ops.getRemoteBranches>) =>
-  invoke('getRemoteBranches', args) as ReturnType<typeof ops.getRemoteBranches>
-export const stagePaths = (...args: Parameters<typeof ops.stagePaths>) =>
-  invoke('stagePaths', args) as ReturnType<typeof ops.stagePaths>
-export const unstagePaths = (...args: Parameters<typeof ops.unstagePaths>) =>
-  invoke('unstagePaths', args) as ReturnType<typeof ops.unstagePaths>
-export const discardPaths = (...args: Parameters<typeof ops.discardPaths>) =>
-  invoke('discardPaths', args) as ReturnType<typeof ops.discardPaths>
-export const commit = (...args: Parameters<typeof ops.commit>) =>
-  invoke('commit', args) as ReturnType<typeof ops.commit>
-export const fetchRemote = (...args: Parameters<typeof ops.fetchRemote>) =>
-  invoke('fetchRemote', args) as ReturnType<typeof ops.fetchRemote>
-export const pullRemote = (...args: Parameters<typeof ops.pullRemote>) =>
-  invoke('pullRemote', args) as ReturnType<typeof ops.pullRemote>
-export const pushRemote = (...args: Parameters<typeof ops.pushRemote>) =>
-  invoke('pushRemote', args) as ReturnType<typeof ops.pushRemote>
-export const checkoutRef = (...args: Parameters<typeof ops.checkoutRef>) =>
-  invoke('checkoutRef', args) as ReturnType<typeof ops.checkoutRef>
-export const checkoutRemoteBranch = (...args: Parameters<typeof ops.checkoutRemoteBranch>) =>
-  invoke('checkoutRemoteBranch', args) as ReturnType<typeof ops.checkoutRemoteBranch>
-export const createBranch = (...args: Parameters<typeof ops.createBranch>) =>
-  invoke('createBranch', args) as ReturnType<typeof ops.createBranch>
-export const mergeRef = (...args: Parameters<typeof ops.mergeRef>) =>
-  invoke('mergeRef', args) as ReturnType<typeof ops.mergeRef>
-export const rebaseOnto = (...args: Parameters<typeof ops.rebaseOnto>) =>
-  invoke('rebaseOnto', args) as ReturnType<typeof ops.rebaseOnto>
-export const rebaseContinue = (...args: Parameters<typeof ops.rebaseContinue>) =>
-  invoke('rebaseContinue', args) as ReturnType<typeof ops.rebaseContinue>
-export const rebaseAbort = (...args: Parameters<typeof ops.rebaseAbort>) =>
-  invoke('rebaseAbort', args) as ReturnType<typeof ops.rebaseAbort>
-export const isRebaseInProgress = (...args: Parameters<typeof ops.isRebaseInProgress>) =>
-  invoke('isRebaseInProgress', args) as ReturnType<typeof ops.isRebaseInProgress>
-export const deleteBranch = (...args: Parameters<typeof ops.deleteBranch>) =>
-  invoke('deleteBranch', args) as ReturnType<typeof ops.deleteBranch>
-export const stashSave = (...args: Parameters<typeof ops.stashSave>) =>
-  invoke('stashSave', args) as ReturnType<typeof ops.stashSave>
-export const listStashes = (...args: Parameters<typeof ops.listStashes>) =>
-  invoke('listStashes', args) as ReturnType<typeof ops.listStashes>
-export const stashApply = (...args: Parameters<typeof ops.stashApply>) =>
-  invoke('stashApply', args) as ReturnType<typeof ops.stashApply>
-export const stashPop = (...args: Parameters<typeof ops.stashPop>) =>
-  invoke('stashPop', args) as ReturnType<typeof ops.stashPop>
-export const stashDrop = (...args: Parameters<typeof ops.stashDrop>) =>
-  invoke('stashDrop', args) as ReturnType<typeof ops.stashDrop>
-export const listConflictFiles = (...args: Parameters<typeof ops.listConflictFiles>) =>
-  invoke('listConflictFiles', args) as ReturnType<typeof ops.listConflictFiles>
-export const getMergeSides = (...args: Parameters<typeof ops.getMergeSides>) =>
-  invoke('getMergeSides', args) as ReturnType<typeof ops.getMergeSides>
-export const saveMergeResult = (...args: Parameters<typeof ops.saveMergeResult>) =>
-  invoke('saveMergeResult', args) as ReturnType<typeof ops.saveMergeResult>
-export const getGitIdentity = (...args: Parameters<typeof ops.getGitIdentity>) =>
-  invoke('getGitIdentity', args) as ReturnType<typeof ops.getGitIdentity>
-export const setGitIdentity = (...args: Parameters<typeof ops.setGitIdentity>) =>
-  invoke('setGitIdentity', args) as ReturnType<typeof ops.setGitIdentity>
+function wrap<K extends GitMethodName>(method: K) {
+  return (...args: Parameters<(typeof ops)[K]>) =>
+    invoke(method, args) as ReturnType<(typeof ops)[K]>
+}
+
+export const inspectRepository = wrap('inspectRepository')
+export const initRepository = wrap('initRepository')
+export const cloneRepository = wrap('cloneRepository')
+export const loadHistory = wrap('loadHistory')
+export const getCommitDetail = wrap('getCommitDetail')
+export const getFileDiff = wrap('getFileDiff')
+export const getWorkingTreeDiff = wrap('getWorkingTreeDiff')
+export const getStatus = wrap('getStatus')
+export const getBranches = wrap('getBranches')
+export const getRemoteBranches = wrap('getRemoteBranches')
+export const stagePaths = wrap('stagePaths')
+export const unstagePaths = wrap('unstagePaths')
+export const discardPaths = wrap('discardPaths')
+export const commit = wrap('commit')
+export const fetchRemote = wrap('fetchRemote')
+export const pullRemote = wrap('pullRemote')
+export const pushRemote = wrap('pushRemote')
+export const checkoutRef = wrap('checkoutRef')
+export const checkoutRemoteBranch = wrap('checkoutRemoteBranch')
+export const createBranch = wrap('createBranch')
+export const mergeRef = wrap('mergeRef')
+export const rebaseOnto = wrap('rebaseOnto')
+export const rebaseContinue = wrap('rebaseContinue')
+export const rebaseAbort = wrap('rebaseAbort')
+export const isRebaseInProgress = wrap('isRebaseInProgress')
+export const deleteBranch = wrap('deleteBranch')
+export const stashSave = wrap('stashSave')
+export const listStashes = wrap('listStashes')
+export const stashApply = wrap('stashApply')
+export const stashPop = wrap('stashPop')
+export const stashDrop = wrap('stashDrop')
+export const listConflictFiles = wrap('listConflictFiles')
+export const getMergeSides = wrap('getMergeSides')
+export const saveMergeResult = wrap('saveMergeResult')
+export const getGitIdentity = wrap('getGitIdentity')
+export const setGitIdentity = wrap('setGitIdentity')
 
 export { friendlyCommitError } from './operations'

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import type React from 'react'
 import type { ProviderAccount, RemoteRepo } from '@shared/ipc'
+import type { ProviderId } from '@shared/providers'
 import { Banner, Button, Field, Input, Modal, Select } from '../../components/ui'
+import { useAsyncAction } from '../../lib/useAsyncAction'
 
 interface Props {
   accounts: ProviderAccount[]
@@ -11,18 +13,15 @@ interface Props {
 }
 
 export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: Props): React.JSX.Element {
-  const [provider, setProvider] = useState<'github' | 'gitlab' | 'bitbucket'>('github')
+  const [provider, setProvider] = useState<ProviderId>('github')
   const [token, setToken] = useState('')
   const [username, setUsername] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [repos, setRepos] = useState<RemoteRepo[]>([])
   const [activeAccount, setActiveAccount] = useState<string | null>(accounts[0]?.id ?? null)
+  const { busy, error, run } = useAsyncAction()
 
-  const connect = async (): Promise<void> => {
-    setBusy(true)
-    setError(null)
-    try {
+  const connect = (): void => {
+    void run(async () => {
       const account = await window.gitManager.providers.saveToken(
         provider,
         token.trim(),
@@ -33,24 +32,14 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
       await onChanged()
       const list = await window.gitManager.providers.listRepos(account.id)
       setRepos(list)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
-  const loadRepos = async (id: string): Promise<void> => {
+  const loadRepos = (id: string): void => {
     setActiveAccount(id)
-    setBusy(true)
-    setError(null)
-    try {
+    void run(async () => {
       setRepos(await window.gitManager.providers.listRepos(id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   return (
@@ -75,7 +64,7 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
           <Select
             className="w-full"
             value={provider}
-            onChange={(e) => setProvider(e.target.value as typeof provider)}
+            onChange={(e) => setProvider(e.target.value as ProviderId)}
           >
             <option value="github">GitHub</option>
             <option value="gitlab">GitLab</option>
@@ -96,7 +85,7 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
             placeholder="Paste token — stored in OS secure storage"
           />
         </Field>
-        <Button variant="primary" disabled={busy || !token.trim()} onClick={() => void connect()}>
+        <Button variant="primary" disabled={busy || !token.trim()} onClick={connect}>
           Connect
         </Button>
       </div>
@@ -104,7 +93,7 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
       <div className="panel-title">Connected</div>
       <ul className="repo-list">
         {accounts.map((a) => (
-          <li key={a.id} className={a.id === activeAccount ? 'active' : ''} onClick={() => void loadRepos(a.id)}>
+          <li key={a.id} className={a.id === activeAccount ? 'active' : ''} onClick={() => loadRepos(a.id)}>
             <strong>{a.provider}</strong> {a.displayName} (@{a.username})
             <div>
               <Button

@@ -13,6 +13,7 @@ interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void
   ariaLabel?: string
   className?: string
+  disabled?: boolean
 }
 
 export function SegmentedControl<T extends string>({
@@ -20,7 +21,8 @@ export function SegmentedControl<T extends string>({
   options,
   onChange,
   ariaLabel,
-  className = ''
+  className = '',
+  disabled = false
 }: SegmentedControlProps<T>): React.JSX.Element {
   return (
     <div className={['segmented', className].filter(Boolean).join(' ')} role="group" aria-label={ariaLabel}>
@@ -30,6 +32,7 @@ export function SegmentedControl<T extends string>({
           <button
             key={opt.value}
             type="button"
+            disabled={disabled}
             className={[value === opt.value ? 'active' : '', opt.icon ? 'btn-icon' : '', 'has-hint']
               .filter(Boolean)
               .join(' ')}

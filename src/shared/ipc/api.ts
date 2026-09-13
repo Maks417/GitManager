@@ -23,6 +23,7 @@ import type {
   UpdateStatus,
   WorkingTreeDiffRequest
 } from './schemas'
+import type { ProviderId } from '../providers'
 
 export interface GitManagerApi {
   repo: {
@@ -81,11 +82,10 @@ export interface GitManagerApi {
   }
   providers: {
     listAccounts: () => Promise<ProviderAccount[]>
-    connect: (provider: 'github' | 'gitlab' | 'bitbucket') => Promise<ProviderAccount>
     disconnect: (accountId: string) => Promise<void>
     listRepos: (accountId: string) => Promise<RemoteRepo[]>
     saveToken: (
-      provider: 'github' | 'gitlab' | 'bitbucket',
+      provider: ProviderId,
       token: string,
       username?: string
     ) => Promise<ProviderAccount>

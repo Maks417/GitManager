@@ -1,4 +1,5 @@
 import { BrowserWindow, Menu, app } from 'electron'
+import { MenuChannels } from '@shared/ipc'
 import { checkForUpdates } from './updater'
 
 function sendMenu(channel: string): void {
@@ -16,7 +17,7 @@ export function buildAppMenu(): void {
             submenu: [
               {
                 label: 'About Git Manager',
-                click: () => sendMenu('menu:about')
+                click: () => sendMenu(MenuChannels.about)
               },
               { type: 'separator' as const },
               { role: 'services' as const },
@@ -36,17 +37,17 @@ export function buildAppMenu(): void {
         {
           label: 'Add Local Repository…',
           accelerator: 'CmdOrCtrl+O',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:add-repo')
+          click: () => sendMenu(MenuChannels.addRepo)
         },
         {
           label: 'Clone Repository…',
           accelerator: 'CmdOrCtrl+Shift+O',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:clone-repo')
+          click: () => sendMenu(MenuChannels.cloneRepo)
         },
         { type: 'separator' },
         {
           label: 'Accounts…',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:accounts')
+          click: () => sendMenu(MenuChannels.accounts)
         },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' }
@@ -58,28 +59,28 @@ export function buildAppMenu(): void {
         {
           label: 'History',
           accelerator: 'CmdOrCtrl+1',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:view-history')
+          click: () => sendMenu(MenuChannels.viewHistory)
         },
         {
           label: 'Changes',
           accelerator: 'CmdOrCtrl+2',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:view-changes')
+          click: () => sendMenu(MenuChannels.viewChanges)
         },
         { type: 'separator' },
         {
           label: 'Focus History Search',
           accelerator: 'CmdOrCtrl+F',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:focus-search')
+          click: () => sendMenu(MenuChannels.focusSearch)
         },
         {
           label: 'Toggle Inspector Dock',
           accelerator: 'CmdOrCtrl+Shift+D',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:toggle-dock')
+          click: () => sendMenu(MenuChannels.toggleDock)
         },
         {
           label: 'Toggle Sidebar',
           accelerator: 'CmdOrCtrl+B',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:toggle-sidebar')
+          click: () => sendMenu(MenuChannels.toggleSidebar)
         }
       ]
     },
@@ -89,35 +90,35 @@ export function buildAppMenu(): void {
         {
           label: 'Fetch',
           accelerator: 'CmdOrCtrl+Shift+F',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:fetch')
+          click: () => sendMenu(MenuChannels.fetch)
         },
         {
           label: 'Pull',
           accelerator: 'CmdOrCtrl+Shift+L',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:pull')
+          click: () => sendMenu(MenuChannels.pull)
         },
         {
           label: 'Push',
           accelerator: 'CmdOrCtrl+Shift+P',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:push')
+          click: () => sendMenu(MenuChannels.push)
         },
         { type: 'separator' },
         {
           label: 'New Branch…',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:create-branch')
+          click: () => sendMenu(MenuChannels.createBranch)
         },
         {
           label: 'Merge…',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:merge')
+          click: () => sendMenu(MenuChannels.merge)
         },
         {
           label: 'Rebase onto…',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:rebase')
+          click: () => sendMenu(MenuChannels.rebase)
         },
         { type: 'separator' },
         {
           label: 'Git Identity…',
-          click: () => BrowserWindow.getFocusedWindow()?.webContents.send('menu:identity')
+          click: () => sendMenu(MenuChannels.identity)
         }
       ]
     },
@@ -128,14 +129,14 @@ export function buildAppMenu(): void {
           label: 'Check for Updates…',
           click: () => {
             void checkForUpdates()
-            sendMenu('menu:updates')
+            sendMenu(MenuChannels.updates)
           }
         },
         ...(!isMac
           ? [
               {
                 label: 'About Git Manager',
-                click: () => sendMenu('menu:about')
+                click: () => sendMenu(MenuChannels.about)
               }
             ]
           : [])

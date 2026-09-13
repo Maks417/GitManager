@@ -2,6 +2,7 @@ import type React from 'react'
 import { DiffEditor } from '@monaco-editor/react'
 import type { DiffResult } from '@shared/ipc'
 import { monacoThemeFor, useResolvedTheme } from '../../lib/theme'
+import { MONACO_FONT_FAMILY } from '../../lib/copy'
 
 interface Props {
   diff: DiffResult
@@ -34,7 +35,7 @@ export function FileDiffViewer({ diff, editorKey, sideBySide = true }: Props): R
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           fontSize: 12,
-          fontFamily: 'IBM Plex Mono, Cascadia Code, Consolas, monospace',
+          fontFamily: MONACO_FONT_FAMILY,
           wordWrap: 'off' as const,
           automaticLayout: true,
           renderValidationDecorations: 'off' as const,

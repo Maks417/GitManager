@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type React from 'react'
 import { Banner, Button, Field, Input, Modal } from '../../components/ui'
+import { useAsyncAction } from '../../lib/useAsyncAction'
 
 interface Props {
   onClose: () => void
@@ -10,25 +11,18 @@ interface Props {
 export function CreateBranchModal({ onClose, onCreate }: Props): React.JSX.Element {
   const [name, setName] = useState('')
   const [checkout, setCheckout] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, setError, run } = useAsyncAction()
 
-  const submit = async (): Promise<void> => {
+  const submit = (): void => {
     const trimmed = name.trim()
     if (!trimmed) {
       setError('Branch name is required')
       return
     }
-    setBusy(true)
-    setError(null)
-    try {
+    void run(async () => {
       await onCreate(trimmed, checkout)
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   return (
@@ -40,7 +34,7 @@ export function CreateBranchModal({ onClose, onCreate }: Props): React.JSX.Eleme
           <Button onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" disabled={busy || !name.trim()} onClick={() => void submit()}>
+          <Button variant="primary" disabled={busy || !name.trim()} onClick={submit}>
             {busy ? 'Creating…' : 'Create'}
           </Button>
         </div>
@@ -55,7 +49,7 @@ export function CreateBranchModal({ onClose, onCreate }: Props): React.JSX.Eleme
           placeholder="feature/my-change"
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void submit()
+            if (e.key === 'Enter') submit()
           }}
         />
       </Field>

@@ -8,7 +8,11 @@ import {
   parseConflictMarkers,
   type ConflictRegion
 } from '@merge-core/conflict'
+import { RebaseProgressBar } from '../../components/RebaseProgressBar'
 import { Banner, Button } from '../../components/ui'
+import { MONACO_FONT_FAMILY } from '../../lib/copy'
+import { toErrorMessage } from '../../lib/errors'
+import { useAsyncAction } from '../../lib/useAsyncAction'
 import { monacoThemeFor, useResolvedTheme } from '../../lib/theme'
 
 interface Props {
@@ -36,8 +40,7 @@ export function MergeEditorModal({
   const [result, setResult] = useState('')
   const [regions, setRegions] = useState<ConflictRegion[]>([])
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const { busy, error, setError, run } = useAsyncAction()
 
   const loadFiles = async (): Promise<void> => {
     const list = await window.gitManager.merge.listConflicts(repoPath)
@@ -46,8 +49,8 @@ export function MergeEditorModal({
   }
 
   useEffect(() => {
-    void loadFiles().catch((err) => setError(err instanceof Error ? err.message : String(err)))
-  }, [repoPath])
+    void loadFiles().catch((err) => setError(toErrorMessage(err)))
+  }, [repoPath, setError])
 
   useEffect(() => {
     if (!activePath) {
@@ -63,8 +66,8 @@ export function MergeEditorModal({
       const parsed = parseConflictMarkers(s.result)
       setRegions(parsed)
       setActiveRegionId(parsed[0]?.id ?? null)
-    })().catch((err) => setError(err instanceof Error ? err.message : String(err)))
-  }, [activePath, repoPath])
+    })().catch((err) => setError(toErrorMessage(err)))
+  }, [activePath, repoPath, setError])
 
   const activeRegion = useMemo(
     () => regions.find((r) => r.id === activeRegionId) || regions[0] || null,
@@ -80,30 +83,24 @@ export function MergeEditorModal({
     setActiveRegionId(nextRegions[0]?.id ?? region.id)
   }
 
-  const save = async (): Promise<void> => {
+  const save = (): void => {
     if (!activePath) return
     if (hasUnresolvedMarkers(result)) {
       setError('Resolve all conflict markers before saving.')
       return
     }
-    setBusy(true)
-    setError(null)
-    try {
+    void run(async () => {
       await window.gitManager.merge.saveResult(repoPath, activePath, result)
       await loadFiles()
       await onResolved()
       if (files.length <= 1) onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   const editorOpts = {
     minimap: { enabled: false },
     fontSize: 12,
-    fontFamily: 'IBM Plex Mono, Cascadia Code, Consolas, monospace'
+    fontFamily: MONACO_FONT_FAMILY
   }
 
   return (
@@ -125,55 +122,29 @@ export function MergeEditorModal({
         </p>
         {error && <Banner>{error}</Banner>}
         {rebaseInProgress && (
-          <div className="merge-toolbar">
-            <span className="muted">Rebase in progress</span>
-            {onRebaseContinue && (
-              <Button
-                variant="primary"
-                disabled={busy}
-                onClick={() =>
-                  void (async () => {
-                    setBusy(true)
-                    setError(null)
-                    try {
+          <RebaseProgressBar
+            busy={busy}
+            onContinue={
+              onRebaseContinue
+                ? () =>
+                    run(async () => {
                       await onRebaseContinue()
                       await loadFiles()
                       await onResolved()
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : String(err))
-                    } finally {
-                      setBusy(false)
-                    }
-                  })()
-                }
-              >
-                Continue rebase
-              </Button>
-            )}
-            {onRebaseAbort && (
-              <Button
-                disabled={busy}
-                onClick={() => {
-                  if (!confirm('Abort the in-progress rebase?')) return
-                  void (async () => {
-                    setBusy(true)
-                    setError(null)
-                    try {
+                    })
+                : undefined
+            }
+            onAbort={
+              onRebaseAbort
+                ? () =>
+                    run(async () => {
                       await onRebaseAbort()
                       await onResolved()
                       onClose()
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : String(err))
-                    } finally {
-                      setBusy(false)
-                    }
-                  })()
-                }}
-              >
-                Abort rebase
-              </Button>
-            )}
-          </div>
+                    })
+                : undefined
+            }
+          />
         )}
         <div className="conflict-list">
           {files.map((f) => (
@@ -242,7 +213,7 @@ export function MergeEditorModal({
         </div>
         <div className="modal-actions">
           <Button onClick={onClose}>Close</Button>
-          <Button variant="primary" disabled={busy || !activePath} onClick={() => void save()}>
+          <Button variant="primary" disabled={busy || !activePath} onClick={save}>
             Save & stage
           </Button>
         </div>

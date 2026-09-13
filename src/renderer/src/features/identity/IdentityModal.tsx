@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import type React from 'react'
 import type { GitIdentity } from '@shared/ipc'
 import { Banner, Button, Field, Input, Modal } from '../../components/ui'
+import { toErrorMessage } from '../../lib/errors'
+import { useAsyncAction } from '../../lib/useAsyncAction'
 
 interface Props {
   repoPath: string
@@ -14,9 +16,8 @@ export function IdentityModal({ repoPath, onClose, onSaved }: Props): React.JSX.
   const [email, setEmail] = useState('')
   const [scope, setScope] = useState<'local' | 'global'>('local')
   const [current, setCurrent] = useState<GitIdentity | null>(null)
-  const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, setError, run } = useAsyncAction()
 
   useEffect(() => {
     let cancelled = false
@@ -32,7 +33,7 @@ export function IdentityModal({ repoPath, onClose, onSaved }: Props): React.JSX.
         if (id.nameSource === 'local' || id.emailSource === 'local') setScope('local')
         else if (id.name || id.email) setScope('global')
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled) setError(toErrorMessage(err))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -40,12 +41,10 @@ export function IdentityModal({ repoPath, onClose, onSaved }: Props): React.JSX.
     return () => {
       cancelled = true
     }
-  }, [repoPath])
+  }, [repoPath, setError])
 
-  const save = async (): Promise<void> => {
-    setBusy(true)
-    setError(null)
-    try {
+  const save = (): void => {
+    void run(async () => {
       const next = await window.gitManager.git.setIdentity({
         repoPath,
         name: name.trim(),
@@ -54,11 +53,7 @@ export function IdentityModal({ repoPath, onClose, onSaved }: Props): React.JSX.
       })
       onSaved(next)
       onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   return (
@@ -73,7 +68,7 @@ export function IdentityModal({ repoPath, onClose, onSaved }: Props): React.JSX.
           <Button
             variant="primary"
             disabled={busy || loading || !name.trim() || !email.trim()}
-            onClick={() => void save()}
+            onClick={save}
           >
             {busy ? 'Saving…' : 'Save'}
           </Button>

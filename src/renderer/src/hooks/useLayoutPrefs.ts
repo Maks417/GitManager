@@ -1,0 +1,156 @@
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import type { AppPreferences } from '@shared/ipc'
+import { LAYOUT_DEFAULTS } from '@shared/layout-defaults'
+import type { ThemePreference } from '@shared/theme'
+import { resolveAndApplyTheme } from '../lib/theme'
+
+export function useLayoutPrefs(): {
+  prefs: AppPreferences | null
+  setPrefs: Dispatch<SetStateAction<AppPreferences | null>>
+  sidebarWidth: number
+  setSidebarWidth: (w: number) => void
+  inspectorHeight: number
+  setInspectorHeight: (h: number) => void
+  detailWidth: number
+  setDetailWidth: (w: number) => void
+  inspectorFilesWidth: number
+  setInspectorFilesWidth: (w: number) => void
+  changesFilesWidth: number
+  setChangesFilesWidth: (w: number) => void
+  historyGraphColWidth: number
+  setHistoryGraphColWidth: (w: number) => void
+  historyDateColWidth: number
+  setHistoryDateColWidth: (w: number) => void
+  historyAuthorColWidth: number
+  setHistoryAuthorColWidth: (w: number) => void
+  sidebarCollapsed: boolean
+  branchesExpanded: boolean
+  remoteBranchesExpanded: boolean
+  detailDock: 'right' | 'bottom'
+  persistLayout: (partial: Partial<AppPreferences>) => void
+  hydrateFromPrefs: (p: AppPreferences) => void
+  toggleDock: () => void
+  toggleSidebar: () => void
+  toggleBranches: () => void
+  toggleRemoteBranches: () => void
+  setThemePref: (theme: ThemePreference) => void
+  setHistoryFilter: (historyFilter: AppPreferences['historyFilter']) => void
+} {
+  const [prefs, setPrefs] = useState<AppPreferences | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(LAYOUT_DEFAULTS.sidebarWidth)
+  const [inspectorHeight, setInspectorHeight] = useState<number>(LAYOUT_DEFAULTS.inspectorHeight)
+  const [detailWidth, setDetailWidth] = useState<number>(LAYOUT_DEFAULTS.detailWidth)
+  const [inspectorFilesWidth, setInspectorFilesWidth] = useState<number>(
+    LAYOUT_DEFAULTS.inspectorFilesWidth
+  )
+  const [changesFilesWidth, setChangesFilesWidth] = useState<number>(
+    LAYOUT_DEFAULTS.changesFilesWidth
+  )
+  const [historyGraphColWidth, setHistoryGraphColWidth] = useState<number>(
+    LAYOUT_DEFAULTS.historyGraphColWidth
+  )
+  const [historyDateColWidth, setHistoryDateColWidth] = useState<number>(
+    LAYOUT_DEFAULTS.historyDateColWidth
+  )
+  const [historyAuthorColWidth, setHistoryAuthorColWidth] = useState<number>(
+    LAYOUT_DEFAULTS.historyAuthorColWidth
+  )
+
+  const sidebarCollapsed = Boolean(prefs?.sidebarCollapsed)
+  const branchesExpanded = Boolean(prefs?.branchesExpanded)
+  const remoteBranchesExpanded = Boolean(prefs?.remoteBranchesExpanded)
+  const detailDock = prefs?.detailDock === 'right' ? 'right' : 'bottom'
+
+  const persistLayout = useCallback((partial: Partial<AppPreferences>): void => {
+    void window.gitManager.prefs.set(partial).then(setPrefs)
+  }, [])
+
+  const hydrateFromPrefs = useCallback((p: AppPreferences): void => {
+    setPrefs(p)
+    setSidebarWidth(p.sidebarWidth)
+    setInspectorHeight(p.inspectorHeight)
+    setDetailWidth(p.detailWidth)
+    setInspectorFilesWidth(p.inspectorFilesWidth)
+    setChangesFilesWidth(p.changesFilesWidth)
+    setHistoryGraphColWidth(p.historyGraphColWidth)
+    setHistoryDateColWidth(p.historyDateColWidth)
+    setHistoryAuthorColWidth(p.historyAuthorColWidth)
+    resolveAndApplyTheme(p.theme)
+  }, [])
+
+  useEffect(() => {
+    if (!prefs) return
+    resolveAndApplyTheme(prefs.theme)
+    if (prefs.theme !== 'system') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = (): void => {
+      resolveAndApplyTheme('system')
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [prefs?.theme])
+
+  const toggleDock = useCallback((): void => {
+    void window.gitManager.prefs
+      .set({ detailDock: detailDock === 'right' ? 'bottom' : 'right' })
+      .then(setPrefs)
+  }, [detailDock])
+
+  const toggleSidebar = useCallback((): void => {
+    void window.gitManager.prefs.set({ sidebarCollapsed: !sidebarCollapsed }).then(setPrefs)
+  }, [sidebarCollapsed])
+
+  const toggleBranches = useCallback((): void => {
+    void window.gitManager.prefs.set({ branchesExpanded: !branchesExpanded }).then(setPrefs)
+  }, [branchesExpanded])
+
+  const toggleRemoteBranches = useCallback((): void => {
+    void window.gitManager.prefs
+      .set({ remoteBranchesExpanded: !remoteBranchesExpanded })
+      .then(setPrefs)
+  }, [remoteBranchesExpanded])
+
+  const setThemePref = useCallback((theme: ThemePreference): void => {
+    void window.gitManager.prefs.set({ theme }).then((p) => {
+      setPrefs(p)
+      resolveAndApplyTheme(p.theme)
+    })
+  }, [])
+
+  const setHistoryFilter = useCallback((historyFilter: AppPreferences['historyFilter']): void => {
+    void window.gitManager.prefs.set({ historyFilter }).then(setPrefs)
+  }, [])
+
+  return {
+    prefs,
+    setPrefs,
+    sidebarWidth,
+    setSidebarWidth,
+    inspectorHeight,
+    setInspectorHeight,
+    detailWidth,
+    setDetailWidth,
+    inspectorFilesWidth,
+    setInspectorFilesWidth,
+    changesFilesWidth,
+    setChangesFilesWidth,
+    historyGraphColWidth,
+    setHistoryGraphColWidth,
+    historyDateColWidth,
+    setHistoryDateColWidth,
+    historyAuthorColWidth,
+    setHistoryAuthorColWidth,
+    sidebarCollapsed,
+    branchesExpanded,
+    remoteBranchesExpanded,
+    detailDock,
+    persistLayout,
+    hydrateFromPrefs,
+    toggleDock,
+    toggleSidebar,
+    toggleBranches,
+    toggleRemoteBranches,
+    setThemePref,
+    setHistoryFilter
+  }
+}

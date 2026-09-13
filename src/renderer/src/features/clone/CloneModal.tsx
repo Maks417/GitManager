@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import type React from 'react'
 import type { Repository } from '@shared/ipc'
 import { Banner, Button, Field, Input, Modal, Select } from '../../components/ui'
+import { CLONE_URL_SESSION_KEY } from '../../lib/copy'
+import { useAsyncAction } from '../../lib/useAsyncAction'
 
 interface Props {
   onClose: () => void
@@ -12,14 +14,13 @@ export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
   const [url, setUrl] = useState('')
   const [targetDir, setTargetDir] = useState('')
   const [transport, setTransport] = useState<'https' | 'ssh'>('https')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, setError, run } = useAsyncAction()
 
   useEffect(() => {
-    const preset = sessionStorage.getItem('gm.cloneUrl')
+    const preset = sessionStorage.getItem(CLONE_URL_SESSION_KEY)
     if (preset) {
       setUrl(preset)
-      sessionStorage.removeItem('gm.cloneUrl')
+      sessionStorage.removeItem(CLONE_URL_SESSION_KEY)
     }
   }, [])
 
@@ -28,10 +29,8 @@ export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
     if (next) setTargetDir(next)
   }
 
-  const clone = async (): Promise<void> => {
-    setBusy(true)
-    setError(null)
-    try {
+  const clone = (): void => {
+    void run(async () => {
       if (!url.trim() || !targetDir.trim()) throw new Error('URL and target folder are required')
       const repo = await window.gitManager.repo.clone({
         url: url.trim(),
@@ -39,11 +38,7 @@ export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
         transport
       })
       await onCloned(repo)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   return (
@@ -53,7 +48,7 @@ export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
       footer={
         <div className="modal-actions">
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={busy} onClick={() => void clone()}>
+          <Button variant="primary" disabled={busy} onClick={clone}>
             {busy ? 'Cloning…' : 'Clone'}
           </Button>
         </div>
