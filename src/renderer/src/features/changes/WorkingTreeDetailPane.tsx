@@ -95,6 +95,7 @@ export function WorkingTreeDetailPane({
 }: Props): React.JSX.Element {
   const [message, setMessage] = useState('')
   const [amend, setAmend] = useState(false)
+  const [pushAfterCommit, setPushAfterCommit] = useState(false)
   const [checked, setChecked] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [stashes, setStashes] = useState<StashEntry[]>([])
@@ -532,6 +533,15 @@ export function WorkingTreeDetailPane({
               Replaces HEAD with this message and any staged changes.
             </p>
           )}
+          <label className="amend-check row-inline text-sm">
+            <input
+              type="checkbox"
+              checked={pushAfterCommit}
+              disabled={busy}
+              onChange={(e) => setPushAfterCommit(e.target.checked)}
+            />
+            Push to remote
+          </label>
           <Button
             variant="primary"
             icon={
@@ -563,6 +573,9 @@ export function WorkingTreeDetailPane({
                   throw new Error('Nothing to commit — the working tree is clean.')
                 }
                 await window.gitManager.git.commit(repoPath, message.trim(), amend)
+                if (pushAfterCommit) {
+                  await window.gitManager.git.push(repoPath)
+                }
                 setMessage('')
                 setAmend(false)
                 setChecked([])
