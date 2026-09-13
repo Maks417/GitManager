@@ -13,8 +13,10 @@ import type {
   HistoryQuery,
   MergeSides,
   ProviderAccount,
+  RemoteBranchInfo,
   RemoteRepo,
   Repository,
+  RepoWatchEvent,
   SetGitIdentityRequest,
   StashEntry,
   StatusEntry,
@@ -26,14 +28,19 @@ export interface GitManagerApi {
   repo: {
     list: () => Promise<Repository[]>
     add: (path: string) => Promise<Repository>
-    remove: (id: string) => Promise<void>
+    remove: (id: string, options?: { deleteFiles?: boolean }) => Promise<void>
     openDialog: () => Promise<Repository | null>
     create: (path: string) => Promise<Repository>
     clone: (request: CloneRequest) => Promise<Repository>
     get: (id: string) => Promise<Repository | null>
     status: (repoPath: string) => Promise<StatusEntry[]>
     branches: (repoPath: string) => Promise<BranchInfo[]>
+    remoteBranches: (repoPath: string) => Promise<RemoteBranchInfo[]>
     pickDirectory: () => Promise<string | null>
+    /** Start recursive FS watch for live status (Windows + macOS). */
+    watch: (repoPath: string) => Promise<void>
+    unwatch: () => Promise<void>
+    onChanged: (callback: (event: RepoWatchEvent) => void) => () => void
   }
   history: {
     load: (query: HistoryQuery) => Promise<HistoryPage>
@@ -50,6 +57,7 @@ export interface GitManagerApi {
     pull: (repoPath: string) => Promise<void>
     push: (repoPath: string) => Promise<void>
     checkout: (repoPath: string, ref: string) => Promise<void>
+    checkoutRemoteBranch: (repoPath: string, remoteRef: string) => Promise<void>
     createBranch: (repoPath: string, name: string, checkout?: boolean) => Promise<void>
     deleteBranch: (repoPath: string, name: string, force?: boolean) => Promise<void>
     merge: (repoPath: string, ref: string) => Promise<{ conflicts: string[] }>

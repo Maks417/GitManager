@@ -5,14 +5,26 @@ const api = {
   repo: {
     list: () => ipcRenderer.invoke(IpcChannels.repo.list),
     add: (path: string) => ipcRenderer.invoke(IpcChannels.repo.add, path),
-    remove: (id: string) => ipcRenderer.invoke(IpcChannels.repo.remove, id),
+    remove: (id: string, options?: { deleteFiles?: boolean }) =>
+      ipcRenderer.invoke(IpcChannels.repo.remove, id, {
+        deleteFiles: Boolean(options?.deleteFiles)
+      }),
     openDialog: () => ipcRenderer.invoke(IpcChannels.repo.openDialog),
     create: (path: string) => ipcRenderer.invoke(IpcChannels.repo.create, path),
     clone: (request: unknown) => ipcRenderer.invoke(IpcChannels.repo.clone, request),
     get: (id: string) => ipcRenderer.invoke(IpcChannels.repo.get, id),
     status: (repoPath: string) => ipcRenderer.invoke(IpcChannels.repo.status, repoPath),
     branches: (repoPath: string) => ipcRenderer.invoke(IpcChannels.repo.branches, repoPath),
-    pickDirectory: () => ipcRenderer.invoke(IpcChannels.repo.pickDirectory)
+    remoteBranches: (repoPath: string) =>
+      ipcRenderer.invoke(IpcChannels.repo.remoteBranches, repoPath),
+    pickDirectory: () => ipcRenderer.invoke(IpcChannels.repo.pickDirectory),
+    watch: (repoPath: string) => ipcRenderer.invoke(IpcChannels.repo.watch, repoPath),
+    unwatch: () => ipcRenderer.invoke(IpcChannels.repo.unwatch),
+    onChanged: (callback: (event: unknown) => void) => {
+      const listener = (_: Electron.IpcRendererEvent, event: unknown): void => callback(event)
+      ipcRenderer.on(IpcChannels.repo.onChanged, listener)
+      return () => ipcRenderer.removeListener(IpcChannels.repo.onChanged, listener)
+    }
   },
   history: {
     load: (query: unknown) => ipcRenderer.invoke(IpcChannels.history.load, query),
@@ -32,6 +44,8 @@ const api = {
     pull: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.pull, repoPath),
     push: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.push, repoPath),
     checkout: (repoPath: string, ref: string) => ipcRenderer.invoke(IpcChannels.git.checkout, repoPath, ref),
+    checkoutRemoteBranch: (repoPath: string, remoteRef: string) =>
+      ipcRenderer.invoke(IpcChannels.git.checkoutRemoteBranch, repoPath, remoteRef),
     createBranch: (repoPath: string, name: string, checkout?: boolean) =>
       ipcRenderer.invoke(IpcChannels.git.createBranch, repoPath, name, checkout),
     deleteBranch: (repoPath: string, name: string, force?: boolean) =>

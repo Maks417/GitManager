@@ -12,6 +12,16 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 4. Stash panel: stash (includes untracked), apply / pop / drop entries.
 5. Identity modal: set `user.name` / `user.email` at local or global scope.
 
+## Live status
+
+When preference `liveStatusWatch` is enabled (default), the main process recursively watches the active repository with Node `fs.watch({ recursive: true })` (Windows and macOS). Debounced events refresh status/branches; changes under `.git` (index, HEAD, refs, merge/rebase state) also tip-refresh history. Noisy paths (`node_modules`, `.git/objects`, editor temps, etc.) are ignored.
+
+| Piece | File |
+|---|---|
+| Watcher | [`src/main/repo-watcher.ts`](../../src/main/repo-watcher.ts) |
+| IPC | `repo:watch` / `repo:unwatch` / `repo:on-changed` |
+| UI subscription | [`src/renderer/src/App.tsx`](../../src/renderer/src/App.tsx) |
+
 ## Key modules & files
 
 | Piece | File |
@@ -27,6 +37,7 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 - Stash reflog
 - Local/global Git config for identity
 - Reads `StatusEntry`, `DiffResult`, `StashEntry`, `GitIdentity`
+- Filesystem notifications for the active repo (when live watch is on)
 
 ## Edge cases & rules
 
@@ -35,19 +46,20 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 - Empty repo (no HEAD) forces Changes view after history load.
 - Identity email must be a valid email when setting via `SetGitIdentityRequestSchema`.
 - Commit with an empty index shows guidance to Stage / Stage all (not raw `git commit` stderr); amend without staged changes is still allowed for message-only amends.
+- Live watch is paused when `liveStatusWatch` is false or no repo is active.
 
 ## Diagram
 
 ```mermaid
 sequenceDiagram
   actor User
-  participant UI as WorkingTreeDetailPane
+  participant FS as FSWatcher
   participant Main as Main IPC
+  participant UI as App
   participant Git as git-worker
-  User->>UI: stage / commit / stash
-  UI->>Main: git.stage / commit / stash
-  Main->>Git: corresponding operation
-  Git-->>Main: ok / sha
-  Main-->>UI: done
-  UI->>UI: parent afterGitMutation refresh
+  User->>FS: edit file outside app
+  FS->>Main: debounced repo:on-changed
+  Main->>UI: worktree or git-meta
+  UI->>Git: status / branches
+  Git-->>UI: StatusEntry[]
 ```

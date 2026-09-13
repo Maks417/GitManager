@@ -9,7 +9,11 @@ export const IpcChannels = {
     get: 'repo:get',
     status: 'repo:status',
     branches: 'repo:branches',
-    pickDirectory: 'repo:pick-directory'
+    remoteBranches: 'repo:remote-branches',
+    pickDirectory: 'repo:pick-directory',
+    watch: 'repo:watch',
+    unwatch: 'repo:unwatch',
+    onChanged: 'repo:on-changed'
   },
   history: {
     load: 'history:load',
@@ -26,6 +30,7 @@ export const IpcChannels = {
     pull: 'git:pull',
     push: 'git:push',
     checkout: 'git:checkout',
+    checkoutRemoteBranch: 'git:checkout-remote-branch',
     createBranch: 'git:create-branch',
     deleteBranch: 'git:delete-branch',
     merge: 'git:merge',

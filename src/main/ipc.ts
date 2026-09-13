@@ -1,6 +1,7 @@
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
-import { basename, join } from 'path'
+import { basename, join, normalize, resolve } from 'path'
 import { existsSync, mkdirSync } from 'fs'
+import { rm } from 'fs/promises'
 import {
   CloneRequestSchema,
   DiffRequestSchema,
@@ -12,7 +13,7 @@ import {
   type UpdateStatus
 } from '@shared/ipc'
 import * as git from '../git-worker/client'
-import { probeGit } from '../git-worker/client'
+import { cancelAllGit, probeGit } from '../git-worker/client'
 import {
   getAccountToken,
   loadAccounts,
@@ -26,6 +27,7 @@ import {
 import { connectWithToken, listRemoteRepos } from './providers'
 import { checkForUpdates, getUpdateStatus, installUpdate, subscribeUpdateStatus } from './updater'
 import { applyWindowThemeBackground } from './theme'
+import { getWatchedRepoPath, startRepoWatch, stopRepoWatch, subscribeRepoWatch } from './repo-watcher'
 
 function assertSender(event: Electron.IpcMainInvokeEvent): void {
   const url = event.senderFrame?.url ?? ''
@@ -34,25 +36,83 @@ function assertSender(event: Electron.IpcMainInvokeEvent): void {
   }
 }
 
+function upsertRepository(repo: Awaited<ReturnType<typeof git.inspectRepository>>): void {
+  const repos = loadRepositories().filter(
+    (r) => normalize(r.path).toLowerCase() !== normalize(repo.path).toLowerCase()
+  )
+  repos.unshift(repo)
+  saveRepositories(repos)
+}
+
 export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannels.repo.list, async (event) => {
     assertSender(event)
-    return loadRepositories()
+    const stored = loadRepositories()
+    const refreshed = []
+    for (const entry of stored) {
+      try {
+        refreshed.push(await git.inspectRepository(entry.path))
+      } catch {
+        refreshed.push(entry)
+      }
+    }
+    saveRepositories(refreshed)
+    return refreshed
   })
 
   ipcMain.handle(IpcChannels.repo.add, async (event, path: string) => {
     assertSender(event)
     const repo = await git.inspectRepository(path)
-    const repos = loadRepositories().filter((r) => r.path !== repo.path)
-    repos.unshift(repo)
-    saveRepositories(repos)
+    upsertRepository(repo)
     return repo
   })
 
-  ipcMain.handle(IpcChannels.repo.remove, async (event, id: string) => {
-    assertSender(event)
-    saveRepositories(loadRepositories().filter((r) => r.id !== id))
-  })
+  ipcMain.handle(
+    IpcChannels.repo.remove,
+    async (event, id: string, options?: { deleteFiles?: boolean } | boolean) => {
+      assertSender(event)
+      if (!id || typeof id !== 'string') throw new Error('Invalid repository id')
+      const deleteFiles =
+        typeof options === 'boolean' ? options : Boolean(options && options.deleteFiles)
+      const repos = loadRepositories()
+      const repo = repos.find((r) => r.id === id)
+      if (!repo) return
+
+      if (deleteFiles) {
+        if (!repo.path || typeof repo.path !== 'string') throw new Error('Invalid repository path')
+        const target = resolve(normalize(repo.path))
+        // Guard against accidentally wiping a drive root (e.g. "C:\").
+        if (target.length < 4) throw new Error('Refusing to delete path')
+        if (!existsSync(target)) {
+          saveRepositories(repos.filter((r) => r.id !== id))
+          return
+        }
+
+        const watched = getWatchedRepoPath()
+        if (watched && resolve(normalize(watched)) === target) stopRepoWatch()
+        cancelAllGit()
+        // Give watchers / git child processes a moment to release handles (esp. Windows).
+        await new Promise((r) => setTimeout(r, 150))
+
+        try {
+          await rm(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          throw new Error(
+            `Could not delete folder:\n${target}\n\n${msg}\n\nClose other programs using these files and try again.`
+          )
+        }
+
+        if (existsSync(target)) {
+          throw new Error(
+            `Could not delete folder:\n${target}\n\nClose other programs using these files and try again.`
+          )
+        }
+      }
+
+      saveRepositories(repos.filter((r) => r.id !== id))
+    }
+  )
 
   ipcMain.handle(IpcChannels.repo.openDialog, async (event) => {
     assertSender(event)
@@ -62,9 +122,7 @@ export function registerIpcHandlers(): void {
     })
     if (result.canceled || !result.filePaths[0]) return null
     const repo = await git.inspectRepository(result.filePaths[0])
-    const repos = loadRepositories().filter((r) => r.path !== repo.path)
-    repos.unshift(repo)
-    saveRepositories(repos)
+    upsertRepository(repo)
     return repo
   })
 
@@ -72,9 +130,7 @@ export function registerIpcHandlers(): void {
     assertSender(event)
     if (!existsSync(path)) mkdirSync(path, { recursive: true })
     const repo = await git.initRepository(path)
-    const repos = loadRepositories().filter((r) => r.path !== repo.path)
-    repos.unshift(repo)
-    saveRepositories(repos)
+    upsertRepository(repo)
     return repo
   })
 
@@ -84,9 +140,7 @@ export function registerIpcHandlers(): void {
     const name = basename(request.url.replace(/\.git$/, '').replace(/\/$/, '').split('/').pop() || 'repo')
     const target = join(request.targetDir, name)
     const repo = await git.cloneRepository(request.url, target)
-    const repos = loadRepositories().filter((r) => r.path !== repo.path)
-    repos.unshift(repo)
-    saveRepositories(repos)
+    upsertRepository(repo)
     return repo
   })
 
@@ -100,11 +154,31 @@ export function registerIpcHandlers(): void {
     return result.filePaths[0]
   })
 
+  ipcMain.handle(IpcChannels.repo.watch, async (event, repoPath: string) => {
+    assertSender(event)
+    if (!repoPath || typeof repoPath !== 'string') throw new Error('Invalid repository path')
+    const prefs = loadPreferences()
+    if (prefs.liveStatusWatch === false) {
+      stopRepoWatch()
+      return
+    }
+    startRepoWatch(repoPath)
+  })
+
+  ipcMain.handle(IpcChannels.repo.unwatch, async (event) => {
+    assertSender(event)
+    stopRepoWatch()
+  })
+
   ipcMain.handle(IpcChannels.repo.get, async (event, id: string) => {
     assertSender(event)
-    const existing = loadRepositories().find((r) => r.id === id)
+    const existing = loadRepositories().find(
+      (r) => r.id === id || normalize(r.path).toLowerCase() === normalize(id).toLowerCase()
+    )
     if (!existing) return null
-    return git.inspectRepository(existing.path)
+    const fresh = await git.inspectRepository(existing.path)
+    upsertRepository(fresh)
+    return fresh
   })
 
   ipcMain.handle(IpcChannels.repo.status, async (event, repoPath: string) => {
@@ -116,6 +190,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannels.repo.branches, async (event, repoPath: string) => {
     assertSender(event)
     return git.getBranches(repoPath)
+  })
+
+  ipcMain.handle(IpcChannels.repo.remoteBranches, async (event, repoPath: string) => {
+    assertSender(event)
+    return git.getRemoteBranches(repoPath)
   })
 
   ipcMain.handle(IpcChannels.history.load, async (event, raw: unknown) => {
@@ -172,6 +251,10 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannels.git.checkout, async (event, repoPath: string, ref: string) => {
     assertSender(event)
     await git.checkoutRef(repoPath, ref)
+  })
+  ipcMain.handle(IpcChannels.git.checkoutRemoteBranch, async (event, repoPath: string, remoteRef: string) => {
+    assertSender(event)
+    await git.checkoutRemoteBranch(repoPath, remoteRef)
   })
   ipcMain.handle(IpcChannels.git.createBranch, async (event, repoPath: string, name: string, checkout?: boolean) => {
     assertSender(event)
@@ -333,6 +416,12 @@ export function registerIpcHandlers(): void {
   subscribeUpdateStatus((status: UpdateStatus) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(IpcChannels.updater.onStatus, status)
+    }
+  })
+
+  subscribeRepoWatch((payload) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(IpcChannels.repo.onChanged, payload)
     }
   })
 }

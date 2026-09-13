@@ -4,10 +4,12 @@ import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runGit } from '../src/git-worker/git-runner'
 import {
+  checkoutRemoteBranch,
   commit,
   createBranch,
   deleteBranch,
   getBranches,
+  getRemoteBranches,
   listStashes,
   loadHistory,
   mergeRef,
@@ -140,4 +142,46 @@ describe('branch merge rebase stash ops', () => {
     const page = await loadHistory({ repoPath: dir, limit: 5 })
     expect(page.commits[0].subject).toBe('Amended subject')
   }, 30000)
+
+  it('lists remote branches and checks them out with tracking', async () => {
+    const bare = mkdtempSync(join(tmpdir(), 'gm-bare-'))
+    dirs.push(bare)
+    await runGit({ cwd: bare, args: ['init', '--bare'] })
+
+    const upstream = await initRepo()
+    await runGit({ cwd: upstream, args: ['remote', 'add', 'origin', bare] })
+    await runGit({ cwd: upstream, args: ['push', '-u', 'origin', 'HEAD'] })
+    await createBranch(upstream, 'feature-remote', true)
+    writeFileSync(join(upstream, 'feature.txt'), 'feature\n')
+    await runGit({ cwd: upstream, args: ['add', 'feature.txt'] })
+    await runGit({ cwd: upstream, args: ['commit', '-m', 'Feature commit'] })
+    await runGit({ cwd: upstream, args: ['push', '-u', 'origin', 'feature-remote'] })
+
+    const clone = mkdtempSync(join(tmpdir(), 'gm-clone-'))
+    dirs.push(clone)
+    await runGit({ cwd: tmpdir(), args: ['clone', bare, clone] })
+    await runGit({ cwd: clone, args: ['config', 'user.email', 'test@example.com'] })
+    await runGit({ cwd: clone, args: ['config', 'user.name', 'Test User'] })
+
+    const remotes = await getRemoteBranches(clone)
+    expect(remotes.some((b) => b.name === 'origin/feature-remote')).toBe(true)
+    expect(remotes.every((b) => !b.name.endsWith('/HEAD'))).toBe(true)
+    const feature = remotes.find((b) => b.shortName === 'feature-remote')
+    expect(feature).toMatchObject({ remote: 'origin', shortName: 'feature-remote' })
+
+    await checkoutRemoteBranch(clone, 'origin/feature-remote')
+    const locals = await getBranches(clone)
+    const localFeature = locals.find((b) => b.name === 'feature-remote')
+    expect(localFeature).toBeTruthy()
+    expect(localFeature?.current).toBe(true)
+    expect(localFeature?.upstream).toBe('origin/feature-remote')
+
+    // Second call should just checkout the existing local branch
+    await runGit({ cwd: clone, args: ['checkout', 'master'] }).catch(async () => {
+      await runGit({ cwd: clone, args: ['checkout', 'main'] })
+    })
+    await checkoutRemoteBranch(clone, 'origin/feature-remote')
+    const after = await getBranches(clone)
+    expect(after.find((b) => b.name === 'feature-remote')?.current).toBe(true)
+  }, 60000)
 })

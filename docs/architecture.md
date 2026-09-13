@@ -84,3 +84,4 @@ flowchart LR
 | Theme | `system` \| `light` \| `dark` → CSS `[data-theme]` + window background + Monaco theme |
 | Updates | `electron-updater` against GitHub Releases when packaged; no-op check in dev |
 | Git binary | `GIT_MANAGER_GIT_PATH` override, else `git` / `git.exe`; startup `git.probe` / `probeGit` surfaces missing CLI (incl. macOS CLT stub) |
+| Live status | Recursive `fs.watch` on the active repo ([`repo-watcher.ts`](../src/main/repo-watcher.ts)); preference `liveStatusWatch` (default on) |

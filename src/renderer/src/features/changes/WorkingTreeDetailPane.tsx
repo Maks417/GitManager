@@ -404,6 +404,14 @@ export function WorkingTreeDetailPane({
           </div>
           <span className="muted text-sm changes-files-meta">
             {status.length} file{status.length === 1 ? '' : 's'}
+            {status.length > 0 && (
+              <>
+                {' · '}
+                <span className="changes-count-staged">{stagedEntries.length}</span> staged
+                {' · '}
+                <span className="changes-count-unstaged">{changesEntries.length}</span> unstaged
+              </>
+            )}
             {checked.length > 0 ? ` · ${checked.length} selected` : ''}
           </span>
           {rebaseBar}

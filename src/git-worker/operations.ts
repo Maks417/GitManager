@@ -11,6 +11,7 @@ import type {
   HistoryPage,
   HistoryQuery,
   MergeSides,
+  RemoteBranchInfo,
   Repository,
   StatusEntry
 } from '@shared/ipc'
@@ -263,6 +264,11 @@ export async function getCommitDetail(repoPath: string, sha: string): Promise<Co
   }
   if (!SHA_RE.test(sha)) {
     throw new Error(`Invalid commit reference: ${sha}`)
+  }
+
+  const exists = await runGit({ cwd: repoPath, args: ['cat-file', '-e', `${sha}^{commit}`] })
+  if (exists.code !== 0) {
+    throw new Error(`Commit not found in this repository: ${sha.slice(0, 12)}`)
   }
 
   const showOut = await gitOk(repoPath, [
@@ -557,6 +563,23 @@ export async function getBranches(repoPath: string): Promise<BranchInfo[]> {
   return branches
 }
 
+export async function getRemoteBranches(repoPath: string): Promise<RemoteBranchInfo[]> {
+  const out = await gitOk(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes'])
+  const branches: RemoteBranchInfo[] = []
+  for (const line of out.split('\n')) {
+    const name = line.trim()
+    if (!name || name.endsWith('/HEAD')) continue
+    const slash = name.indexOf('/')
+    if (slash <= 0) continue
+    branches.push({
+      name,
+      remote: name.slice(0, slash),
+      shortName: name.slice(slash + 1)
+    })
+  }
+  return branches
+}
+
 export async function stagePaths(repoPath: string, paths: string[]): Promise<void> {
   if (!paths.length) return
   await gitOk(repoPath, ['add', '--', ...paths])
@@ -618,6 +641,18 @@ export async function pushRemote(repoPath: string): Promise<void> {
 
 export async function checkoutRef(repoPath: string, ref: string): Promise<void> {
   await gitOk(repoPath, ['checkout', ref])
+}
+
+export async function checkoutRemoteBranch(repoPath: string, remoteRef: string): Promise<void> {
+  const slash = remoteRef.indexOf('/')
+  if (slash <= 0) throw new Error(`Invalid remote branch ref: ${remoteRef}`)
+  const shortName = remoteRef.slice(slash + 1)
+  const locals = await getBranches(repoPath)
+  if (locals.some((b) => b.name === shortName)) {
+    await checkoutRef(repoPath, shortName)
+    return
+  }
+  await gitOk(repoPath, ['checkout', '--track', remoteRef])
 }
 
 export async function createBranch(repoPath: string, name: string, doCheckout = true): Promise<void> {

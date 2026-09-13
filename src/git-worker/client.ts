@@ -121,6 +121,7 @@ async function invokeInline(method: string, args: unknown[]): Promise<unknown> {
     getWorkingTreeDiff: ops.getWorkingTreeDiff,
     getStatus: ops.getStatus,
     getBranches: ops.getBranches,
+    getRemoteBranches: ops.getRemoteBranches,
     stagePaths: ops.stagePaths,
     unstagePaths: ops.unstagePaths,
     discardPaths: ops.discardPaths,
@@ -129,6 +130,7 @@ async function invokeInline(method: string, args: unknown[]): Promise<unknown> {
     pullRemote: ops.pullRemote,
     pushRemote: ops.pushRemote,
     checkoutRef: ops.checkoutRef,
+    checkoutRemoteBranch: ops.checkoutRemoteBranch,
     createBranch: ops.createBranch,
     mergeRef: ops.mergeRef,
     rebaseOnto: ops.rebaseOnto,
@@ -179,6 +181,8 @@ export const getStatus = (...args: Parameters<typeof ops.getStatus>) =>
   invoke('getStatus', args) as ReturnType<typeof ops.getStatus>
 export const getBranches = (...args: Parameters<typeof ops.getBranches>) =>
   invoke('getBranches', args) as ReturnType<typeof ops.getBranches>
+export const getRemoteBranches = (...args: Parameters<typeof ops.getRemoteBranches>) =>
+  invoke('getRemoteBranches', args) as ReturnType<typeof ops.getRemoteBranches>
 export const stagePaths = (...args: Parameters<typeof ops.stagePaths>) =>
   invoke('stagePaths', args) as ReturnType<typeof ops.stagePaths>
 export const unstagePaths = (...args: Parameters<typeof ops.unstagePaths>) =>
@@ -195,6 +199,8 @@ export const pushRemote = (...args: Parameters<typeof ops.pushRemote>) =>
   invoke('pushRemote', args) as ReturnType<typeof ops.pushRemote>
 export const checkoutRef = (...args: Parameters<typeof ops.checkoutRef>) =>
   invoke('checkoutRef', args) as ReturnType<typeof ops.checkoutRef>
+export const checkoutRemoteBranch = (...args: Parameters<typeof ops.checkoutRemoteBranch>) =>
+  invoke('checkoutRemoteBranch', args) as ReturnType<typeof ops.checkoutRemoteBranch>
 export const createBranch = (...args: Parameters<typeof ops.createBranch>) =>
   invoke('createBranch', args) as ReturnType<typeof ops.createBranch>
 export const mergeRef = (...args: Parameters<typeof ops.mergeRef>) =>

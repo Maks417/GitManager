@@ -115,6 +115,13 @@ export const BranchInfoSchema = z.object({
 })
 export type BranchInfo = z.infer<typeof BranchInfoSchema>
 
+export const RemoteBranchInfoSchema = z.object({
+  name: z.string(),
+  remote: z.string(),
+  shortName: z.string()
+})
+export type RemoteBranchInfo = z.infer<typeof RemoteBranchInfoSchema>
+
 export const ConflictFileSchema = z.object({
   path: z.string(),
   hasBase: z.boolean(),
@@ -180,6 +187,7 @@ export const AppPreferencesSchema = z.object({
   historyFilter: z.enum(['all', 'current']).default('all'),
   sidebarCollapsed: z.boolean().default(false),
   branchesExpanded: z.boolean().default(false),
+  remoteBranchesExpanded: z.boolean().default(false),
   sidebarWidth: z.number().min(140).max(480).default(200),
   inspectorHeight: z.number().min(180).max(900).default(320),
   detailWidth: z.number().min(280).max(900).default(480),
@@ -190,11 +198,19 @@ export const AppPreferencesSchema = z.object({
   historyAuthorColWidth: z.number().min(100).max(360).default(180),
   /** Prefer `normal` for large trees; `all` lists every untracked path recursively. */
   statusUntracked: z.enum(['normal', 'all']).default('normal'),
+  /** Watch the working tree and refresh status when files change (Windows + macOS). */
+  liveStatusWatch: z.boolean().default(true),
   externalEditor: z.string().nullable().default(null),
   externalTerminal: z.string().nullable().default(null),
   checkUpdatesOnStart: z.boolean().default(true)
 })
 export type AppPreferences = z.infer<typeof AppPreferencesSchema>
+
+export const RepoWatchEventSchema = z.object({
+  repoPath: z.string(),
+  kind: z.enum(['worktree', 'git-meta'])
+})
+export type RepoWatchEvent = z.infer<typeof RepoWatchEventSchema>
 
 export const HistoryQuerySchema = z.object({
   repoPath: z.string(),

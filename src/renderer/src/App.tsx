@@ -11,6 +11,7 @@ import {
   ExternalLink,
   FileDiff,
   FolderPlus,
+  GitBranch,
   GitBranchPlus,
   GitMerge,
   History,
@@ -37,8 +38,10 @@ import type {
   GitIdentity,
   GraphNode,
   ProviderAccount,
+  RemoteBranchInfo,
   RemoteRepo,
   Repository,
+  RepoWatchEvent,
   StatusEntry,
   UpdateStatus
 } from '@shared/ipc'
@@ -61,7 +64,7 @@ import { IdentityModal } from './features/identity/IdentityModal'
 import { CreateBranchModal } from './features/branches/CreateBranchModal'
 import { BranchPickModal } from './features/branches/BranchPickModal'
 import { Splitter } from './components/Splitter'
-import { Banner, Button, IconButton, SegmentedControl } from './components/ui'
+import { Banner, Button, ConfirmDialog, IconButton, SegmentedControl } from './components/ui'
 import { resolveAndApplyTheme } from './lib/theme'
 
 type Selection = { kind: 'commit'; sha: string } | { kind: 'working-copy' }
@@ -74,6 +77,7 @@ export function App(): React.JSX.Element {
   const [repos, setRepos] = useState<Repository[]>([])
   const [activeRepo, setActiveRepo] = useState<Repository | null>(null)
   const [branches, setBranches] = useState<BranchInfo[]>([])
+  const [remoteBranches, setRemoteBranches] = useState<RemoteBranchInfo[]>([])
   const [commits, setCommits] = useState<Commit[]>([])
   const [graph, setGraph] = useState<GraphNode[]>([])
   const [headSha, setHeadSha] = useState<string | null>(null)
@@ -115,15 +119,22 @@ export function App(): React.JSX.Element {
   const [historyAuthorColWidth, setHistoryAuthorColWidth] = useState(180)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
   const [accounts, setAccounts] = useState<ProviderAccount[]>([])
+  const [repoPendingRemove, setRepoPendingRemove] = useState<Repository | null>(null)
+  const [repoRemoveBusy, setRepoRemoveBusy] = useState(false)
+  const [repoRemoveError, setRepoRemoveError] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const syncRef = useRef<HTMLDivElement>(null)
+  const activeRepoRef = useRef<Repository | null>(null)
+  activeRepoRef.current = activeRepo
 
   const selectedSha = selection?.kind === 'commit' ? selection.sha : null
   const workingCopySelected = selection?.kind === 'working-copy'
   const sidebarCollapsed = Boolean(prefs?.sidebarCollapsed)
   const branchesExpanded = Boolean(prefs?.branchesExpanded)
+  const remoteBranchesExpanded = Boolean(prefs?.remoteBranchesExpanded)
   const detailDock = prefs?.detailDock === 'right' ? 'right' : 'bottom'
   const currentBranch = useMemo(() => branches.find((b) => b.current) ?? null, [branches])
+  const localBranchNames = useMemo(() => new Set(branches.map((b) => b.name)), [branches])
 
   const refreshRepos = useCallback(
     async (opts?: { activateFirst?: boolean }) => {
@@ -219,6 +230,8 @@ export function App(): React.JSX.Element {
         })
         setCommits((prev) => {
           const tipShas = new Set(page.commits.map((c) => c.sha))
+          // Tip refresh must not keep commits from a previous repository —
+          // activeRepo switches clear commits first; here we only merge same-repo pages.
           const older = prev.filter((c) => !tipShas.has(c.sha))
           const merged = decorateCommitsWithColors([...page.commits, ...older])
           setGraph(layoutCommitGraph(merged))
@@ -242,18 +255,44 @@ export function App(): React.JSX.Element {
   )
 
   const refreshRepoMeta = useCallback(async (repo: Repository) => {
-    const [b, s, fresh, id, rebasing] = await Promise.all([
+    const [b, remoteB, s, fresh, id, rebasing] = await Promise.all([
       window.gitManager.repo.branches(repo.path),
+      window.gitManager.repo.remoteBranches(repo.path),
       window.gitManager.repo.status(repo.path),
       window.gitManager.repo.get(repo.id),
       window.gitManager.git.getIdentity(repo.path),
       window.gitManager.git.rebaseInProgress(repo.path)
     ])
     setBranches(b)
+    setRemoteBranches(remoteB)
     setStatus(s)
     setIdentity(id)
     setRebaseInProgress(rebasing)
-    if (fresh) setActiveRepo(fresh)
+    if (fresh) {
+      setActiveRepo(fresh)
+      setRepos((prev) => {
+        let replaced = false
+        const next = prev.map((r) => {
+          if (
+            r.id === fresh.id ||
+            r.id === repo.id ||
+            r.path.toLowerCase() === fresh.path.toLowerCase()
+          ) {
+            replaced = true
+            return fresh
+          }
+          return r
+        })
+        const seen = new Set<string>()
+        const deduped = next.filter((r) => {
+          const key = r.path.toLowerCase()
+          if (seen.has(key)) return false
+          seen.add(key)
+          return true
+        })
+        return replaced ? deduped : [fresh, ...deduped]
+      })
+    }
     if (s.some((e) => e.conflicted)) setMergeOpen(true)
   }, [])
 
@@ -313,6 +352,33 @@ export function App(): React.JSX.Element {
     [activeRepo, afterGitMutation]
   )
 
+  const removeRepoFromList = useCallback(
+    async (repo: Repository, deleteFiles = false): Promise<void> => {
+      setRepoRemoveBusy(true)
+      setRepoRemoveError(null)
+      setError(null)
+      try {
+        await window.gitManager.repo.remove(repo.id, { deleteFiles: Boolean(deleteFiles) })
+        const list = await window.gitManager.repo.list()
+        setRepos(list)
+        setRepoPendingRemove(null)
+        setRepoRemoveError(null)
+        if (activeRepo?.id === repo.id) {
+          setActiveRepo(list[0] ?? null)
+          setSelection(null)
+          setViewMode('history')
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        setRepoRemoveError(message)
+        setError(message)
+      } finally {
+        setRepoRemoveBusy(false)
+      }
+    },
+    [activeRepo?.id]
+  )
+
   useEffect(() => {
     if (!window.gitManager) {
       setError('App bridge failed to load. Restart the app after a clean npm install.')
@@ -369,9 +435,49 @@ export function App(): React.JSX.Element {
 
   useEffect(() => {
     if (!activeRepo) return
+    // Drop prior-repo selection/history immediately so commit-detail cannot race
+    // against a SHA that does not exist in the newly selected repository.
+    setCommits([])
+    setGraph([])
+    setHeadSha(null)
+    setNextCursor(null)
+    setSelection(null)
+    setDetail(null)
+    setSelectedFile(null)
+    setDiff(null)
+    setRemoteBranches([])
     void loadHistory(activeRepo)
     void refreshRepoMeta(activeRepo)
   }, [activeRepo?.path, prefs?.historyFilter])
+
+  useEffect(() => {
+    if (!window.gitManager?.repo?.watch) return
+    const repoPath = activeRepo?.path
+    if (!repoPath || prefs?.liveStatusWatch === false) {
+      void window.gitManager.repo.unwatch()
+      return
+    }
+
+    void window.gitManager.repo.watch(repoPath)
+    const off = window.gitManager.repo.onChanged((raw) => {
+      const event = raw as RepoWatchEvent
+      if (!event?.repoPath) return
+      const left = event.repoPath.replace(/\\/g, '/').toLowerCase()
+      const right = repoPath.replace(/\\/g, '/').toLowerCase()
+      if (left !== right) return
+      const repo = activeRepoRef.current
+      if (!repo || repo.path !== repoPath) return
+      void (async () => {
+        await refreshRepoMeta(repo)
+        if (event.kind === 'git-meta') await refreshHistoryTip(repo)
+      })()
+    })
+
+    return () => {
+      off()
+      void window.gitManager.repo.unwatch()
+    }
+  }, [activeRepo?.path, prefs?.liveStatusWatch, refreshRepoMeta, refreshHistoryTip])
 
   useEffect(() => {
     if (!workingCopySelected) return
@@ -389,16 +495,35 @@ export function App(): React.JSX.Element {
       }
       return
     }
+    // Skip until history for this repo includes the SHA (avoids cross-repo races).
+    if (!commits.some((c) => c.sha === selectedSha)) {
+      setDetail(null)
+      setSelectedFile(null)
+      return
+    }
+    let cancelled = false
     void (async () => {
       try {
         const d = await window.gitManager.history.commitDetail(activeRepo.path, selectedSha)
+        if (cancelled) return
         setDetail(d)
         setSelectedFile(d.files[0] || null)
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
+        if (cancelled) return
+        const message = err instanceof Error ? err.message : String(err)
+        setDetail(null)
+        setSelectedFile(null)
+        if (/bad object|invalid commit|unknown revision|commit not found/i.test(message)) {
+          setSelection((prev) => (prev?.kind === 'commit' && prev.sha === selectedSha ? null : prev))
+          return
+        }
+        setError(message)
       }
     })()
-  }, [activeRepo?.path, selection?.kind, selectedSha])
+    return () => {
+      cancelled = true
+    }
+  }, [activeRepo?.path, selection?.kind, selectedSha, commits])
 
   useEffect(() => {
     if (!activeRepo || selection?.kind !== 'commit' || !selectedSha || !selectedFile) {
@@ -563,6 +688,26 @@ export function App(): React.JSX.Element {
 
   const toggleBranches = (): void => {
     void window.gitManager.prefs.set({ branchesExpanded: !branchesExpanded }).then(setPrefs)
+  }
+
+  const toggleRemoteBranches = (): void => {
+    void window.gitManager.prefs
+      .set({ remoteBranchesExpanded: !remoteBranchesExpanded })
+      .then(setPrefs)
+  }
+
+  const checkoutRemote = async (remoteRef: string): Promise<void> => {
+    if (!activeRepo || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await window.gitManager.git.checkoutRemoteBranch(activeRepo.path, remoteRef)
+      await afterGitMutation({ history: 'full' })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
   }
 
   useEffect(() => {
@@ -883,9 +1028,29 @@ export function App(): React.JSX.Element {
                   }}
                   title={sidebarCollapsed ? `${r.name}${r.currentBranch ? ` (${r.currentBranch})` : ''}` : r.path}
                 >
-                  <div className="cell-ellipsis repo-name">{sidebarCollapsed ? r.name.slice(0, 1).toUpperCase() : r.name}</div>
-                  {!sidebarCollapsed && r.id !== activeRepo.id && (
-                    <div className="muted cell-ellipsis repo-branch-sub">{r.currentBranch || 'detached'}</div>
+                  <div className="repo-row-main">
+                    <div className="cell-ellipsis repo-name">
+                      {sidebarCollapsed ? r.name.slice(0, 1).toUpperCase() : r.name}
+                    </div>
+                    {!sidebarCollapsed && r.id !== activeRepo.id && (
+                      <div className="muted cell-ellipsis repo-branch-sub">{r.currentBranch || 'detached'}</div>
+                    )}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <div className="repo-row-actions" onClick={(e) => e.stopPropagation()}>
+                      <IconButton
+                        label={`Remove ${r.name} from list`}
+                        hint="Remove from list"
+                        className="has-hint-end"
+                        disabled={busy}
+                        onClick={() => {
+                          setRepoRemoveError(null)
+                          setRepoPendingRemove(r)
+                        }}
+                      >
+                        <Trash2 size={14} strokeWidth={1.75} />
+                      </IconButton>
+                    </div>
                   )}
                 </li>
               ))}
@@ -985,6 +1150,68 @@ export function App(): React.JSX.Element {
                       </li>
                     ))}
                   </ul>
+                )}
+
+                {activeRepo.remotes.length > 0 && (
+                  <>
+                    <div className="panel-disclosure-row">
+                      <button
+                        type="button"
+                        className="panel-title panel-disclosure"
+                        onClick={toggleRemoteBranches}
+                      >
+                        <span>Remote branches</span>
+                        <span className="muted">
+                          {remoteBranchesExpanded ? (
+                            <ChevronDown size={14} />
+                          ) : (
+                            <ChevronRight size={14} />
+                          )}
+                        </span>
+                      </button>
+                    </div>
+                    {remoteBranchesExpanded && (
+                      <ul className="branch-list">
+                        {remoteBranches.map((b) => {
+                          const hasLocal = localBranchNames.has(b.shortName)
+                          return (
+                            <li
+                              key={b.name}
+                              onDoubleClick={() => void checkoutRemote(b.name)}
+                              title={
+                                hasLocal
+                                  ? `Double-click to checkout local "${b.shortName}"`
+                                  : 'Double-click to create local tracking branch and checkout'
+                              }
+                            >
+                              <div className="branch-row-main">
+                                <div className="cell-ellipsis">{b.name}</div>
+                                {hasLocal && <div className="muted text-xs">local</div>}
+                              </div>
+                              <div className="branch-row-actions" onClick={(e) => e.stopPropagation()}>
+                                <IconButton
+                                  label={
+                                    hasLocal
+                                      ? `Checkout local ${b.shortName}`
+                                      : `Checkout and track ${b.name}`
+                                  }
+                                  disabled={busy}
+                                  onClick={() => void checkoutRemote(b.name)}
+                                >
+                                  <GitBranch size={14} strokeWidth={1.75} />
+                                </IconButton>
+                              </div>
+                            </li>
+                          )
+                        })}
+                        {remoteBranches.length === 0 && (
+                          <li className="muted text-xs" style={{ pointerEvents: 'none' }}>
+                            No remote branches — fetch to refresh
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -1131,6 +1358,24 @@ export function App(): React.JSX.Element {
         </div>
       )}
 
+      {repoPendingRemove && (
+        <ConfirmDialog
+          title="Remove repository"
+          message={`Remove “${repoPendingRemove.name}” from the list?`}
+          checkboxLabel="Also delete files from disk"
+          confirmLabel="Remove"
+          confirmLabelChecked="Delete from disk"
+          danger
+          busy={repoRemoveBusy}
+          error={repoRemoveError}
+          onCancel={() => {
+            if (repoRemoveBusy) return
+            setRepoPendingRemove(null)
+            setRepoRemoveError(null)
+          }}
+          onConfirm={({ checked }) => void removeRepoFromList(repoPendingRemove, checked)}
+        />
+      )}
       {accountsOpen && (
         <AccountsModal
           accounts={accounts}
