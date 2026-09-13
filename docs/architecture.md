@@ -77,6 +77,7 @@ flowchart LR
 | Concern | Approach |
 |---|---|
 | Process isolation | `contextIsolation`, `sandbox`, no Node in renderer; DevTools disabled in production window prefs |
+| Git worker | Prefer Electron `utilityProcess` (`git-utility.js`) on Windows and macOS; fall back to in-process ops |
 | IPC trust | Handlers call `assertSender`; payloads validated with Zod where schemas exist |
 | Secrets | Provider tokens via Electron `safeStorage` when available ([`storage.ts`](../src/main/storage.ts)); Git URL credentials redacted in CLI output |
 | Preferences | Zod-validated `AppPreferences` in `userData/state/preferences.json` |

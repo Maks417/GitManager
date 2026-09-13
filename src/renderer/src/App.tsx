@@ -42,6 +42,7 @@ import type {
   StatusEntry,
   UpdateStatus
 } from '@shared/ipc'
+import { decorateCommitsWithColors, layoutCommitGraph } from '@history-core/layout'
 import type { ThemePreference } from '@shared/theme'
 import { GIT_DOWNLOAD_URL } from './lib/git-install'
 import { HistoryGraph } from './features/history-graph/HistoryGraph'
@@ -65,6 +66,9 @@ import { resolveAndApplyTheme } from './lib/theme'
 
 type Selection = { kind: 'commit'; sha: string } | { kind: 'working-copy' }
 type ViewMode = 'history' | 'changes'
+type HistoryRefreshMode = 'full' | 'tip' | 'none'
+
+const HISTORY_PAGE_SIZE = 200
 
 export function App(): React.JSX.Element {
   const [repos, setRepos] = useState<Repository[]>([])
@@ -73,6 +77,8 @@ export function App(): React.JSX.Element {
   const [commits, setCommits] = useState<Commit[]>([])
   const [graph, setGraph] = useState<GraphNode[]>([])
   const [headSha, setHeadSha] = useState<string | null>(null)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('history')
   const [detail, setDetail] = useState<CommitDetail | null>(null)
@@ -137,12 +143,13 @@ export function App(): React.JSX.Element {
         const page = await window.gitManager.history.load({
           repoPath: repo.path,
           search: searchText || undefined,
-          limit: 300,
+          limit: HISTORY_PAGE_SIZE,
           branch: prefs?.historyFilter === 'current' ? repo.currentBranch || undefined : undefined
         })
         setCommits(page.commits)
         setGraph(page.graph)
         setHeadSha(page.headSha)
+        setNextCursor(page.nextCursor)
         setSelection((prev) => {
           if (prev?.kind === 'working-copy') return prev
           const keep = prev?.kind === 'commit' ? page.commits.find((c) => c.sha === prev.sha)?.sha : null
@@ -161,6 +168,79 @@ export function App(): React.JSX.Element {
     [prefs?.historyFilter, search]
   )
 
+  const loadMoreHistory = useCallback(async (): Promise<void> => {
+    if (!activeRepo || !nextCursor || historyLoadingMore || busy) return
+    setHistoryLoadingMore(true)
+    setError(null)
+    try {
+      const branchFilter =
+        prefs?.historyFilter === 'current' ? activeRepo.currentBranch || undefined : undefined
+      const page = await window.gitManager.history.load({
+        repoPath: activeRepo.path,
+        search: search || undefined,
+        limit: HISTORY_PAGE_SIZE,
+        branch: branchFilter,
+        // Branch mode uses --skip; --all mode uses cursor^@
+        cursor: branchFilter ? undefined : nextCursor,
+        skip: branchFilter ? commits.length : undefined
+      })
+      setCommits((prev) => {
+        const seen = new Set(prev.map((c) => c.sha))
+        const appended = page.commits.filter((c) => !seen.has(c.sha))
+        const merged = decorateCommitsWithColors([...prev, ...appended])
+        setGraph(layoutCommitGraph(merged))
+        return merged
+      })
+      setHeadSha(page.headSha)
+      setNextCursor(page.nextCursor)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setHistoryLoadingMore(false)
+    }
+  }, [
+    activeRepo,
+    nextCursor,
+    historyLoadingMore,
+    busy,
+    prefs?.historyFilter,
+    search,
+    commits.length
+  ])
+
+  const refreshHistoryTip = useCallback(
+    async (repo: Repository): Promise<void> => {
+      try {
+        const page = await window.gitManager.history.load({
+          repoPath: repo.path,
+          search: search || undefined,
+          limit: HISTORY_PAGE_SIZE,
+          branch: prefs?.historyFilter === 'current' ? repo.currentBranch || undefined : undefined
+        })
+        setCommits((prev) => {
+          const tipShas = new Set(page.commits.map((c) => c.sha))
+          const older = prev.filter((c) => !tipShas.has(c.sha))
+          const merged = decorateCommitsWithColors([...page.commits, ...older])
+          setGraph(layoutCommitGraph(merged))
+          return merged
+        })
+        setHeadSha(page.headSha)
+        // Keep existing nextCursor / loaded depth; tip refresh only updates the newest window.
+        if (!nextCursor) setNextCursor(page.nextCursor)
+        setSelection((prev) => {
+          if (prev?.kind === 'working-copy') return prev
+          if (prev?.kind === 'commit') return prev
+          const nextSha = page.commits[0]?.sha || null
+          if (nextSha) return { kind: 'commit', sha: nextSha }
+          return { kind: 'working-copy' }
+        })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [prefs?.historyFilter, search, nextCursor]
+  )
+
   const refreshRepoMeta = useCallback(async (repo: Repository) => {
     const [b, s, fresh, id, rebasing] = await Promise.all([
       window.gitManager.repo.branches(repo.path),
@@ -177,11 +257,16 @@ export function App(): React.JSX.Element {
     if (s.some((e) => e.conflicted)) setMergeOpen(true)
   }, [])
 
-  const afterGitMutation = useCallback(async (): Promise<void> => {
-    if (!activeRepo) return
-    await refreshRepoMeta(activeRepo)
-    await loadHistory(activeRepo)
-  }, [activeRepo, refreshRepoMeta, loadHistory])
+  const afterGitMutation = useCallback(
+    async (opts?: { history?: HistoryRefreshMode }): Promise<void> => {
+      if (!activeRepo) return
+      await refreshRepoMeta(activeRepo)
+      const mode = opts?.history ?? 'tip'
+      if (mode === 'full') await loadHistory(activeRepo)
+      else if (mode === 'tip') await refreshHistoryTip(activeRepo)
+    },
+    [activeRepo, refreshRepoMeta, loadHistory, refreshHistoryTip]
+  )
 
   const runMergeOrRebase = useCallback(
     async (op: 'merge' | 'rebase', ref: string): Promise<void> => {
@@ -193,11 +278,11 @@ export function App(): React.JSX.Element {
           op === 'merge'
             ? await window.gitManager.git.merge(activeRepo.path, ref)
             : await window.gitManager.git.rebase(activeRepo.path, ref)
-        await afterGitMutation()
+        await afterGitMutation({ history: 'full' })
         if (result.conflicts.length > 0) setMergeOpen(true)
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
-        await afterGitMutation().catch(() => undefined)
+        await afterGitMutation({ history: 'full' }).catch(() => undefined)
       } finally {
         setBusy(false)
       }
@@ -218,7 +303,7 @@ export function App(): React.JSX.Element {
           if (!confirm(`${msg}\n\nForce delete branch "${name}"?`)) throw err
           await window.gitManager.git.deleteBranch(activeRepo.path, name, true)
         }
-        await afterGitMutation()
+        await afterGitMutation({ history: 'full' })
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -457,8 +542,8 @@ export function App(): React.JSX.Element {
     setSyncMenuOpen(false)
     try {
       await window.gitManager.git[op](activeRepo.path)
-      await loadHistory(activeRepo)
       await refreshRepoMeta(activeRepo)
+      await refreshHistoryTip(activeRepo)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -845,7 +930,7 @@ export function App(): React.JSX.Element {
                         className={b.current ? 'active' : ''}
                         onDoubleClick={() =>
                           void window.gitManager.git.checkout(activeRepo.path, b.name).then(async () => {
-                            await afterGitMutation()
+                            await afterGitMutation({ history: 'full' })
                           })
                         }
                         title="Double-click to checkout"
@@ -927,6 +1012,9 @@ export function App(): React.JSX.Element {
                   headSha={headSha}
                   selectedSha={selectedSha}
                   busy={busy}
+                  loadingMore={historyLoadingMore}
+                  hasMore={Boolean(nextCursor)}
+                  onLoadMore={() => void loadMoreHistory()}
                   onSelect={selectCommit}
                   filter={prefs?.historyFilter || 'all'}
                   onFilterChange={(historyFilter) =>
@@ -1024,18 +1112,18 @@ export function App(): React.JSX.Element {
                 onFilesWidthCommit={(w) => persistLayout({ changesFilesWidth: w })}
                 onFocusFile={setFocusedStatusPath}
                 onDiffSideChange={setDiffSide}
-                onRefresh={afterGitMutation}
+                onRefresh={() => afterGitMutation({ history: 'tip' })}
                 onError={setError}
                 onBrowseHistory={goHistory}
                 onEditIdentity={() => setIdentityOpen(true)}
                 onRebaseContinue={async () => {
                   const result = await window.gitManager.git.rebaseContinue(activeRepo.path)
-                  await afterGitMutation()
+                  await afterGitMutation({ history: 'full' })
                   if (result.conflicts.length > 0) setMergeOpen(true)
                 }}
                 onRebaseAbort={async () => {
                   await window.gitManager.git.rebaseAbort(activeRepo.path)
-                  await afterGitMutation()
+                  await afterGitMutation({ history: 'full' })
                 }}
               />
             </section>
@@ -1086,7 +1174,7 @@ export function App(): React.JSX.Element {
           onClose={() => setCreateBranchOpen(false)}
           onCreate={async (name, checkout) => {
             await window.gitManager.git.createBranch(activeRepo.path, name, checkout)
-            await afterGitMutation()
+            await afterGitMutation({ history: 'full' })
           }}
         />
       )}
@@ -1119,15 +1207,15 @@ export function App(): React.JSX.Element {
           repoPath={activeRepo.path}
           rebaseInProgress={rebaseInProgress}
           onClose={() => setMergeOpen(false)}
-          onResolved={afterGitMutation}
+          onResolved={() => afterGitMutation({ history: 'full' })}
           onRebaseContinue={async () => {
             const result = await window.gitManager.git.rebaseContinue(activeRepo.path)
-            await afterGitMutation()
+            await afterGitMutation({ history: 'full' })
             if (result.conflicts.length === 0) setMergeOpen(false)
           }}
           onRebaseAbort={async () => {
             await window.gitManager.git.rebaseAbort(activeRepo.path)
-            await afterGitMutation()
+            await afterGitMutation({ history: 'full' })
           }}
         />
       )}

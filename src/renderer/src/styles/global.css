@@ -554,8 +554,17 @@ select:focus {
 
 .history-pane {
   border-right: 1px solid var(--border);
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.history-graph-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .detail-pane {
@@ -840,6 +849,23 @@ select:focus {
 .history-table {
   overflow: auto;
   position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.history-virtual-body {
+  position: relative;
+  width: 100%;
+}
+
+.history-virtual-window {
+  will-change: transform;
+}
+
+.history-load-more {
+  padding: 8px 12px;
+  text-align: center;
+  font-size: var(--text-xs);
 }
 
 .history-header,
@@ -850,6 +876,8 @@ select:focus {
   align-items: center;
   padding: 0 12px;
   min-height: 34px;
+  height: 34px;
+  box-sizing: border-box;
   border-bottom: 1px solid transparent;
 }
 

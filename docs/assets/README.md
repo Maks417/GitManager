@@ -1,6 +1,6 @@
 # README screenshots
 
-Drop PNGs here for the GitHub README:
+Drop PNGs here, then uncomment the `<img>` blocks under **Screenshots** in the root [`README.md`](../../README.md):
 
 | File | Suggested content |
 |---|---|

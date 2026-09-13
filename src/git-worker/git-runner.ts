@@ -10,10 +10,18 @@ export interface GitRunOptions {
   input?: string
   timeoutMs?: number
   onProgress?: (line: string) => void
+  /** Soft cap on accumulated stdout characters; further chunks are dropped. */
+  maxStdoutChars?: number
 }
 
 export interface GitRunResult {
   stdout: string
+  stderr: string
+  code: number
+}
+
+export interface GitDelimitedResult {
+  records: string[]
   stderr: string
   code: number
 }
@@ -31,7 +39,7 @@ const GIT_NOT_FOUND_MESSAGE_DARWIN = `${GIT_NOT_FOUND_MESSAGE} On macOS you can 
 
 const active = new Map<string, ChildProcessWithoutNullStreams>()
 
-function resolveGitBinary(): string {
+export function resolveGitBinary(): string {
   const bundled = process.env.GIT_MANAGER_GIT_PATH?.trim()
   if (bundled) return bundled
   return process.platform === 'win32' ? 'git.exe' : 'git'
@@ -57,7 +65,7 @@ export function redactSecrets(text: string): string {
     .replace(/(Authorization:\s*Bearer\s+)[^\s]+/gi, '$1***')
 }
 
-export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
+function spawnGit(opts: Pick<GitRunOptions, 'cwd' | 'args' | 'env'>): ChildProcessWithoutNullStreams {
   const git = resolveGitBinary()
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -65,16 +73,19 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
     GIT_TERMINAL_PROMPT: '0',
     LC_ALL: 'C'
   }
+  return spawn(git, opts.args, {
+    cwd: opts.cwd,
+    env,
+    windowsHide: true,
+    shell: false
+  })
+}
 
+export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
   return new Promise((resolve, reject) => {
     let child: ChildProcessWithoutNullStreams
     try {
-      child = spawn(git, opts.args, {
-        cwd: opts.cwd,
-        env,
-        windowsHide: true,
-        shell: false
-      })
+      child = spawnGit(opts)
     } catch (err) {
       reject(isMissingGitError(err) ? new Error(gitNotFoundMessage()) : err)
       return
@@ -86,6 +97,7 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
     let stdout = ''
     let stderr = ''
     let settled = false
+    const maxChars = opts.maxStdoutChars
 
     const timer =
       opts.timeoutMs &&
@@ -100,7 +112,13 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
 
     child.stdout.on('data', (buf: Buffer) => {
       const chunk = buf.toString('utf8')
-      stdout += chunk
+      if (maxChars === undefined || stdout.length < maxChars) {
+        if (maxChars !== undefined && stdout.length + chunk.length > maxChars) {
+          stdout += chunk.slice(0, maxChars - stdout.length)
+        } else {
+          stdout += chunk
+        }
+      }
       if (opts.onProgress) {
         for (const line of chunk.split(/\r?\n/)) {
           if (line) opts.onProgress(redactSecrets(line))
@@ -143,6 +161,139 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
           stderr: redactSecrets(stderr),
           code: code ?? 1
         })
+      }
+    })
+  })
+}
+
+/**
+ * Stream-parse delimiter-separated stdout (e.g. git log `%x1e` records) without holding one giant string.
+ * Stops the child once `maxRecords` complete records are collected.
+ */
+export async function runGitDelimited(
+  opts: GitRunOptions & { delimiter: string; maxRecords?: number }
+): Promise<GitDelimitedResult> {
+  return new Promise((resolve, reject) => {
+    let child: ChildProcessWithoutNullStreams
+    try {
+      child = spawnGit(opts)
+    } catch (err) {
+      reject(isMissingGitError(err) ? new Error(gitNotFoundMessage()) : err)
+      return
+    }
+
+    const key = `${opts.cwd}:delim:${opts.args.join(' ')}:${Date.now()}`
+    active.set(key, child)
+
+    const records: string[] = []
+    let pending = ''
+    let stderr = ''
+    let settled = false
+    const maxRecords = opts.maxRecords
+
+    const finish = (code: number): void => {
+      if (settled) return
+      settled = true
+      active.delete(key)
+      if (pending.trim()) records.push(pending)
+      resolve({ records, stderr: redactSecrets(stderr), code })
+    }
+
+    child.stdout.on('data', (buf: Buffer) => {
+      if (settled) return
+      pending += buf.toString('utf8')
+      let idx = pending.indexOf(opts.delimiter)
+      while (idx >= 0) {
+        const piece = pending.slice(0, idx)
+        pending = pending.slice(idx + opts.delimiter.length)
+        if (piece.trim()) records.push(piece)
+        if (maxRecords !== undefined && records.length >= maxRecords) {
+          child.kill('SIGTERM')
+          finish(0)
+          return
+        }
+        idx = pending.indexOf(opts.delimiter)
+      }
+    })
+    child.stderr.on('data', (buf: Buffer) => {
+      stderr += buf.toString('utf8')
+    })
+    child.stdin.end()
+
+    child.on('error', (err) => {
+      active.delete(key)
+      if (!settled) {
+        settled = true
+        reject(isMissingGitError(err) ? new Error(gitNotFoundMessage()) : err)
+      }
+    })
+
+    child.on('close', (code) => {
+      finish(code ?? 1)
+    })
+  })
+}
+
+/**
+ * Stream at most `maxBytes` from `git show <spec>` for diff display (Windows + macOS).
+ */
+export async function readGitShowCapped(
+  cwd: string,
+  spec: string,
+  maxBytes: number
+): Promise<{ buffer: Buffer; binary: boolean; truncated: boolean; ok: boolean }> {
+  return new Promise((resolve, reject) => {
+    let child: ChildProcessWithoutNullStreams
+    try {
+      child = spawnGit({ cwd, args: ['show', spec] })
+    } catch (err) {
+      reject(isMissingGitError(err) ? new Error(gitNotFoundMessage()) : err)
+      return
+    }
+
+    const key = `${cwd}:show:${spec}:${Date.now()}`
+    active.set(key, child)
+
+    const chunks: Buffer[] = []
+    let total = 0
+    let binary = false
+    let truncated = false
+    let settled = false
+
+    child.stdout.on('data', (buf: Buffer) => {
+      if (settled) return
+      if (!binary && buf.includes(0)) binary = true
+      if (total < maxBytes) {
+        const take = buf.subarray(0, Math.min(buf.length, maxBytes - total))
+        chunks.push(Buffer.from(take))
+        total += take.length
+        if (take.length < buf.length) truncated = true
+      } else {
+        truncated = true
+      }
+      if (binary || total >= maxBytes) {
+        child.kill('SIGTERM')
+      }
+    })
+    child.stderr.on('data', () => {
+      /* ignore missing-blob stderr */
+    })
+    child.stdin.end()
+
+    child.on('error', (err) => {
+      active.delete(key)
+      if (!settled) {
+        settled = true
+        if (isMissingGitError(err)) reject(new Error(gitNotFoundMessage()))
+        else resolve({ buffer: Buffer.concat(chunks), binary, truncated, ok: false })
+      }
+    })
+
+    child.on('close', (code) => {
+      active.delete(key)
+      if (!settled) {
+        settled = true
+        resolve({ buffer: Buffer.concat(chunks), binary, truncated, ok: (code ?? 1) === 0 || total > 0 })
       }
     })
   })

@@ -20,8 +20,15 @@
 
 ## Screenshots
 
-> Add PNGs under [`docs/assets/`](docs/assets/) to populate this section (`history.png`, `changes.png`, `merge.png`).
+Add PNGs under [`docs/assets/`](docs/assets/), then uncomment the images below:
 
+| File | Shows |
+|---|---|
+| `history.png` | History graph view |
+| `changes.png` | Working tree and changes |
+| `merge.png` | Merge conflict editor |
+
+<!--
 <p align="center">
   <img src="docs/assets/history.png" alt="History graph view" width="800" />
 </p>
@@ -33,6 +40,7 @@
 <p align="center">
   <img src="docs/assets/merge.png" alt="Merge conflict editor" width="800" />
 </p>
+-->
 
 ## Features
 

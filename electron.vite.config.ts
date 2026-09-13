@@ -11,6 +11,14 @@ export default defineConfig({
         '@history-core': resolve('src/history-core'),
         '@merge-core': resolve('src/merge-core')
       }
+    },
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          'git-utility': resolve('src/git-worker/utility-entry.ts')
+        }
+      }
     }
   },
   preload: {

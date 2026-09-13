@@ -188,6 +188,8 @@ export const AppPreferencesSchema = z.object({
   historyGraphColWidth: z.number().min(80).max(560).default(140),
   historyDateColWidth: z.number().min(72).max(220).default(110),
   historyAuthorColWidth: z.number().min(100).max(360).default(180),
+  /** Prefer `normal` for large trees; `all` lists every untracked path recursively. */
+  statusUntracked: z.enum(['normal', 'all']).default('normal'),
   externalEditor: z.string().nullable().default(null),
   externalTerminal: z.string().nullable().default(null),
   checkUpdatesOnStart: z.boolean().default(true)
@@ -201,7 +203,10 @@ export const HistoryQuerySchema = z.object({
   path: z.string().optional(),
   branch: z.string().optional(),
   mergesOnly: z.boolean().optional(),
+  /** Last SHA from previous page; used for `--all` ancestor walks (`cursor^@`). */
   cursor: z.string().optional(),
+  /** Offset for branch-filtered paging (`git log --skip`); ignored in `--all` cursor mode. */
+  skip: z.number().int().min(0).max(1_000_000).optional(),
   limit: z.number().min(1).max(500).default(200)
 })
 export type HistoryQuery = z.infer<typeof HistoryQuerySchema>

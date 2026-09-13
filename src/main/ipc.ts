@@ -11,8 +11,8 @@ import {
   type ProviderAccount,
   type UpdateStatus
 } from '@shared/ipc'
-import * as git from '../git-worker/operations'
-import { probeGit } from '../git-worker/git-runner'
+import * as git from '../git-worker/client'
+import { probeGit } from '../git-worker/client'
 import {
   getAccountToken,
   loadAccounts,
@@ -109,7 +109,8 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IpcChannels.repo.status, async (event, repoPath: string) => {
     assertSender(event)
-    return git.getStatus(repoPath)
+    const prefs = loadPreferences()
+    return git.getStatus(repoPath, prefs.statusUntracked ?? 'normal')
   })
 
   ipcMain.handle(IpcChannels.repo.branches, async (event, repoPath: string) => {
