@@ -311,7 +311,7 @@ export function registerIpcHandlers(): void {
       name: 'Git Manager',
       version: app.getVersion(),
       architecture: process.arch,
-      homepage: 'https://github.com/example/git-manager'
+      homepage: 'https://github.com/Maks417/GitManager'
     }
   })
 

@@ -17,8 +17,8 @@ asarUnpack:
   - "**/*.node"
 publish:
   provider: github
-  owner: example
-  repo: git-manager
+  owner: Maks417
+  repo: GitManager
   releaseType: release
 win:
   icon: build/icon.ico
