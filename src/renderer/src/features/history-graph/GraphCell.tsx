@@ -22,12 +22,14 @@ export function GraphCell({ node, maxLane, isHead, width }: Props): React.JSX.El
 
   const x = (lane: number): number => pad + lane * laneW + laneW / 2
   const color = (lane: number): string => LANE_COLORS[lane % LANE_COLORS.length]
+  const mid = h / 2
+  const dotX = x(node.lane)
 
   return (
     <svg className="graph-canvas" width={width} height={h} viewBox={`0 0 ${width} ${h}`}>
-      {node.lanes.map((lane) => (
+      {node.passThrough.map((lane) => (
         <line
-          key={`lane-${lane}`}
+          key={`pass-${lane}`}
           x1={x(lane)}
           y1={0}
           x2={x(lane)}
@@ -37,40 +39,47 @@ export function GraphCell({ node, maxLane, isHead, width }: Props): React.JSX.El
           opacity={0.85}
         />
       ))}
-      {node.connections.map((c, i) => {
-        if (c.fromLane === c.toLane) {
-          return (
-            <line
-              key={`c-${i}`}
-              x1={x(c.fromLane)}
-              y1={h / 2}
-              x2={x(c.toLane)}
-              y2={h}
-              stroke={color(c.toLane)}
-              strokeWidth={2}
-            />
-          )
-        }
-        const midY = h * 0.75
-        return (
+      {node.hasIncoming && (
+        <line x1={dotX} y1={0} x2={dotX} y2={mid} stroke={color(node.lane)} strokeWidth={2} />
+      )}
+      {node.joins.map((lane) => (
+        <path
+          key={`join-${lane}`}
+          d={`M ${x(lane)} 0 C ${x(lane)} ${h * 0.25}, ${dotX} ${h * 0.25}, ${dotX} ${mid}`}
+          stroke={color(lane)}
+          strokeWidth={2}
+          fill="none"
+        />
+      ))}
+      {node.connections.map((c, i) =>
+        c.toLane === c.fromLane ? (
+          <line
+            key={`out-${i}`}
+            x1={dotX}
+            y1={mid}
+            x2={dotX}
+            y2={h}
+            stroke={color(c.toLane)}
+            strokeWidth={2}
+          />
+        ) : (
           <path
-            key={`c-${i}`}
-            d={`M ${x(c.fromLane)} ${h / 2} C ${x(c.fromLane)} ${midY}, ${x(c.toLane)} ${midY}, ${x(c.toLane)} ${h}`}
+            key={`out-${i}`}
+            d={`M ${dotX} ${mid} C ${dotX} ${h * 0.75}, ${x(c.toLane)} ${h * 0.75}, ${x(c.toLane)} ${h}`}
             stroke={color(c.toLane)}
             strokeWidth={2}
             fill="none"
           />
         )
-      })}
+      )}
       <circle
-        cx={x(node.lane)}
-        cy={h / 2}
+        cx={dotX}
+        cy={mid}
         r={isHead ? 5.5 : 4}
         fill={color(node.lane)}
         stroke={isHead ? 'var(--head-stroke)' : 'transparent'}
         strokeWidth={isHead ? 2 : 0}
       />
-      <line x1={x(maxLane)} y1={0} x2={x(maxLane)} y2={0} stroke="transparent" />
     </svg>
   )
 }

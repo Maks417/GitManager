@@ -3,6 +3,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runGit } from '../src/git-worker/git-runner'
+import { git } from './helpers/git-fixture'
 import { getCommitDetail, inspectRepository, loadHistory } from '../src/git-worker/operations'
 
 const dirs: string[] = []
@@ -10,7 +11,7 @@ const dirs: string[] = []
 async function initFixture(): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'gm-git-'))
   dirs.push(dir)
-  await runGit({ cwd: dir, args: ['init'] })
+  await runGit({ cwd: dir, args: ['init', '-b', 'main'] })
   await runGit({ cwd: dir, args: ['config', 'user.email', 'test@example.com'] })
   await runGit({ cwd: dir, args: ['config', 'user.name', 'Test User'] })
   writeFileSync(join(dir, 'README.md'), '# one\n')
@@ -23,9 +24,7 @@ async function initFixture(): Promise<string> {
   writeFileSync(join(dir, 'feature.txt'), 'feature\n')
   await runGit({ cwd: dir, args: ['add', 'feature.txt'] })
   await runGit({ cwd: dir, args: ['commit', '-m', 'Add feature'] })
-  await runGit({ cwd: dir, args: ['checkout', 'master'] }).catch(async () => {
-    await runGit({ cwd: dir, args: ['checkout', 'main'] })
-  })
+  await git(dir, 'checkout', 'main')
   return dir
 }
 

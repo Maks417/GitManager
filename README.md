@@ -47,7 +47,7 @@ Use **Host accounts** from the welcome screen, or **Accounts** in the app menu, 
 
 1. Open **Host accounts**.
 2. Choose a provider.
-3. Paste a personal access token (Bitbucket also asks for your username).
+3. Paste a personal access token (for Bitbucket: an Atlassian API token plus your Atlassian account email).
 4. Click **Connect**.
 5. Select an account in the list to load remote repositories, then **Clone** a repo.
 
@@ -55,7 +55,7 @@ Use **Host accounts** from the welcome screen, or **Accounts** in the app menu, 
 |---|---|---|
 | **GitHub** | [Personal access token](https://github.com/settings/tokens) | Classic or fine-grained. Needs permission to read your profile and list repositories (private repos need repo access). |
 | **GitLab** | [Personal access token](https://gitlab.com/-/user_settings/personal_access_tokens) | Needs API access to read your user and projects (e.g. `read_api`). Hosted on `gitlab.com`. |
-| **Bitbucket** | [App password](https://bitbucket.org/account/settings/app-passwords/) | Enter your Bitbucket **username** plus the app password. Needs permission to read account and repositories. |
+| **Bitbucket** | [API token](https://id.atlassian.com/manage-profile/security/api-tokens) | Enter your Atlassian account **email** plus the API token (Bitbucket app passwords were retired). Needs read access to your account and repositories. |
 
 Clone, fetch, and push still use your normal Git credentials: **HTTPS** via Git Credential Manager, **SSH** via your OpenSSH agent and keys. Connecting an account only unlocks browsing and one-click clone from the host listing.
 

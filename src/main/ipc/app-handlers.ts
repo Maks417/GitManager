@@ -1,5 +1,6 @@
 import { BrowserWindow, app, ipcMain, shell } from 'electron'
 import { IpcChannels, type UpdateStatus } from '@shared/ipc'
+import { z } from 'zod'
 import { checkForUpdates, getUpdateStatus, installUpdate, subscribeUpdateStatus } from '../updater'
 import { subscribeRepoWatch } from '../repo-watcher'
 import { assertSender } from './assert-sender'
@@ -28,18 +29,13 @@ export function registerAppHandlers(): void {
     }
   })
 
-  ipcMain.handle(IpcChannels.shell.openExternal, async (event, url: string) => {
+  ipcMain.handle(IpcChannels.shell.openExternal, async (event, raw: unknown) => {
     assertSender(event)
-    if (!/^https?:/i.test(url)) throw new Error('Only http(s) URLs allowed')
-    await shell.openExternal(url)
-  })
-  ipcMain.handle(IpcChannels.shell.openPath, async (event, path: string) => {
-    assertSender(event)
-    return shell.openPath(path)
-  })
-  ipcMain.handle(IpcChannels.shell.showItemInFolder, async (event, path: string) => {
-    assertSender(event)
-    shell.showItemInFolder(path)
+    const url = new URL(z.string().parse(raw))
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      throw new Error('Only http(s) URLs allowed')
+    }
+    await shell.openExternal(url.href)
   })
 
   subscribeUpdateStatus((status: UpdateStatus) => {

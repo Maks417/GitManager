@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { PROVIDER_IDS } from '../providers'
+import { SHA_RE } from '../sha'
 import { HISTORY_PAGE_SIZE, LAYOUT_DEFAULTS } from '../layout-defaults'
 
 export const RepositorySchema = z.object({
@@ -15,6 +16,15 @@ export const RepositorySchema = z.object({
   )
 })
 export type Repository = z.infer<typeof RepositorySchema>
+
+/** What deleting a repository folder would lose. */
+export const RepoRemovalInfoSchema = z.object({
+  uncommitted: z.number().int().nonnegative(),
+  stashes: z.number().int().nonnegative(),
+  /** Commits on local branches that no remote-tracking branch contains. */
+  unpushed: z.number().int().nonnegative()
+})
+export type RepoRemovalInfo = z.infer<typeof RepoRemovalInfoSchema>
 
 export const CommitRefSchema = z.object({
   name: z.string(),
@@ -38,8 +48,17 @@ export type Commit = z.infer<typeof CommitSchema>
 
 export const GraphNodeSchema = z.object({
   sha: z.string(),
+  /** Lane of the commit dot. */
   lane: z.number(),
+  /** Every lane index drawn in this row (used for column sizing). */
   lanes: z.array(z.number()),
+  /** Lanes that run straight through the row without touching the commit. */
+  passThrough: z.array(z.number()),
+  /** Other lanes that end at this commit from above (branches meeting their fork point). */
+  joins: z.array(z.number()),
+  /** A line reaches the dot from above in its own lane (false for branch tips). */
+  hasIncoming: z.boolean(),
+  /** Lines leaving the dot downwards, one per parent. */
   connections: z.array(
     z.object({
       fromLane: z.number(),
@@ -74,10 +93,12 @@ export const CommitDetailSchema = z.object({
 export type CommitDetail = z.infer<typeof CommitDetailSchema>
 
 export const DiffRequestSchema = z.object({
-  repoPath: z.string(),
-  sha: z.string(),
-  path: z.string(),
-  parentIndex: z.number().default(0)
+  repoPath: z.string().min(1),
+  sha: z.string().regex(SHA_RE, 'Invalid commit id'),
+  path: z.string().min(1),
+  /** Pre-rename path, so the parent side of a renamed file can be read. */
+  oldPath: z.string().min(1).optional(),
+  parentIndex: z.number().int().min(0).default(0)
 })
 export type DiffRequest = z.infer<typeof DiffRequestSchema>
 
@@ -137,9 +158,15 @@ export const MergeSidesSchema = z.object({
   base: z.string(),
   ours: z.string(),
   theirs: z.string(),
-  result: z.string()
+  result: z.string(),
+  /** Text panes are empty when a side is binary or too large; resolve by taking a whole side. */
+  binary: z.boolean(),
+  tooLarge: z.boolean()
 })
 export type MergeSides = z.infer<typeof MergeSidesSchema>
+
+export const ConflictSideSchema = z.enum(['ours', 'theirs'])
+export type ConflictSide = z.infer<typeof ConflictSideSchema>
 
 export const ProviderIdSchema = z.enum(PROVIDER_IDS)
 
@@ -149,7 +176,9 @@ export const ProviderAccountSchema = z.object({
   username: z.string(),
   displayName: z.string(),
   avatarUrl: z.string().optional(),
-  host: z.string()
+  host: z.string(),
+  /** False when the token could only be stored without OS encryption. */
+  secureStorage: z.boolean().optional()
 })
 export type ProviderAccount = z.infer<typeof ProviderAccountSchema>
 
@@ -185,28 +214,43 @@ export const AppInfoSchema = z.object({
 })
 export type AppInfo = z.infer<typeof AppInfoSchema>
 
+/** A layout size: out-of-range numbers are clamped, anything else falls back to the default. */
+function sizePref(min: number, max: number, fallback: number) {
+  return z
+    .preprocess(
+      (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : v),
+      z.number().min(min).max(max)
+    )
+    .default(fallback)
+    .catch(fallback)
+}
+
+/**
+ * Every field recovers on its own: a hand-edited file, or a value written by an older or newer
+ * version, must never keep the app from starting.
+ */
 export const AppPreferencesSchema = z.object({
-  theme: z.enum(['system', 'light', 'dark']).default('system'),
-  detailDock: z.enum(['right', 'bottom']).default('bottom'),
-  historyFilter: z.enum(['all', 'current']).default('all'),
-  sidebarCollapsed: z.boolean().default(false),
-  branchesExpanded: z.boolean().default(false),
-  remoteBranchesExpanded: z.boolean().default(false),
-  sidebarWidth: z.number().min(140).max(480).default(LAYOUT_DEFAULTS.sidebarWidth),
-  inspectorHeight: z.number().min(180).max(900).default(LAYOUT_DEFAULTS.inspectorHeight),
-  detailWidth: z.number().min(280).max(900).default(LAYOUT_DEFAULTS.detailWidth),
-  inspectorFilesWidth: z.number().min(140).max(480).default(LAYOUT_DEFAULTS.inspectorFilesWidth),
-  changesFilesWidth: z.number().min(200).max(560).default(LAYOUT_DEFAULTS.changesFilesWidth),
-  historyGraphColWidth: z.number().min(80).max(560).default(LAYOUT_DEFAULTS.historyGraphColWidth),
-  historyDateColWidth: z.number().min(72).max(220).default(LAYOUT_DEFAULTS.historyDateColWidth),
-  historyAuthorColWidth: z.number().min(100).max(360).default(LAYOUT_DEFAULTS.historyAuthorColWidth),
+  theme: z.enum(['system', 'light', 'dark']).default('system').catch('system'),
+  detailDock: z.enum(['right', 'bottom']).default('bottom').catch('bottom'),
+  historyFilter: z.enum(['all', 'current']).default('all').catch('all'),
+  sidebarCollapsed: z.boolean().default(false).catch(false),
+  branchesExpanded: z.boolean().default(false).catch(false),
+  remoteBranchesExpanded: z.boolean().default(false).catch(false),
+  sidebarWidth: sizePref(140, 480, LAYOUT_DEFAULTS.sidebarWidth),
+  inspectorHeight: sizePref(180, 900, LAYOUT_DEFAULTS.inspectorHeight),
+  detailWidth: sizePref(280, 900, LAYOUT_DEFAULTS.detailWidth),
+  inspectorFilesWidth: sizePref(140, 480, LAYOUT_DEFAULTS.inspectorFilesWidth),
+  changesFilesWidth: sizePref(200, 560, LAYOUT_DEFAULTS.changesFilesWidth),
+  historyGraphColWidth: sizePref(80, 560, LAYOUT_DEFAULTS.historyGraphColWidth),
+  historyDateColWidth: sizePref(72, 220, LAYOUT_DEFAULTS.historyDateColWidth),
+  historyAuthorColWidth: sizePref(100, 360, LAYOUT_DEFAULTS.historyAuthorColWidth),
   /** Prefer `normal` for large trees; `all` lists every untracked path recursively. */
-  statusUntracked: z.enum(['normal', 'all']).default('normal'),
+  statusUntracked: z.enum(['normal', 'all']).default('normal').catch('normal'),
   /** Watch the working tree and refresh status when files change (Windows + macOS). */
-  liveStatusWatch: z.boolean().default(true),
-  externalEditor: z.string().nullable().default(null),
-  externalTerminal: z.string().nullable().default(null),
-  checkUpdatesOnStart: z.boolean().default(true)
+  liveStatusWatch: z.boolean().default(true).catch(true),
+  externalEditor: z.string().nullable().default(null).catch(null),
+  externalTerminal: z.string().nullable().default(null).catch(null),
+  checkUpdatesOnStart: z.boolean().default(true).catch(true)
 })
 export type AppPreferences = z.infer<typeof AppPreferencesSchema>
 
@@ -221,11 +265,13 @@ export const HistoryQuerySchema = z.object({
   search: z.string().optional(),
   author: z.string().optional(),
   path: z.string().optional(),
-  branch: z.string().optional(),
+  branch: z
+    .string()
+    .min(1)
+    .refine((b) => !b.startsWith('-'), 'Invalid branch')
+    .optional(),
   mergesOnly: z.boolean().optional(),
-  /** Last SHA from previous page; used for `--all` ancestor walks (`cursor^@`). */
-  cursor: z.string().optional(),
-  /** Offset for branch-filtered paging (`git log --skip`); ignored in `--all` cursor mode. */
+  /** Commits already shown; the next page starts after them (`git log --skip`). */
   skip: z.number().int().min(0).max(1_000_000).optional(),
   limit: z.number().min(1).max(500).default(HISTORY_PAGE_SIZE)
 })
@@ -233,8 +279,8 @@ export type HistoryQuery = z.infer<typeof HistoryQuerySchema>
 
 export const CloneRequestSchema = z.object({
   url: z.string().min(1),
-  targetDir: z.string().min(1),
-  transport: z.enum(['https', 'ssh']).default('https')
+  /** Parent folder; the clone goes into a sub-folder named after the repository. */
+  targetDir: z.string().min(1)
 })
 export type CloneRequest = z.infer<typeof CloneRequestSchema>
 
@@ -269,8 +315,3 @@ export const StashEntrySchema = z.object({
   reflogSelector: z.string()
 })
 export type StashEntry = z.infer<typeof StashEntrySchema>
-
-export const ConflictPathsResultSchema = z.object({
-  conflicts: z.array(z.string())
-})
-export type ConflictPathsResult = z.infer<typeof ConflictPathsResultSchema>

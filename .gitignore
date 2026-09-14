@@ -18,3 +18,4 @@ coverage/
 *.dmg
 *.zip
 *.yml.bak
+*.tsbuildinfo

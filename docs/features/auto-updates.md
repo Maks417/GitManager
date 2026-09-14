@@ -30,6 +30,7 @@ Check for and install signed updates published to GitHub Releases via `electron-
 ## Edge cases & rules
 
 - Requires packaged app + publish config / `GH_TOKEN` for release pipelines.
+- Releases are built from `v*` tags that match `package.json`. Each platform uploads to a draft release, and the release is published only after every platform succeeds, so update clients never see a release without its `latest.yml` / `latest-mac.yml`.
 - `autoDownload` and `autoInstallOnAppQuit` are enabled when checking in packaged mode.
 - Errors surface on `UpdateStatus.error` for the modal banner.
 

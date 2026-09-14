@@ -1,15 +1,20 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
-import { basename, join, normalize, resolve } from 'path'
+import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
+import { join, normalize, resolve } from 'path'
 import { existsSync, mkdirSync } from 'fs'
-import { rm } from 'fs/promises'
+import { z } from 'zod'
 import { CloneRequestSchema, IpcChannels } from '@shared/ipc'
 import * as git from '../../git-worker/client'
-import { cancelAllGit } from '../../git-worker/client'
+import { cancelGitIn } from '../../git-worker/client'
+import { isPathInside } from '../../git-worker/path-utils'
 import { loadPreferences, loadRepositories, saveRepositories } from '../storage'
 import { getWatchedRepoPath, startRepoWatch, stopRepoWatch } from '../repo-watcher'
+import { assertDeletableRepoDir } from '../repo-removal'
+import { repoNameFromUrl } from '../clone-target'
 import { assertSender } from './assert-sender'
 import { upsertRepository } from './repo-store'
-import { parseAccountId, parseRepoPath } from './parse'
+import { NonEmptyStringSchema, parseAccountId, parseRepoPath } from './parse'
+
+const RemoveOptionsSchema = z.object({ deleteFiles: z.boolean().optional() }).optional()
 
 export function registerRepoHandlers(): void {
   ipcMain.handle(IpcChannels.repo.list, async (event) => {
@@ -34,52 +39,48 @@ export function registerRepoHandlers(): void {
     return repo
   })
 
-  ipcMain.handle(
-    IpcChannels.repo.remove,
-    async (event, id: string, options?: { deleteFiles?: boolean } | boolean) => {
-      assertSender(event)
-      if (!id || typeof id !== 'string') throw new Error('Invalid repository id')
-      const deleteFiles =
-        typeof options === 'boolean' ? options : Boolean(options && options.deleteFiles)
-      const repos = loadRepositories()
-      const repo = repos.find((r) => r.id === id)
-      if (!repo) return
+  ipcMain.handle(IpcChannels.repo.removalInfo, async (event, rawId: unknown) => {
+    assertSender(event)
+    const id = NonEmptyStringSchema.parse(rawId)
+    const repo = loadRepositories().find((r) => r.id === id)
+    if (!repo) throw new Error('Repository not found')
+    const info = await git.inspectRepoForRemoval(repo.path)
+    return { path: resolve(repo.path), ...info }
+  })
 
-      if (deleteFiles) {
-        if (!repo.path || typeof repo.path !== 'string') throw new Error('Invalid repository path')
-        const target = resolve(normalize(repo.path))
-        // Guard against accidentally wiping a drive root (e.g. "C:\").
-        if (target.length < 4) throw new Error('Refusing to delete path')
-        if (!existsSync(target)) {
-          saveRepositories(repos.filter((r) => r.id !== id))
-          return
-        }
+  ipcMain.handle(IpcChannels.repo.remove, async (event, rawId: unknown, rawOptions?: unknown) => {
+    assertSender(event)
+    const id = NonEmptyStringSchema.parse(rawId)
+    const deleteFiles = Boolean(RemoveOptionsSchema.parse(rawOptions)?.deleteFiles)
+    const repos = loadRepositories()
+    const repo = repos.find((r) => r.id === id)
+    if (!repo) return
 
-        const watched = getWatchedRepoPath()
-        if (watched && resolve(normalize(watched)) === target) stopRepoWatch()
-        cancelAllGit()
-        // Give watchers / git child processes a moment to release handles (esp. Windows).
-        await new Promise((r) => setTimeout(r, 150))
+    if (deleteFiles && existsSync(repo.path)) {
+      const target = assertDeletableRepoDir(repo.path, {
+        home: app.getPath('home'),
+        protectedPaths: [app.getPath('userData'), app.getAppPath(), process.resourcesPath]
+      })
 
-        try {
-          await rm(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 })
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err)
-          throw new Error(
-            `Could not delete folder:\n${target}\n\n${msg}\n\nClose other programs using these files and try again.`
-          )
-        }
+      const watched = getWatchedRepoPath()
+      if (watched && isPathInside(target, watched)) stopRepoWatch()
+      cancelGitIn(target)
+      // Give watchers / git child processes a moment to release handles (esp. Windows).
+      await new Promise((r) => setTimeout(r, 150))
 
-        if (existsSync(target)) {
-          throw new Error(
-            `Could not delete folder:\n${target}\n\nClose other programs using these files and try again.`
-          )
-        }
+      try {
+        // Recoverable on purpose: the folder goes to the Recycle Bin / Trash, never a permanent delete.
+        await shell.trashItem(target)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        throw new Error(
+          `Could not move the folder to the Trash:\n${target}\n\n${msg}\n\nClose other programs using these files and try again, or delete the folder manually.`
+        )
       }
-
-      saveRepositories(repos.filter((r) => r.id !== id))
     }
-  )
+
+    saveRepositories(repos.filter((r) => r.id !== id))
+  })
 
   ipcMain.handle(IpcChannels.repo.openDialog, async (event) => {
     assertSender(event)
@@ -105,8 +106,7 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IpcChannels.repo.clone, async (event, raw: unknown) => {
     assertSender(event)
     const request = CloneRequestSchema.parse(raw)
-    const name = basename(request.url.replace(/\.git$/, '').replace(/\/$/, '').split('/').pop() || 'repo')
-    const target = join(request.targetDir, name)
+    const target = join(request.targetDir, repoNameFromUrl(request.url))
     const repo = await git.cloneRepository(request.url, target)
     upsertRepository(repo)
     return repo
@@ -130,7 +130,7 @@ export function registerRepoHandlers(): void {
       stopRepoWatch()
       return
     }
-    startRepoWatch(path)
+    startRepoWatch(path, (root, paths) => git.filterIgnoredPaths(root, paths))
   })
 
   ipcMain.handle(IpcChannels.repo.unwatch, async (event) => {

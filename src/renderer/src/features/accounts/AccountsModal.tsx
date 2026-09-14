@@ -9,7 +9,14 @@ interface Props {
   accounts: ProviderAccount[]
   onClose: () => void
   onChanged: () => Promise<void>
-  onCloneRemote: (repo: RemoteRepo) => void
+  /** Clone URL (HTTPS or SSH) to prefill in the clone dialog. */
+  onCloneRemote: (url: string) => void
+}
+
+const TOKEN_LABEL: Record<ProviderId, string> = {
+  github: 'Personal access token',
+  gitlab: 'Personal access token',
+  bitbucket: 'API token'
 }
 
 export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: Props): React.JSX.Element {
@@ -54,8 +61,9 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
       }
     >
       <p className="muted" style={{ margin: 0 }}>
-        Connect GitHub, GitLab, or Bitbucket with a personal access / app password. HTTPS uses Git Credential Manager on
-        clone/fetch/push; SSH remotes use your OpenSSH agent and keys.
+        Connect GitHub or GitLab with a personal access token, or Bitbucket with an Atlassian API token and
+        your account email. Clone, fetch and push still use your Git credentials: HTTPS through your credential
+        helper, SSH through your agent and keys.
       </p>
       {error && <Banner>{error}</Banner>}
 
@@ -72,20 +80,29 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
           </Select>
         </Field>
         {provider === 'bitbucket' && (
-          <Field label="Username">
-            <Input className="w-full" value={username} onChange={(e) => setUsername(e.target.value)} />
+          <Field label="Atlassian account email">
+            <Input
+              className="w-full"
+              type="email"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
           </Field>
         )}
-        <Field label="Token / app password">
+        <Field label={TOKEN_LABEL[provider]}>
           <Input
             className="w-full"
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder="Paste token — stored in OS secure storage"
+            placeholder="Paste token — encrypted by the OS when available"
           />
         </Field>
-        <Button variant="primary" disabled={busy || !token.trim()} onClick={connect}>
+        <Button
+          variant="primary"
+          disabled={busy || !token.trim() || (provider === 'bitbucket' && !username.trim())}
+          onClick={connect}
+        >
           Connect
         </Button>
       </div>
@@ -95,6 +112,9 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
         {accounts.map((a) => (
           <li key={a.id} className={a.id === activeAccount ? 'active' : ''} onClick={() => loadRepos(a.id)}>
             <strong>{a.provider}</strong> {a.displayName} (@{a.username})
+            {a.secureStorage === false && (
+              <span className="muted text-xs"> · token stored without OS encryption</span>
+            )}
             <div>
               <Button
                 className="mt-1"
@@ -117,9 +137,10 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
           <li key={r.id}>
             <div className="cell-ellipsis">{r.fullName}</div>
             <div className="muted cell-ellipsis">{r.description}</div>
-            <Button className="mt-1" onClick={() => onCloneRemote(r)}>
-              Clone HTTPS
-            </Button>
+            <div className="row-inline mt-1">
+              <Button onClick={() => onCloneRemote(r.cloneUrlHttps)}>Clone HTTPS</Button>
+              {r.cloneUrlSsh && <Button onClick={() => onCloneRemote(r.cloneUrlSsh)}>Clone SSH</Button>}
+            </div>
           </li>
         ))}
         {activeAccount && repos.length === 0 && !busy && <li className="muted">No repositories loaded</li>}

@@ -1,9 +1,9 @@
 /**
- * Electron utilityProcess entry for git ops (Windows + macOS).
+ * Electron utilityProcess entry for git ops.
  * Receives `{ id, method, args }` and replies `{ id, ok, result | error }`.
  */
 import { GIT_METHODS } from './method-registry'
-import { cancelAllGit } from './git-runner'
+import { cancelAllGit, cancelGitIn } from './git-runner'
 
 type RpcRequest = { id: number; method: string; args: unknown[] }
 
@@ -11,6 +11,9 @@ const handlers: Record<string, (...args: never[]) => unknown> = {
   ...GIT_METHODS,
   cancelAllGit: () => {
     cancelAllGit()
+  },
+  cancelGitIn: (root: string) => {
+    cancelGitIn(root)
   }
 }
 

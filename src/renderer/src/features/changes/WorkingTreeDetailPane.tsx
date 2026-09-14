@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import type { DiffResult, GitIdentity, StashEntry, StatusEntry } from '@shared/ipc'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
-import { RebaseProgressBar } from '../../components/RebaseProgressBar'
+import { OperationBar } from '../../components/OperationBar'
 import { Splitter } from '../../components/Splitter'
 import { Button, RefPill } from '../../components/ui'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
@@ -42,7 +42,10 @@ interface Props {
   canAmend?: boolean
   rebaseInProgress?: boolean
   onRebaseContinue?: () => Promise<void>
+  onRebaseSkip?: () => Promise<void>
   onRebaseAbort?: () => Promise<void>
+  mergeInProgress?: boolean
+  onMergeAbort?: () => Promise<void>
   filesWidth?: number
   onFilesWidthChange?: (width: number) => void
   onFilesWidthCommit?: (width: number) => void
@@ -82,7 +85,10 @@ export function WorkingTreeDetailPane({
   canAmend = false,
   rebaseInProgress = false,
   onRebaseContinue,
+  onRebaseSkip,
   onRebaseAbort,
+  mergeInProgress = false,
+  onMergeAbort,
   filesWidth = 300,
   onFilesWidthChange,
   onFilesWidthCommit
@@ -128,16 +134,19 @@ export function WorkingTreeDetailPane({
     onError(null)
     try {
       await fn()
-      await onRefresh()
-      await loadStashes()
     } catch (err) {
       onError(toErrorMessage(err))
     } finally {
+      // Refresh after failures too: a failed step (a push after a successful commit, a stash pop
+      // with conflicts) can still have changed the repository.
+      await onRefresh().catch(() => undefined)
+      await loadStashes()
       setBusy(false)
     }
   }
 
-  const needsStageBeforeCommit = !amend && stagedEntries.length === 0
+  // Concluding a merge may legitimately commit no new changes (e.g. every conflict resolved as ours).
+  const needsStageBeforeCommit = !amend && !mergeInProgress && stagedEntries.length === 0
 
   const toggleChecked = (path: string): void => {
     setChecked((prev) => (prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]))
@@ -243,15 +252,23 @@ export function WorkingTreeDetailPane({
     </div>
   )
 
-  const rebaseBar =
-    rebaseInProgress && (onRebaseContinue || onRebaseAbort) ? (
-      <RebaseProgressBar
-        variant="pane"
-        busy={busy}
-        onContinue={onRebaseContinue ? () => run(() => onRebaseContinue()) : undefined}
-        onAbort={onRebaseAbort ? () => run(() => onRebaseAbort()) : undefined}
-      />
-    ) : null
+  const operationBar = rebaseInProgress ? (
+    <OperationBar
+      kind="rebase"
+      variant="pane"
+      busy={busy}
+      onContinue={onRebaseContinue ? () => run(() => onRebaseContinue()) : undefined}
+      onSkip={onRebaseSkip ? () => run(() => onRebaseSkip()) : undefined}
+      onAbort={onRebaseAbort ? () => run(() => onRebaseAbort()) : undefined}
+    />
+  ) : mergeInProgress ? (
+    <OperationBar
+      kind="merge"
+      variant="pane"
+      busy={busy}
+      onAbort={onMergeAbort ? () => run(() => onMergeAbort()) : undefined}
+    />
+  ) : null
 
   const stashPanel = (
     <div className="stash-panel">
@@ -327,7 +344,8 @@ export function WorkingTreeDetailPane({
     </div>
   )
 
-  if (status.length === 0) {
+  // While merging, keep the commit form even with a clean tree so the merge can be concluded.
+  if (status.length === 0 && !mergeInProgress) {
     return (
       <div className="changes-workspace changes-workspace-empty">
         <div className="empty-state changes-empty">
@@ -349,7 +367,7 @@ export function WorkingTreeDetailPane({
           </div>
         </div>
         <div className="changes-footer-stack">
-          {rebaseBar}
+          {operationBar}
           {stashPanel}
           {identityBar}
         </div>
@@ -387,7 +405,7 @@ export function WorkingTreeDetailPane({
             )}
             {checked.length > 0 ? ` · ${checked.length} selected` : ''}
           </span>
-          {rebaseBar}
+          {operationBar}
           <div className="changes-actions">
             <Button
               icon={<Plus size={16} strokeWidth={1.75} />}
@@ -412,7 +430,7 @@ export function WorkingTreeDetailPane({
                 const paths = stageablePaths
                 void run(async () => {
                   await window.gitManager.git.stage(repoPath, paths)
-                  setChecked(paths)
+                  setChecked([])
                 })
               }}
             >
@@ -441,7 +459,7 @@ export function WorkingTreeDetailPane({
                 const paths = unstageablePaths
                 void run(async () => {
                   await window.gitManager.git.unstage(repoPath, paths)
-                  setChecked(paths)
+                  setChecked([])
                 })
               }}
             >
@@ -453,7 +471,13 @@ export function WorkingTreeDetailPane({
               title="Discard local changes for selected files"
               disabled={busy || !targets.length}
               onClick={() => {
-                if (!confirm('Discard local changes for selected files?')) return
+                if (
+                  !confirm(
+                    'Discard changes in the selected files?\n\nModified files go back to their staged or committed version. Untracked files are moved to the Trash.'
+                  )
+                ) {
+                  return
+                }
                 void run(async () => {
                   await window.gitManager.git.discard(repoPath, targets)
                   setChecked([])
@@ -545,12 +569,17 @@ export function WorkingTreeDetailPane({
                   throw new Error('Nothing to commit — the working tree is clean.')
                 }
                 await window.gitManager.git.commit(repoPath, message.trim(), amend)
-                if (pushAfterCommit) {
-                  await window.gitManager.git.push(repoPath)
-                }
+                // The commit exists now: clear the form before pushing, which can fail on its own.
                 setMessage('')
                 setAmend(false)
                 setChecked([])
+                if (pushAfterCommit) {
+                  try {
+                    await window.gitManager.git.push(repoPath)
+                  } catch (err) {
+                    throw new Error(`Committed, but the push failed: ${toErrorMessage(err)}`)
+                  }
+                }
               })
             }
           >

@@ -1,62 +1,73 @@
 import type { ProviderAccount, RemoteRepo } from '@shared/ipc'
+import { fetchJson, MAX_PAGES } from './http'
 
-async function bbFetch(token: string, path: string, username: string): Promise<Response> {
-  const auth = Buffer.from(`${username}:${token}`).toString('base64')
-  return fetch(`https://api.bitbucket.org/2.0${path}`, {
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'User-Agent': 'GitManager'
-    }
-  })
+const API = 'https://api.bitbucket.org/2.0'
+
+interface BitbucketRepo {
+  uuid: string
+  name: string
+  full_name: string
+  description: string | null
+  is_private: boolean
+  links: { clone: Array<{ name: string; href: string }>; html: { href: string } }
+  mainbranch?: { name: string }
 }
 
-export async function connectBitbucket(token: string, username?: string): Promise<ProviderAccount> {
-  const user = username || 'x-token-auth'
-  const res = await bbFetch(token, '/user', user)
-  if (!res.ok) throw new Error(`Bitbucket auth failed (${res.status})`)
-  const data = (await res.json()) as {
+/**
+ * Atlassian API tokens authenticate to the Bitbucket Cloud REST API with HTTP Basic auth: the
+ * Atlassian account email as the user name and the API token as the password. (Bitbucket app
+ * passwords, which used the Bitbucket username instead, have been retired.)
+ */
+function basicAuth(email: string, token: string): Record<string, string> {
+  return { Authorization: `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}` }
+}
+
+export async function connectBitbucket(
+  token: string,
+  email?: string
+): Promise<{ account: ProviderAccount; authUser: string }> {
+  if (!email) throw new Error('Bitbucket needs the Atlassian account email that owns the API token.')
+  const { data } = await fetchJson(`${API}/user`, basicAuth(email, token), 'Bitbucket auth failed')
+  const user = data as {
     uuid: string
     username?: string
+    nickname?: string
     display_name?: string
     links?: { avatar?: { href?: string } }
   }
+  const username = user.username || user.nickname || email
   return {
-    id: `bitbucket:${data.uuid}`,
-    provider: 'bitbucket',
-    username: data.username || user,
-    displayName: data.display_name || data.username || user,
-    avatarUrl: data.links?.avatar?.href,
-    host: 'bitbucket.org'
+    account: {
+      id: `bitbucket:${user.uuid}`,
+      provider: 'bitbucket',
+      username,
+      displayName: user.display_name || username,
+      avatarUrl: user.links?.avatar?.href,
+      host: 'bitbucket.org'
+    },
+    authUser: email
   }
 }
 
-export async function listBitbucketRepos(account: ProviderAccount, token: string): Promise<RemoteRepo[]> {
-  const res = await bbFetch(token, '/repositories?role=member&pagelen=100', account.username)
-  if (!res.ok) throw new Error(`Bitbucket repos failed (${res.status})`)
-  const data = (await res.json()) as {
-    values: Array<{
-      uuid: string
-      name: string
-      full_name: string
-      description: string | null
-      is_private: boolean
-      links: { clone: Array<{ name: string; href: string }>; html: { href: string } }
-      mainbranch?: { name: string }
-    }>
+/** `authUser` must be the same email that was used to connect. */
+export async function listBitbucketRepos(authUser: string, token: string): Promise<RemoteRepo[]> {
+  const repos: BitbucketRepo[] = []
+  let url: string | null = `${API}/repositories?role=member&pagelen=100`
+  for (let page = 0; url && page < MAX_PAGES; page++) {
+    const { data } = await fetchJson(url, basicAuth(authUser, token), 'Bitbucket repos failed')
+    const body = data as { values: BitbucketRepo[]; next?: string }
+    repos.push(...body.values)
+    url = body.next ?? null
   }
-  return data.values.map((r) => {
-    const https = r.links.clone.find((c) => c.name === 'https')?.href || ''
-    const ssh = r.links.clone.find((c) => c.name === 'ssh')?.href || ''
-    return {
-      id: r.uuid,
-      name: r.name,
-      fullName: r.full_name,
-      description: r.description,
-      private: r.is_private,
-      cloneUrlHttps: https,
-      cloneUrlSsh: ssh,
-      defaultBranch: r.mainbranch?.name || 'main',
-      webUrl: r.links.html.href
-    }
-  })
+  return repos.map((r) => ({
+    id: r.uuid,
+    name: r.name,
+    fullName: r.full_name,
+    description: r.description,
+    private: r.is_private,
+    cloneUrlHttps: r.links.clone.find((c) => c.name === 'https')?.href || '',
+    cloneUrlSsh: r.links.clone.find((c) => c.name === 'ssh')?.href || '',
+    defaultBranch: r.mainbranch?.name || 'main',
+    webUrl: r.links.html.href
+  }))
 }

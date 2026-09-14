@@ -7,7 +7,7 @@
 | Repository | Local Git repo tracked by the app | `id`, `name`, `path`, `currentBranch`, `remotes[]` |
 | Commit | History entry from `git log` | `sha`, `shortSha`, `subject`, `body`, author, `authoredAt`, `parents[]`, `refs[]` |
 | CommitRef | Decorations on a commit | `name`, `type` (`local` \| `remote` \| `tag` \| `head`), optional `color` |
-| GraphNode | Layout of one commit in the topology graph | `sha`, `lane`, `lanes[]`, `connections[]` |
+| GraphNode | Layout of one commit in the topology graph | `sha`, `lane`, `lanes[]`, `passThrough[]`, `joins[]`, `hasIncoming`, `connections[]` |
 | HistoryPage | Paged history payload | `commits`, `graph`, `nextCursor`, `headSha` |
 | FileChange | File touched by a commit | `path`, `status`, optional stats / `oldPath` |
 | CommitDetail | Commit + changed files | `commit`, `files` |
@@ -17,12 +17,13 @@
 | RemoteBranchInfo | Remote-tracking branch short name | `name`, `remote` |
 | StashEntry | Stash reflog entry | `index`, `message`, `reflogSelector` |
 | ConflictFile | Path with unmerged stages | `path`, `hasBase`, `hasOurs`, `hasTheirs` |
-| MergeSides | Three-way content + working result | `path`, `base`, `ours`, `theirs`, `result` |
+| MergeSides | Three-way content + work-tree result | `path`, `base`, `ours`, `theirs`, `result`, `binary`, `tooLarge` |
+| RepoRemovalInfo | What deleting a repository folder would lose | `uncommitted`, `stashes`, `unpushed` |
 | ConflictRegion | Parsed conflict markers (merge-core) | line range, `ours` / `theirs` / `base?`, resolution |
 | ProviderAccount | Connected host account (no token in API) | `id`, `provider`, `username`, `displayName`, `host` |
 | RemoteRepo | Host repo available to clone | clone URLs, `fullName`, `defaultBranch`, `webUrl` |
 | GitIdentity | Effective `user.name` / `user.email` | values + `nameSource` / `emailSource` scopes |
-| GitProbeResult | Startup Git CLI availability | `available`, `version?`, `error?` |
+| GitProbeResult | Startup Git CLI availability | `available`, `version`, `message` |
 | AppInfo | About-dialog metadata | `name`, `version`, `architecture`, `homepage` |
 | AppPreferences | UI layout and behavior prefs | theme, dock, column widths, filters, live watch, etc. |
 | RepoWatchEvent | Live FS watch notification | `repoPath`, `kind` (`worktree` \| `git-meta`) |
@@ -61,7 +62,7 @@ erDiagram
 |---|---|
 | `repositories.json` | Saved `Repository[]` |
 | `preferences.json` | `AppPreferences` |
-| `accounts.json` | Provider accounts + `tokenEnc` (not exposed over IPC list) |
+| `accounts.json` | Provider accounts + `tokenEnc`, `tokenScheme` and (Bitbucket) `authUser` — none exposed over IPC |
 
 Git objects themselves live on disk under each repository’s `.git`; the app does not mirror the object database.
 
@@ -78,7 +79,7 @@ Git objects themselves live on disk under each repository’s `.git`; the app do
 ## Invariants
 
 - A `Repository.path` must be a valid Git work tree before add/create/clone succeeds ([`inspectRepository`](../src/git-worker/ops/repo.ts)).
-- IPC list of accounts never returns token material — only metadata ([`providers-handlers.ts`](../src/main/ipc/providers-handlers.ts) strips `tokenEnc`).
+- IPC list of accounts never returns token material — only metadata ([`providers-handlers.ts`](../src/main/ipc/providers-handlers.ts) strips `tokenEnc`, `tokenScheme` and `authUser`).
 - History graph lanes are derived from parent topology in log order; they are not persisted ([`layoutCommitGraph`](../src/history-core/layout.ts)).
 - `StatusEntry.conflicted` / unmerged paths drive merge-editor open; saving a merge result stages the path.
 - Preferences and identity mutations are validated with Zod (`AppPreferencesSchema`, `SetGitIdentityRequestSchema`).

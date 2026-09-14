@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type React from 'react'
 import { Button } from './Button'
 
@@ -23,6 +24,14 @@ export function Modal({
   className = '',
   style
 }: ModalProps): React.JSX.Element {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div

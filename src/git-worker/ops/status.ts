@@ -1,6 +1,6 @@
 import type { StatusEntry } from '@shared/ipc'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
-import { gitOk, resolveHeadSha } from './shared'
+import { gitOk, resolveHeadSha, runGit } from './shared'
 
 export async function getStatus(
   repoPath: string,
@@ -12,19 +12,18 @@ export async function getStatus(
     '-z',
     `--untracked-files=${untracked}`
   ])
-  // porcelain v2 with -z uses NUL separators; without reliable NUL over string, also support newline fallback
-  const chunks = out.includes('\0') ? out.split('\0') : out.split('\n')
+  // -z: records are NUL-terminated with raw paths; a rename record is followed by its original path.
+  const records = out.split('\0')
   const entries: StatusEntry[] = []
 
-  for (const chunk of chunks) {
-    const line = chunk.trim()
+  for (let i = 0; i < records.length; i++) {
+    const line = records[i]
     if (!line) continue
     if (line.startsWith('1 ') || line.startsWith('2 ')) {
       const parts = line.split(' ')
       const xy = parts[1]
-      const path = line.startsWith('2 ')
-        ? parts.slice(9).join(' ').split('\t').pop() || ''
-        : parts.slice(8).join(' ')
+      const path = parts.slice(line.startsWith('2 ') ? 9 : 8).join(' ')
+      if (line.startsWith('2 ')) i++ // skip the original-path record
       const indexStatus = xy[0]
       const workTreeStatus = xy[1]
       entries.push({
@@ -63,25 +62,90 @@ export async function getStatus(
   return entries
 }
 
+/** The subset of repo-relative `paths` that Git ignores. Tracked files are never reported. */
+export async function filterIgnoredPaths(repoPath: string, paths: string[]): Promise<string[]> {
+  if (!paths.length) return []
+  const result = await runGit({
+    cwd: repoPath,
+    args: ['check-ignore', '-z', '--stdin'],
+    input: `${paths.join('\0')}\0`
+  })
+  // Exit 1 means none of the paths are ignored; anything higher is an error.
+  if (result.code > 1) throw new Error(result.stderr || `git check-ignore failed (${result.code})`)
+  return result.stdout.split('\0').filter(Boolean)
+}
+
+/** Split pathspecs so each command line stays far below Windows' 32,767-character limit. */
+export function chunkPaths(paths: string[], maxChars = 8000): string[][] {
+  const chunks: string[][] = []
+  let current: string[] = []
+  let length = 0
+  for (const path of paths) {
+    if (current.length > 0 && length + path.length + 3 > maxChars) {
+      chunks.push(current)
+      current = []
+      length = 0
+    }
+    current.push(path)
+    length += path.length + 3
+  }
+  if (current.length > 0) chunks.push(current)
+  return chunks
+}
+
+async function gitForPaths(repoPath: string, args: string[], paths: string[]): Promise<void> {
+  for (const chunk of chunkPaths(paths)) {
+    await gitOk(repoPath, ['--literal-pathspecs', ...args, '--', ...chunk])
+  }
+}
+
 export async function stagePaths(repoPath: string, paths: string[]): Promise<void> {
-  if (!paths.length) return
-  await gitOk(repoPath, ['add', '--', ...paths])
+  await gitForPaths(repoPath, ['add'], paths)
 }
 
 export async function unstagePaths(repoPath: string, paths: string[]): Promise<void> {
   if (!paths.length) return
   // `git restore --staged` needs a commit; unborn repos (no HEAD) must use rm --cached.
   const head = await resolveHeadSha(repoPath)
-  if (head) {
-    await gitOk(repoPath, ['restore', '--staged', '--', ...paths])
-    return
-  }
-  await gitOk(repoPath, ['rm', '--cached', '-f', '--', ...paths])
+  if (head) await gitForPaths(repoPath, ['restore', '--staged'], paths)
+  else await gitForPaths(repoPath, ['rm', '--cached', '-f', '-q'], paths)
 }
 
-export async function discardPaths(repoPath: string, paths: string[]): Promise<void> {
-  if (!paths.length) return
-  await gitOk(repoPath, ['restore', '--worktree', '--', ...paths])
+/** Restore tracked files in the work tree from the index (Discard for tracked changes). */
+export async function restoreWorktree(repoPath: string, paths: string[]): Promise<void> {
+  await gitForPaths(repoPath, ['restore', '--worktree'], paths)
+}
+
+/**
+ * Decide what Discard does per selected path: tracked paths are restored from the index, untracked
+ * files and folders (e.g. `dir/`) are removed, and conflicted paths are left for the merge editor.
+ */
+export async function planDiscard(
+  repoPath: string,
+  paths: string[]
+): Promise<{ restore: string[]; remove: string[]; conflicted: string[] }> {
+  const tracked = new Set<string>()
+  const unmerged = new Set<string>()
+  for (const chunk of chunkPaths(paths)) {
+    const args = ['--literal-pathspecs', 'ls-files', '-z']
+    for (const file of (await gitOk(repoPath, [...args, '--', ...chunk])).split('\0')) {
+      if (file) tracked.add(file)
+    }
+    for (const record of (await gitOk(repoPath, [...args, '-u', '--', ...chunk])).split('\0')) {
+      const m = /\t([\s\S]+)$/.exec(record)
+      if (m) unmerged.add(m[1])
+    }
+  }
+  const covers = (files: Set<string>, path: string): boolean =>
+    files.has(path) || (path.endsWith('/') && [...files].some((f) => f.startsWith(path)))
+
+  const plan = { restore: [] as string[], remove: [] as string[], conflicted: [] as string[] }
+  for (const path of paths) {
+    if (covers(unmerged, path)) plan.conflicted.push(path)
+    else if (covers(tracked, path)) plan.restore.push(path)
+    else plan.remove.push(path)
+  }
+  return plan
 }
 
 /** Maps raw `git commit` stderr into actionable UI copy. */

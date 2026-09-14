@@ -15,6 +15,17 @@ const BASE_MARKER = /^\|{7}(?: .*)?$/
 const SEPARATOR = /^={7}$/
 const THEIRS_MARKER = /^>{7}(?: .*)?$/
 
+/** Dominant line ending of `text`, so edits keep a CRLF file CRLF. */
+export function detectEol(text: string): '\r\n' | '\n' {
+  let crlf = 0
+  let lf = 0
+  for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) {
+    if (i > 0 && text.charCodeAt(i - 1) === 13) crlf++
+    else lf++
+  }
+  return crlf > lf ? '\r\n' : '\n'
+}
+
 /**
  * Parse conflict-marker files into editable regions, or synthesize
  * a single region when sides are provided without markers.
@@ -67,14 +78,6 @@ export function parseConflictMarkers(text: string): ConflictRegion[] {
   return regions
 }
 
-export function buildInitialResult(ours: string, theirs: string, workingTree?: string): string {
-  if (workingTree && (OURS_MARKER.test(workingTree) || workingTree.includes('<<<<<<<'))) {
-    return workingTree
-  }
-  if (workingTree) return workingTree
-  return ours.length ? ours : theirs
-}
-
 export function applyRegionResolution(
   resultText: string,
   region: ConflictRegion,
@@ -102,8 +105,8 @@ export function applyRegionResolution(
   if (OURS_MARKER.test(resultText) || resultText.includes('<<<<<<<')) {
     const before = lines.slice(0, region.startLine)
     const after = lines.slice(region.endLine + 1)
-    const mid = replacement.length ? replacement.split('\n') : []
-    const text = [...before, ...mid, ...after].join('\n')
+    const mid = replacement.length ? replacement.split(/\r?\n/) : []
+    const text = [...before, ...mid, ...after].join(detectEol(resultText))
     return {
       text,
       region: {
@@ -146,6 +149,6 @@ export function mergeSidesToEditable(base: string, ours: string, theirs: string)
     '=======',
     theirs,
     '>>>>>>> Theirs'
-  ].join('\n')
+  ].join(detectEol(ours || theirs || base))
   return { result, regions: parseConflictMarkers(result) }
 }

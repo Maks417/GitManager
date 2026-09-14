@@ -1,24 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { escapeBasicRegexp, isShaLike, looksLikeAuthorQuery } from '../src/git-worker/history-query'
+import { parseHistorySearch } from '../src/git-worker/history-query'
 
-describe('history-query helpers', () => {
-  it('escapes basic-regexp metacharacters', () => {
-    const escaped = escapeBasicRegexp('foo(bar)')
-    expect([...escaped].map((c) => c.charCodeAt(0))).toEqual([
-      102, 111, 111, 92, 40, 98, 97, 114, 92, 41
-    ])
-    expect(escapeBasicRegexp('a.b*c?')).toBe(String.raw`a\.b\*c\?`)
+describe('parseHistorySearch', () => {
+  it('treats plain text, including several words and regex characters, as a message search', () => {
+    expect(parseHistorySearch('fix login bug')).toEqual({ kind: 'message', text: 'fix login bug' })
+    expect(parseHistorySearch('  fix(auth) {beta} a|b ')).toEqual({ kind: 'message', text: 'fix(auth) {beta} a|b' })
   })
 
-  it('detects sha-like queries', () => {
-    expect(isShaLike('abc1234')).toBe(true)
-    expect(isShaLike('fix')).toBe(false)
-    expect(isShaLike('Fix login')).toBe(false)
+  it('only treats 7–40 hex digits as a commit id', () => {
+    expect(parseHistorySearch('abc1234')).toEqual({ kind: 'sha', sha: 'abc1234', text: 'abc1234' })
+    expect(parseHistorySearch('added')).toEqual({ kind: 'message', text: 'added' })
+    expect(parseHistorySearch('decade')).toEqual({ kind: 'message', text: 'decade' })
   })
 
-  it('detects author-style queries', () => {
-    expect(looksLikeAuthorQuery('ada@example.com')).toBe(true)
-    expect(looksLikeAuthorQuery('Ada Lovelace')).toBe(true)
-    expect(looksLikeAuthorQuery('timeout')).toBe(false)
+  it('uses an explicit author: prefix for author searches', () => {
+    expect(parseHistorySearch('author: Ada Lovelace')).toEqual({ kind: 'author', text: 'Ada Lovelace' })
+    expect(parseHistorySearch('Author:ada@example.com')).toEqual({ kind: 'author', text: 'ada@example.com' })
+  })
+
+  it('ignores empty input', () => {
+    expect(parseHistorySearch('   ')).toBeNull()
+    expect(parseHistorySearch(undefined)).toBeNull()
   })
 })

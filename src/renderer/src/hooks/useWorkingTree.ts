@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   Commit,
   CommitDetail,
@@ -189,6 +189,7 @@ export function useWorkingTree({
           repoPath: activeRepo.path,
           sha: selectedSha,
           path: selectedFile.path,
+          oldPath: selectedFile.oldPath,
           parentIndex: 0
         })
         if (!cancelled) setDiff(d)
@@ -211,17 +212,24 @@ export function useWorkingTree({
     setDiffLoading
   ])
 
+  /** Work-tree diff currently shown; a status refresh reloads it without flashing "Loading diff…". */
+  const shownDiffKeyRef = useRef<string | null>(null)
+
   useEffect(() => {
     if (!activeRepo || selection?.kind !== 'working-copy' || !focusedStatusPath) {
       if (selection?.kind === 'working-copy') {
+        shownDiffKeyRef.current = null
         setDiff(null)
         setDiffLoading(false)
       }
       return
     }
+    const key = `${activeRepo.path}\0${focusedStatusPath}\0${diffSide}`
     let cancelled = false
-    setDiffLoading(true)
-    setDiff(null)
+    if (shownDiffKeyRef.current !== key) {
+      setDiffLoading(true)
+      setDiff(null)
+    }
     void (async () => {
       try {
         const d = await window.gitManager.history.workingTreeDiff({
@@ -229,7 +237,9 @@ export function useWorkingTree({
           path: focusedStatusPath,
           side: diffSide
         })
-        if (!cancelled) setDiff(d)
+        if (cancelled) return
+        shownDiffKeyRef.current = key
+        setDiff(d)
       } catch (err) {
         if (!cancelled) setError(toErrorMessage(err))
       } finally {
@@ -239,11 +249,13 @@ export function useWorkingTree({
     return () => {
       cancelled = true
     }
+    // `status` is a dependency on purpose: every status refresh reloads the focused file's diff.
   }, [
     activeRepo?.path,
     selection?.kind,
     focusedStatusPath,
     diffSide,
+    status,
     setError,
     setDiff,
     setDiffLoading

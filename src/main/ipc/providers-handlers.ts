@@ -9,7 +9,10 @@ import { NonEmptyStringSchema, parseAccountId } from './parse'
 export function registerProvidersHandlers(): void {
   ipcMain.handle(IpcChannels.providers.listAccounts, async (event) => {
     assertSender(event)
-    return loadAccounts().map(({ tokenEnc: _t, tokenPlain: _p, ...rest }) => rest)
+    return loadAccounts().map(({ tokenEnc: _t, tokenScheme, authUser: _u, ...rest }) => ({
+      ...rest,
+      secureStorage: tokenScheme !== 'plain'
+    }))
   })
 
   ipcMain.handle(
@@ -22,8 +25,8 @@ export function registerProvidersHandlers(): void {
         username === undefined || username === null || username === ''
           ? undefined
           : NonEmptyStringSchema.parse(username)
-      const account = await connectWithToken(provider, token, user)
-      return storeAccountToken(account, token)
+      const { account, authUser } = await connectWithToken(provider, token, user)
+      return storeAccountToken(account, token, authUser)
     }
   )
 
@@ -40,6 +43,6 @@ export function registerProvidersHandlers(): void {
     if (!account) throw new Error('Account not found')
     const token = getAccountToken(id)
     if (!token) throw new Error('Missing credentials')
-    return listRemoteRepos(account, token)
+    return listRemoteRepos(account, token, account.authUser)
   })
 }

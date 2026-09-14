@@ -79,6 +79,7 @@ type WorkspaceShellProps = {
   setDiffSide: (side: DiffSide) => void
   identity: GitIdentity | null
   rebaseInProgress: boolean
+  mergeInProgress: boolean
   error: string | null
   onToggleSidebar: () => void
   onToggleBranches: () => void
@@ -99,7 +100,9 @@ type WorkspaceShellProps = {
   onBrowseHistory: () => void
   onEditIdentity: () => void
   onRebaseContinue: () => Promise<void>
+  onRebaseSkip: () => Promise<void>
   onRebaseAbort: () => Promise<void>
+  onMergeAbort: () => Promise<void>
 }
 
 export function WorkspaceShell(props: WorkspaceShellProps): React.JSX.Element {
@@ -244,7 +247,8 @@ export function WorkspaceShell(props: WorkspaceShellProps): React.JSX.Element {
               className="splitter-inspector-y"
               value={inspectorHeight}
               min={180}
-              max={Math.max(220, Math.floor(window.innerHeight * 0.7))}
+              // Capped at the AppPreferencesSchema maximum so the size can be saved as dragged.
+              max={Math.min(900, Math.max(220, Math.floor(window.innerHeight * 0.7)))}
               reverse
               onChange={props.setInspectorHeight}
               onChangeEnd={(h) => props.persistLayout({ inspectorHeight: h })}
@@ -257,7 +261,7 @@ export function WorkspaceShell(props: WorkspaceShellProps): React.JSX.Element {
               className="splitter-detail-x"
               value={detailWidth}
               min={280}
-              max={Math.max(360, Math.floor(window.innerWidth * 0.6))}
+              max={Math.min(900, Math.max(360, Math.floor(window.innerWidth * 0.6)))}
               reverse
               onChange={props.setDetailWidth}
               onChangeEnd={(w) => props.persistLayout({ detailWidth: w })}
@@ -278,6 +282,7 @@ export function WorkspaceShell(props: WorkspaceShellProps): React.JSX.Element {
             identity={props.identity}
             canAmend={Boolean(props.headSha)}
             rebaseInProgress={props.rebaseInProgress}
+            mergeInProgress={props.mergeInProgress}
             filesWidth={props.changesFilesWidth}
             onFilesWidthChange={props.setChangesFilesWidth}
             onFilesWidthCommit={(w) => props.persistLayout({ changesFilesWidth: w })}
@@ -288,7 +293,9 @@ export function WorkspaceShell(props: WorkspaceShellProps): React.JSX.Element {
             onBrowseHistory={props.onBrowseHistory}
             onEditIdentity={props.onEditIdentity}
             onRebaseContinue={props.onRebaseContinue}
+            onRebaseSkip={props.onRebaseSkip}
             onRebaseAbort={props.onRebaseAbort}
+            onMergeAbort={props.onMergeAbort}
           />
         </section>
       )}

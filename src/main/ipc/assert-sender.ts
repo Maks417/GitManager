@@ -1,6 +1,9 @@
+import { isTrustedAppUrl } from '../app-url'
+
+/** Only the app's own top-level document may call privileged IPC. */
 export function assertSender(event: Electron.IpcMainInvokeEvent): void {
-  const url = event.senderFrame?.url ?? ''
-  if (!url.startsWith('file:') && !url.startsWith('http://localhost') && !url.startsWith('http://127.0.0.1')) {
+  const frame = event.senderFrame
+  if (!frame || frame.parent !== null || !isTrustedAppUrl(frame.url)) {
     throw new Error('Blocked IPC from untrusted frame')
   }
 }

@@ -35,7 +35,8 @@ export const IpcChannels = {
     pickDirectory: 'repo:pick-directory',
     watch: 'repo:watch',
     unwatch: 'repo:unwatch',
-    onChanged: 'repo:on-changed'
+    onChanged: 'repo:on-changed',
+    removalInfo: 'repo:removal-info'
   },
   history: {
     load: 'history:load',
@@ -60,6 +61,9 @@ export const IpcChannels = {
     rebaseContinue: 'git:rebase-continue',
     rebaseAbort: 'git:rebase-abort',
     rebaseInProgress: 'git:rebase-in-progress',
+    rebaseSkip: 'git:rebase-skip',
+    mergeAbort: 'git:merge-abort',
+    mergeInProgress: 'git:merge-in-progress',
     stash: 'git:stash',
     stashList: 'git:stash-list',
     stashApply: 'git:stash-apply',
@@ -72,7 +76,8 @@ export const IpcChannels = {
   merge: {
     listConflicts: 'merge:list-conflicts',
     getSides: 'merge:get-sides',
-    saveResult: 'merge:save-result'
+    saveResult: 'merge:save-result',
+    resolveSide: 'merge:resolve-side'
   },
   providers: {
     listAccounts: 'providers:list-accounts',
@@ -94,8 +99,6 @@ export const IpcChannels = {
     getInfo: 'app:get-info'
   },
   shell: {
-    openExternal: 'shell:open-external',
-    openPath: 'shell:open-path',
-    showItemInFolder: 'shell:show-item-in-folder'
+    openExternal: 'shell:open-external'
   }
 } as const

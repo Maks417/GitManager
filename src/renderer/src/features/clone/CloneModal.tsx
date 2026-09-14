@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type React from 'react'
 import type { Repository } from '@shared/ipc'
-import { Banner, Button, Field, Input, Modal, Select } from '../../components/ui'
+import { Banner, Button, Field, Input, Modal } from '../../components/ui'
 import { CLONE_URL_SESSION_KEY } from '../../lib/copy'
 import { useAsyncAction } from '../../lib/useAsyncAction'
 
@@ -13,8 +13,7 @@ interface Props {
 export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
   const [url, setUrl] = useState('')
   const [targetDir, setTargetDir] = useState('')
-  const [transport, setTransport] = useState<'https' | 'ssh'>('https')
-  const { busy, error, setError, run } = useAsyncAction()
+  const { busy, error, run } = useAsyncAction()
 
   useEffect(() => {
     const preset = sessionStorage.getItem(CLONE_URL_SESSION_KEY)
@@ -34,8 +33,7 @@ export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
       if (!url.trim() || !targetDir.trim()) throw new Error('URL and target folder are required')
       const repo = await window.gitManager.repo.clone({
         url: url.trim(),
-        targetDir: targetDir.trim(),
-        transport
+        targetDir: targetDir.trim()
       })
       await onCloned(repo)
     })
@@ -55,7 +53,8 @@ export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
       }
     >
       <p className="muted" style={{ margin: 0 }}>
-        Paste an HTTPS or SSH URL from GitHub, GitLab, Bitbucket, or any Git host.
+        Paste an HTTPS or SSH URL from GitHub, GitLab, Bitbucket, or any Git host. HTTPS uses your Git
+        credential helper; SSH uses your SSH agent and keys.
       </p>
       {error && <Banner>{error}</Banner>}
       <Field label="Repository URL">
@@ -66,16 +65,6 @@ export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
           <Input className="w-full" value={targetDir} onChange={(e) => setTargetDir(e.target.value)} />
           <Button onClick={() => void pickDir()}>Browse…</Button>
         </div>
-      </Field>
-      <Field label="Preferred transport">
-        <Select
-          className="w-full"
-          value={transport}
-          onChange={(e) => setTransport(e.target.value as 'https' | 'ssh')}
-        >
-          <option value="https">HTTPS (GCM)</option>
-          <option value="ssh">SSH (OpenSSH agent)</option>
-        </Select>
       </Field>
     </Modal>
   )

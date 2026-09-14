@@ -13,6 +13,15 @@ import './styles/global.css'
 resolveAndApplyTheme('system')
 setupMonaco()
 
+// Dropping a file onto the window would navigate to it; the main process blocks that too.
+const isFileDrag = (e: DragEvent): boolean => Boolean(e.dataTransfer?.types.includes('Files'))
+window.addEventListener('dragover', (e) => {
+  if (isFileDrag(e)) e.preventDefault()
+})
+window.addEventListener('drop', (e) => {
+  if (isFileDrag(e)) e.preventDefault()
+})
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

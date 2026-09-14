@@ -3,6 +3,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { runGit } from '../src/git-worker/git-runner'
+import { git } from './helpers/git-fixture'
 import {
   checkoutRemoteBranch,
   commit,
@@ -27,7 +28,7 @@ const dirs: string[] = []
 async function initRepo(): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'gm-ops-'))
   dirs.push(dir)
-  await runGit({ cwd: dir, args: ['init'] })
+  await runGit({ cwd: dir, args: ['init', '-b', 'main'] })
   await runGit({ cwd: dir, args: ['config', 'user.email', 'test@example.com'] })
   await runGit({ cwd: dir, args: ['config', 'user.name', 'Test User'] })
   writeFileSync(join(dir, 'README.md'), '# one\n')
@@ -60,9 +61,7 @@ describe('branch merge rebase stash ops', () => {
     writeFileSync(join(dir, 'feature.txt'), 'feature\n')
     await runGit({ cwd: dir, args: ['add', 'feature.txt'] })
     await runGit({ cwd: dir, args: ['commit', '-m', 'Add feature'] })
-    await runGit({ cwd: dir, args: ['checkout', 'master'] }).catch(async () => {
-      await runGit({ cwd: dir, args: ['checkout', 'main'] })
-    })
+    await git(dir, 'checkout', 'main')
     const result = await mergeRef(dir, 'feature')
     expect(result.conflicts).toEqual([])
     const page = await loadHistory({ repoPath: dir, limit: 20 })
@@ -89,9 +88,7 @@ describe('branch merge rebase stash ops', () => {
     writeFileSync(join(dir, 'clash.txt'), 'a\n')
     await runGit({ cwd: dir, args: ['add', 'clash.txt'] })
     await runGit({ cwd: dir, args: ['commit', '-m', 'A'] })
-    await runGit({ cwd: dir, args: ['checkout', 'master'] }).catch(async () => {
-      await runGit({ cwd: dir, args: ['checkout', 'main'] })
-    })
+    await git(dir, 'checkout', 'main')
     await createBranch(dir, 'side-b', true)
     writeFileSync(join(dir, 'clash.txt'), 'b\n')
     await runGit({ cwd: dir, args: ['add', 'clash.txt'] })
@@ -128,7 +125,7 @@ describe('branch merge rebase stash ops', () => {
   it('rejects stash before the first commit', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'gm-ops-'))
     dirs.push(dir)
-    await runGit({ cwd: dir, args: ['init'] })
+    await runGit({ cwd: dir, args: ['init', '-b', 'main'] })
     await runGit({ cwd: dir, args: ['config', 'user.email', 'test@example.com'] })
     await runGit({ cwd: dir, args: ['config', 'user.name', 'Test User'] })
     writeFileSync(join(dir, 'wip.txt'), 'wip\n')
@@ -146,7 +143,7 @@ describe('branch merge rebase stash ops', () => {
   it('lists remote branches and checks them out with tracking', async () => {
     const bare = mkdtempSync(join(tmpdir(), 'gm-bare-'))
     dirs.push(bare)
-    await runGit({ cwd: bare, args: ['init', '--bare'] })
+    await runGit({ cwd: bare, args: ['init', '--bare', '-b', 'main'] })
 
     const upstream = await initRepo()
     await runGit({ cwd: upstream, args: ['remote', 'add', 'origin', bare] })
@@ -177,9 +174,7 @@ describe('branch merge rebase stash ops', () => {
     expect(localFeature?.upstream).toBe('origin/feature-remote')
 
     // Second call should just checkout the existing local branch
-    await runGit({ cwd: clone, args: ['checkout', 'master'] }).catch(async () => {
-      await runGit({ cwd: clone, args: ['checkout', 'main'] })
-    })
+    await git(clone, 'checkout', 'main')
     await checkoutRemoteBranch(clone, 'origin/feature-remote')
     const after = await getBranches(clone)
     expect(after.find((b) => b.name === 'feature-remote')?.current).toBe(true)

@@ -1,13 +1,13 @@
 /**
- * Main-process client for git ops. Prefers Electron utilityProcess on win32 + darwin;
- * falls back to in-process operations if fork fails.
+ * Main-process client for git ops. Runs them in an Electron utilityProcess and falls back to
+ * in-process operations if the worker cannot start.
  */
 import { app, utilityProcess, type UtilityProcess } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import type * as ops from './operations'
 import { getGitMethod, type GitMethodName } from './method-registry'
-import { cancelAllGit as cancelAllGitLocal, probeGit } from './git-runner'
+import { cancelAllGit as cancelAllGitLocal, cancelGitIn as cancelGitInLocal, probeGit } from './git-runner'
 
 type Pending = {
   resolve: (value: unknown) => void
@@ -65,7 +65,8 @@ function ensureWorker(): void {
     }
     const proc = utilityProcess.fork(script, [], {
       serviceName: 'git-manager-git',
-      stdio: 'pipe'
+      // Nothing reads the worker's output; with 'pipe' a full pipe buffer could block it.
+      stdio: 'inherit'
     })
     attachChild(proc)
   } catch {
@@ -86,7 +87,9 @@ async function waitReady(timeoutMs = 5000): Promise<boolean> {
   return childReady
 }
 
-async function invoke(method: GitMethodName | 'cancelAllGit', args: unknown[]): Promise<unknown> {
+type ControlMethod = 'cancelAllGit' | 'cancelGitIn'
+
+async function invoke(method: GitMethodName | ControlMethod, args: unknown[]): Promise<unknown> {
   ensureWorker()
   if (useInline || !child) {
     return invokeInline(method, args)
@@ -116,6 +119,10 @@ async function invokeInline(method: string, args: unknown[]): Promise<unknown> {
     cancelAllGitLocal()
     return
   }
+  if (method === 'cancelGitIn') {
+    cancelGitInLocal(String(args[0]))
+    return
+  }
   const fn = getGitMethod(method)
   if (!fn) throw new Error(`Unknown git method: ${method}`)
   return (fn as (...a: unknown[]) => Promise<unknown> | unknown)(...args)
@@ -126,6 +133,14 @@ export function cancelAllGit(): void {
     void invoke('cancelAllGit', []).catch(() => undefined)
   }
   cancelAllGitLocal()
+}
+
+/** Cancel git processes working inside `root` (e.g. before deleting that repository). */
+export function cancelGitIn(root: string): void {
+  if (child && !useInline) {
+    void invoke('cancelGitIn', [root]).catch(() => undefined)
+  }
+  cancelGitInLocal(root)
 }
 
 export { probeGit }
@@ -143,11 +158,13 @@ export const getCommitDetail = wrap('getCommitDetail')
 export const getFileDiff = wrap('getFileDiff')
 export const getWorkingTreeDiff = wrap('getWorkingTreeDiff')
 export const getStatus = wrap('getStatus')
+export const filterIgnoredPaths = wrap('filterIgnoredPaths')
 export const getBranches = wrap('getBranches')
 export const getRemoteBranches = wrap('getRemoteBranches')
 export const stagePaths = wrap('stagePaths')
 export const unstagePaths = wrap('unstagePaths')
-export const discardPaths = wrap('discardPaths')
+export const planDiscard = wrap('planDiscard')
+export const restoreWorktree = wrap('restoreWorktree')
 export const commit = wrap('commit')
 export const fetchRemote = wrap('fetchRemote')
 export const pullRemote = wrap('pullRemote')
@@ -160,6 +177,9 @@ export const rebaseOnto = wrap('rebaseOnto')
 export const rebaseContinue = wrap('rebaseContinue')
 export const rebaseAbort = wrap('rebaseAbort')
 export const isRebaseInProgress = wrap('isRebaseInProgress')
+export const rebaseSkip = wrap('rebaseSkip')
+export const isMergeInProgress = wrap('isMergeInProgress')
+export const mergeAbort = wrap('mergeAbort')
 export const deleteBranch = wrap('deleteBranch')
 export const stashSave = wrap('stashSave')
 export const listStashes = wrap('listStashes')
@@ -169,7 +189,9 @@ export const stashDrop = wrap('stashDrop')
 export const listConflictFiles = wrap('listConflictFiles')
 export const getMergeSides = wrap('getMergeSides')
 export const saveMergeResult = wrap('saveMergeResult')
+export const resolveConflictSide = wrap('resolveConflictSide')
 export const getGitIdentity = wrap('getGitIdentity')
 export const setGitIdentity = wrap('setGitIdentity')
+export const inspectRepoForRemoval = wrap('inspectRepoForRemoval')
 
 export { friendlyCommitError } from './operations'

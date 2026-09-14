@@ -2,6 +2,7 @@ import type { BranchInfo, RemoteBranchInfo } from '@shared/ipc'
 import { existsSync } from 'fs'
 import { isAbsolute, join } from 'path'
 import { listConflictFiles } from './merge'
+import { assertRevision } from './guards'
 import { currentBranchName, gitOk, runGit } from './shared'
 
 export async function getBranches(repoPath: string): Promise<BranchInfo[]> {
@@ -66,15 +67,53 @@ export async function pullRemote(repoPath: string): Promise<void> {
   await gitOk(repoPath, ['pull', '--ff-only'])
 }
 
+/** Remote for a branch that has no upstream yet: `origin` if present, else the only remote. */
+async function defaultPushRemote(repoPath: string): Promise<string> {
+  const remotes = (await gitOk(repoPath, ['remote']))
+    .split('\n')
+    .map((r) => r.trim())
+    .filter(Boolean)
+  if (remotes.includes('origin')) return 'origin'
+  if (remotes.length === 1) return remotes[0]
+  throw new Error(
+    remotes.length === 0
+      ? 'This repository has no remote to push to.'
+      : `This branch has no upstream and there are several remotes (${remotes.join(', ')}). Set one from a terminal with git push -u <remote>.`
+  )
+}
+
+/** Maps raw `git push` stderr into actionable UI copy. */
+export function friendlyPushError(raw: string): string {
+  if (/\[rejected\]/.test(raw)) {
+    return 'Push rejected: the remote branch has commits that yours does not (or commits that were already pushed were amended or rebased). Pull first — or force-push from a terminal if you rewrote history on purpose.'
+  }
+  return raw.trim() || 'Push failed'
+}
+
 export async function pushRemote(repoPath: string): Promise<void> {
-  await gitOk(repoPath, ['push'])
+  const branch = await currentBranchName(repoPath)
+  if (!branch) throw new Error('Check out a branch before pushing (HEAD is detached).')
+  const upstream = await runGit({
+    cwd: repoPath,
+    args: ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']
+  })
+  // A branch created here has no upstream yet: publish it and remember where it went.
+  const args =
+    upstream.code === 0
+      ? ['push']
+      : ['push', '--set-upstream', await defaultPushRemote(repoPath), `HEAD:refs/heads/${branch}`]
+  const result = await runGit({ cwd: repoPath, args })
+  if (result.code !== 0) throw new Error(friendlyPushError(result.stderr || result.stdout))
 }
 
 export async function checkoutRef(repoPath: string, ref: string): Promise<void> {
-  await gitOk(repoPath, ['checkout', ref])
+  // Trailing `--` forces `ref` to be a revision. Without it, a name that is not a ref but matches
+  // a path makes Git restore those files and silently discard uncommitted changes.
+  await gitOk(repoPath, ['checkout', assertRevision(ref), '--'])
 }
 
 export async function checkoutRemoteBranch(repoPath: string, remoteRef: string): Promise<void> {
+  assertRevision(remoteRef, 'remote branch')
   const slash = remoteRef.indexOf('/')
   if (slash <= 0) throw new Error(`Invalid remote branch ref: ${remoteRef}`)
   const shortName = remoteRef.slice(slash + 1)
@@ -87,12 +126,13 @@ export async function checkoutRemoteBranch(repoPath: string, remoteRef: string):
 }
 
 export async function createBranch(repoPath: string, name: string, doCheckout = true): Promise<void> {
+  assertRevision(name, 'branch name')
   if (doCheckout) await gitOk(repoPath, ['checkout', '-b', name])
   else await gitOk(repoPath, ['branch', name])
 }
 
 export async function mergeRef(repoPath: string, ref: string): Promise<{ conflicts: string[] }> {
-  const result = await runGit({ cwd: repoPath, args: ['merge', '--no-edit', ref] })
+  const result = await runGit({ cwd: repoPath, args: ['merge', '--no-edit', assertRevision(ref)] })
   if (result.code === 0) return { conflicts: [] }
   const conflicts = await listConflictFiles(repoPath)
   if (conflicts.length === 0) {
@@ -114,7 +154,7 @@ async function rebaseResult(
 }
 
 export async function rebaseOnto(repoPath: string, upstream: string): Promise<{ conflicts: string[] }> {
-  const result = await runGit({ cwd: repoPath, args: ['rebase', upstream] })
+  const result = await runGit({ cwd: repoPath, args: ['rebase', assertRevision(upstream)] })
   return rebaseResult(repoPath, result)
 }
 
@@ -130,6 +170,21 @@ export async function rebaseAbort(repoPath: string): Promise<void> {
   await gitOk(repoPath, ['rebase', '--abort'])
 }
 
+/** Drop the commit the rebase stopped on (e.g. it became empty after resolving) and continue. */
+export async function rebaseSkip(repoPath: string): Promise<{ conflicts: string[] }> {
+  const result = await runGit({ cwd: repoPath, args: ['-c', 'core.editor=true', 'rebase', '--skip'] })
+  return rebaseResult(repoPath, result)
+}
+
+export async function isMergeInProgress(repoPath: string): Promise<boolean> {
+  const result = await runGit({ cwd: repoPath, args: ['rev-parse', '-q', '--verify', 'MERGE_HEAD'] })
+  return result.code === 0
+}
+
+export async function mergeAbort(repoPath: string): Promise<void> {
+  await gitOk(repoPath, ['merge', '--abort'])
+}
+
 export async function isRebaseInProgress(repoPath: string): Promise<boolean> {
   const mergePath = (await gitOk(repoPath, ['rev-parse', '--git-path', 'rebase-merge'])).trim()
   const applyPath = (await gitOk(repoPath, ['rev-parse', '--git-path', 'rebase-apply'])).trim()
@@ -138,6 +193,7 @@ export async function isRebaseInProgress(repoPath: string): Promise<boolean> {
 }
 
 export async function deleteBranch(repoPath: string, name: string, force = false): Promise<void> {
+  assertRevision(name, 'branch name')
   const branches = await getBranches(repoPath)
   const current = branches.find((b) => b.current)
   if (current?.name === name) throw new Error('Cannot delete the current branch')

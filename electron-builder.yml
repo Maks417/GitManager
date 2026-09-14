@@ -19,7 +19,8 @@ publish:
   provider: github
   owner: Maks417
   repo: GitManager
-  releaseType: release
+  # Each platform job uploads to a draft; the release workflow publishes it after all succeed.
+  releaseType: draft
 win:
   icon: build/icon.ico
   target:

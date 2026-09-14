@@ -7,9 +7,9 @@ Resolve merge and rebase conflicts with a VS Code-style flow: list conflicted fi
 ## User flow
 
 1. Merge/rebase leaves conflicts, or status already has conflicted paths → modal opens.
-2. Select a conflicted file; result buffer loads (markers or synthesized content).
-3. Resolve each region or edit the Monaco buffer; Save stages the file.
-4. If rebasing: Continue or Abort from the modal.
+2. Select a conflicted file; the result buffer is the work-tree file Git produced — non-overlapping changes from both sides are already merged and markers remain only around real conflicts.
+3. Resolve each region or edit the Monaco buffer; Save stages the file. **Take ours / Take theirs** resolves the whole file instead (for a modify/delete conflict, taking the deleting side removes the file).
+4. If rebasing: **Continue rebase**, **Skip commit**, or **Abort rebase** from the modal. If merging: **Abort merge** here, or commit from Changes to finish the merge (allowed even when the resolution changes nothing).
 
 ## Key modules & files
 
@@ -30,7 +30,8 @@ Resolve merge and rebase conflicts with a VS Code-style flow: list conflicted fi
 
 - Files may lack base/ours/theirs stages (`ConflictFile` flags); UI still loads available sides.
 - `hasUnresolvedMarkers` blocks treating a file as done when markers remain.
-- Binary / unusual encodings: _TBD_ — confirm behavior if non-text conflicts appear in practice.
+- Binary files and files over 8 MB are not shown as text; resolve them with Take ours / Take theirs (`merge:resolve-side`).
+- Regions are re-parsed from the result text on every edit, and the file's line endings (LF / CRLF) are preserved.
 
 ## Diagram
 

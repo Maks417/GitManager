@@ -37,7 +37,8 @@ export function AboutModal({ status, onClose, onStatus }: Props): React.JSX.Elem
   const name = info?.name ?? 'Git Manager'
   const versionText = info ? `Version ${info.version} (${info.architecture})` : 'Loading version…'
   const releasesUrl = info ? `${info.homepage}/releases` : null
-  const licenseUrl = info ? `${info.homepage}/blob/main/LICENSE` : null
+  // HEAD resolves to the default branch on GitHub, whatever it is called.
+  const licenseUrl = info ? `${info.homepage}/blob/HEAD/LICENSE` : null
 
   const updateMessage = ((): string | null => {
     if (!status) return null

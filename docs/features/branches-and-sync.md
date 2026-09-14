@@ -10,7 +10,7 @@ Operate on branches and remotes: checkout (local and remote-tracking), create/de
 2. Create branch modal; checkout by clicking a branch; checkout a remote branch via `git:checkout-remote-branch`; delete with optional force confirm.
 3. Sync menu: Fetch, Pull, Push.
 4. Merge / Rebase open a branch picker; conflicts open the merge editor.
-5. While rebasing, continue/abort are available from the merge editor chrome and Changes UI.
+5. While rebasing, Continue / Skip commit / Abort are available from the merge editor and the Changes pane. While merging (`MERGE_HEAD` exists), Abort merge is available in both, and committing from Changes concludes the merge.
 
 ## Key modules & files
 
@@ -35,6 +35,9 @@ Operate on branches and remotes: checkout (local and remote-tracking), create/de
 - Soft delete failure can prompt force delete.
 - Merge/rebase return `{ conflicts: string[] }`; non-empty list opens merge UI.
 - Push/pull/fetch require configured remotes and credentials outside the app (SSH agent / credential helper).
+- Push publishes a branch that has no upstream to `origin` (or the only remote) and sets the upstream. A rejected (non-fast-forward) push explains that the remote has newer commits; the app never force-pushes.
+- Checkout runs `git checkout <ref> --`, so a name that is not a ref fails instead of restoring same-named files.
+- Refs and branch names that look like options (`--exec=…`) are rejected before reaching Git.
 
 ## Diagram
 

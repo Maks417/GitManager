@@ -1,19 +1,27 @@
 import type { ProviderAccount, RemoteRepo } from '@shared/ipc'
+import { fetchJson, MAX_PAGES, nextLink } from './http'
 
-async function ghFetch(token: string, path: string): Promise<Response> {
-  return fetch(`https://api.github.com${path}`, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'User-Agent': 'GitManager'
-    }
-  })
+const API = 'https://api.github.com'
+
+interface GitHubRepo {
+  id: number
+  name: string
+  full_name: string
+  description: string | null
+  private: boolean
+  clone_url: string
+  ssh_url: string
+  default_branch: string
+  html_url: string
+}
+
+function authHeaders(token: string): Record<string, string> {
+  return { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}` }
 }
 
 export async function connectGitHub(token: string): Promise<ProviderAccount> {
-  const res = await ghFetch(token, '/user')
-  if (!res.ok) throw new Error(`GitHub auth failed (${res.status})`)
-  const user = (await res.json()) as { id: number; login: string; name?: string; avatar_url?: string }
+  const { data } = await fetchJson(`${API}/user`, authHeaders(token), 'GitHub auth failed')
+  const user = data as { id: number; login: string; name?: string; avatar_url?: string }
   return {
     id: `github:${user.id}`,
     provider: 'github',
@@ -25,19 +33,13 @@ export async function connectGitHub(token: string): Promise<ProviderAccount> {
 }
 
 export async function listGitHubRepos(token: string): Promise<RemoteRepo[]> {
-  const res = await ghFetch(token, '/user/repos?per_page=100&sort=updated')
-  if (!res.ok) throw new Error(`GitHub repos failed (${res.status})`)
-  const repos = (await res.json()) as Array<{
-    id: number
-    name: string
-    full_name: string
-    description: string | null
-    private: boolean
-    clone_url: string
-    ssh_url: string
-    default_branch: string
-    html_url: string
-  }>
+  const repos: GitHubRepo[] = []
+  let url: string | null = `${API}/user/repos?per_page=100&sort=updated`
+  for (let page = 0; url && page < MAX_PAGES; page++) {
+    const { data, headers } = await fetchJson(url, authHeaders(token), 'GitHub repos failed')
+    repos.push(...(data as GitHubRepo[]))
+    url = nextLink(headers.get('link'))
+  }
   return repos.map((r) => ({
     id: String(r.id),
     name: r.name,

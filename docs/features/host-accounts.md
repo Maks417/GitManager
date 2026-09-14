@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Connect GitHub, GitLab, or Bitbucket with a personal access token (or app password), list remote repositories, and feed clone URLs into the clone flow. An optional separate OAuth broker exists for confidential-client flows; the desktop app connects via `providers:save-token` (PAT / app password).
+Connect GitHub or GitLab with a personal access token, or Bitbucket with an Atlassian API token and account email; list remote repositories and feed clone URLs into the clone flow. An optional separate OAuth broker exists for confidential-client flows; the desktop app connects via `providers:save-token`.
 
 ## User flow
 
-1. Open Accounts modal → choose provider → paste token (Bitbucket may need username).
+1. Open Accounts modal → choose provider → paste token (Bitbucket also needs the Atlassian account email; API calls use HTTP Basic auth with email + API token).
 2. Token is validated against the host `/user` API; account metadata is stored; token encrypted at rest.
 3. List remote repos for the selected account; pick one to clone (HTTPS or SSH URL).
 4. Disconnect removes the account record (and encrypted token).
@@ -30,8 +30,10 @@ Connect GitHub, GitLab, or Bitbucket with a personal access token (or app passwo
 ## Edge cases & rules
 
 - Desktop IPC exposes `listAccounts`, `saveToken`, `disconnect`, and `listRepos` only — no in-app OAuth code exchange yet (use the optional broker for confidential clients).
-- Listed accounts never include plaintext tokens over IPC.
-- If `safeStorage` is unavailable, tokens fall back to base64 encoding (weaker) — same helpers still used.
+- Listed accounts never include plaintext tokens (or the stored Bitbucket email) over IPC.
+- Repository lists follow pagination up to 10 pages (1,000 repositories); each host request times out after 20 seconds.
+- Bitbucket accounts saved without an email (app-password era) must be reconnected.
+- Without OS encryption (`safeStorage` unavailable, or the Linux `basic_text` backend), tokens are stored base64-encoded and the account is marked "token stored without OS encryption" in the Accounts dialog.
 - Broker does not store long-lived user tokens; it only exchanges codes.
 
 ## Diagram

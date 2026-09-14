@@ -14,7 +14,7 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 
 ## Live status
 
-When preference `liveStatusWatch` is enabled (default), the main process recursively watches the active repository with Node `fs.watch({ recursive: true })` (Windows and macOS). Debounced events refresh status/branches; changes under `.git` (index, HEAD, refs, merge/rebase state) also tip-refresh history. Noisy paths (`node_modules`, `.git/objects`, editor temps, etc.) are ignored.
+When preference `liveStatusWatch` is enabled (default), the main process recursively watches the active repository with Node `fs.watch({ recursive: true })` (Windows and macOS). Debounced work-tree edits (and index changes) refresh status only; changes to HEAD, refs or merge/rebase state also refresh branches and tip-refresh history. Git's ignore rules decide which work-tree changes matter (`git check-ignore`, so tracked `build/` or `dist/` files still count); dependency folders such as `node_modules`, `.git/objects`, lock files and editor temps are skipped outright. Background reads never take the index lock (`GIT_OPTIONAL_LOCKS=0`).
 
 | Piece | File |
 |---|---|
@@ -44,7 +44,9 @@ When preference `liveStatusWatch` is enabled (default), the main process recursi
 
 ## Edge cases & rules
 
-- Discard is destructive for unstaged/untracked paths — UI should confirm where appropriate.
+- Discard restores tracked files from the index and moves untracked files and folders to the Trash; conflicted paths are refused. The UI confirms first.
+- Staging, unstaging and discarding many paths is split into batches that fit on one command line.
+- Commit + push: when the push fails, the commit is kept, the form is cleared, and the error says the push failed.
 - Conflicted paths surface in status and typically open the merge editor from the shell.
 - Empty repo (no HEAD) forces Changes view after history load.
 - Identity email must be a valid email when setting via `SetGitIdentityRequestSchema`.

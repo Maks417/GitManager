@@ -2,6 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { StringDecoder } from 'string_decoder'
+import { isPathInside } from './path-utils'
 
 export interface GitRunOptions {
   cwd: string
@@ -9,7 +11,6 @@ export interface GitRunOptions {
   env?: NodeJS.ProcessEnv
   input?: string
   timeoutMs?: number
-  onProgress?: (line: string) => void
   /** Soft cap on accumulated stdout characters; further chunks are dropped. */
   maxStdoutChars?: number
 }
@@ -37,7 +38,19 @@ export const GIT_NOT_FOUND_MESSAGE =
 
 const GIT_NOT_FOUND_MESSAGE_DARWIN = `${GIT_NOT_FOUND_MESSAGE} On macOS you can also install Xcode Command Line Tools or Homebrew Git.`
 
-const active = new Map<string, ChildProcessWithoutNullStreams>()
+interface ActiveGit {
+  cwd: string
+  child: ChildProcessWithoutNullStreams
+}
+
+const active = new Map<number, ActiveGit>()
+let nextActiveId = 1
+
+function track(cwd: string, child: ChildProcessWithoutNullStreams): number {
+  const id = nextActiveId++
+  active.set(id, { cwd, child })
+  return id
+}
 
 export function resolveGitBinary(): string {
   const bundled = process.env.GIT_MANAGER_GIT_PATH?.trim()
@@ -66,14 +79,20 @@ export function redactSecrets(text: string): string {
 }
 
 function spawnGit(opts: Pick<GitRunOptions, 'cwd' | 'args' | 'env'>): ChildProcessWithoutNullStreams {
+  // Node reports a missing cwd as "spawn git ENOENT", which would read as "Git is not installed".
+  if (!existsSync(opts.cwd)) throw new Error(`Repository folder not found: ${opts.cwd}`)
   const git = resolveGitBinary()
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ...opts.env,
     GIT_TERMINAL_PROMPT: '0',
-    LC_ALL: 'C'
+    LC_ALL: 'C',
+    // Background reads (status on every file change) must not take the index lock: that rewrites
+    // .git/index, re-triggers the watcher, and makes the user's own git commands fail on index.lock.
+    GIT_OPTIONAL_LOCKS: '0'
   }
-  return spawn(git, opts.args, {
+  // Paths are parsed from stdout; never let Git octal-quote non-ASCII names.
+  return spawn(git, ['-c', 'core.quotePath=false', ...opts.args], {
     cwd: opts.cwd,
     env,
     windowsHide: true,
@@ -91,8 +110,10 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
       return
     }
 
-    const key = `${opts.cwd}:${opts.args.join(' ')}:${Date.now()}`
-    active.set(key, child)
+    const key = track(opts.cwd, child)
+    // Decode across chunk boundaries so multi-byte UTF-8 characters are never split.
+    const outDecoder = new StringDecoder('utf8')
+    const errDecoder = new StringDecoder('utf8')
 
     let stdout = ''
     let stderr = ''
@@ -111,36 +132,22 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
       }, opts.timeoutMs)
 
     child.stdout.on('data', (buf: Buffer) => {
-      const chunk = buf.toString('utf8')
+      const chunk = outDecoder.write(buf)
       if (maxChars === undefined || stdout.length < maxChars) {
         if (maxChars !== undefined && stdout.length + chunk.length > maxChars) {
           stdout += chunk.slice(0, maxChars - stdout.length)
         } else {
           stdout += chunk
         }
-      }
-      if (opts.onProgress) {
-        for (const line of chunk.split(/\r?\n/)) {
-          if (line) opts.onProgress(redactSecrets(line))
-        }
-      }
-    })
+      }    })
     child.stderr.on('data', (buf: Buffer) => {
-      const chunk = buf.toString('utf8')
-      stderr += chunk
-      if (opts.onProgress) {
-        for (const line of chunk.split(/\r?\n/)) {
-          if (line) opts.onProgress(redactSecrets(line))
-        }
-      }
-    })
+      const chunk = errDecoder.write(buf)
+      stderr += chunk    })
 
-    if (opts.input) {
-      child.stdin.write(opts.input)
-      child.stdin.end()
-    } else {
-      child.stdin.end()
-    }
+    // Git may exit before reading stdin; without a listener the EPIPE would crash the process.
+    child.stdin.on('error', () => undefined)
+    if (opts.input) child.stdin.end(opts.input)
+    else child.stdin.end()
 
     child.on('error', (err) => {
       if (timer) clearTimeout(timer)
@@ -156,9 +163,11 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
       active.delete(key)
       if (!settled) {
         settled = true
+        const tail = outDecoder.end()
+        if (maxChars === undefined || stdout.length < maxChars) stdout += tail
         resolve({
           stdout,
-          stderr: redactSecrets(stderr),
+          stderr: redactSecrets(stderr + errDecoder.end()),
           code: code ?? 1
         })
       }
@@ -182,8 +191,9 @@ export async function runGitDelimited(
       return
     }
 
-    const key = `${opts.cwd}:delim:${opts.args.join(' ')}:${Date.now()}`
-    active.set(key, child)
+    const key = track(opts.cwd, child)
+    const outDecoder = new StringDecoder('utf8')
+    const errDecoder = new StringDecoder('utf8')
 
     const records: string[] = []
     let pending = ''
@@ -201,7 +211,7 @@ export async function runGitDelimited(
 
     child.stdout.on('data', (buf: Buffer) => {
       if (settled) return
-      pending += buf.toString('utf8')
+      pending += outDecoder.write(buf)
       let idx = pending.indexOf(opts.delimiter)
       while (idx >= 0) {
         const piece = pending.slice(0, idx)
@@ -216,7 +226,7 @@ export async function runGitDelimited(
       }
     })
     child.stderr.on('data', (buf: Buffer) => {
-      stderr += buf.toString('utf8')
+      stderr += errDecoder.write(buf)
     })
     child.stdin.end()
 
@@ -229,6 +239,10 @@ export async function runGitDelimited(
     })
 
     child.on('close', (code) => {
+      if (!settled) {
+        pending += outDecoder.end()
+        stderr += errDecoder.end()
+      }
       finish(code ?? 1)
     })
   })
@@ -251,8 +265,7 @@ export async function readGitShowCapped(
       return
     }
 
-    const key = `${cwd}:show:${spec}:${Date.now()}`
-    active.set(key, child)
+    const key = track(cwd, child)
 
     const chunks: Buffer[] = []
     let total = 0
@@ -308,45 +321,39 @@ export async function gitOk(cwd: string, args: string[]): Promise<string> {
 }
 
 export async function probeGit(): Promise<GitProbeResult> {
-  const message = gitNotFoundMessage()
   try {
-    const result = await runGit({
-      cwd: tmpdir(),
-      args: ['--version'],
-      timeoutMs: 10_000
-    })
-    const combined = `${result.stdout}\n${result.stderr}`
-    const versionMatch = combined.match(/git version\s+(\S+)/i)
+    const result = await runGit({ cwd: tmpdir(), args: ['--version'], timeoutMs: 10_000 })
+    const versionMatch = `${result.stdout}\n${result.stderr}`.match(/git version\s+(\S+)/i)
     if (result.code === 0 && versionMatch) {
       return { available: true, version: versionMatch[1], message: null }
     }
-    if (/xcode-select|command line tools/i.test(combined)) {
-      return { available: false, version: null, message }
-    }
-    return { available: false, version: null, message }
-  } catch (err) {
-    if (isMissingGitError(err) || (err instanceof Error && err.message === message)) {
-      return { available: false, version: null, message }
-    }
-    const text = err instanceof Error ? err.message : String(err)
-    if (/xcode-select|command line tools|ENOENT|not found/i.test(text)) {
-      return { available: false, version: null, message }
-    }
-    return { available: false, version: null, message }
+  } catch {
+    // Spawn failures and timeouts mean Git is not usable either.
   }
+  // Includes the macOS Command Line Tools stub, which exits non-zero without a version.
+  return { available: false, version: null, message: gitNotFoundMessage() }
 }
 
 export function isGitRepo(path: string): boolean {
   return existsSync(join(path, '.git'))
 }
 
-export function cancelAllGit(): void {
-  for (const [, child] of active) {
-    try {
-      child.kill('SIGTERM')
-    } catch {
-      /* ignore */
-    }
+function killEntry(id: number, entry: ActiveGit): void {
+  try {
+    entry.child.kill('SIGTERM')
+  } catch {
+    /* ignore */
   }
-  active.clear()
+  active.delete(id)
+}
+
+export function cancelAllGit(): void {
+  for (const [id, entry] of active) killEntry(id, entry)
+}
+
+/** Kill only git processes running in `root` or one of its subdirectories. */
+export function cancelGitIn(root: string): void {
+  for (const [id, entry] of active) {
+    if (isPathInside(root, entry.cwd)) killEntry(id, entry)
+  }
 }

@@ -1,21 +1,19 @@
+import { isSha } from '@shared/sha'
+
+export type HistorySearch =
+  | { kind: 'sha'; sha: string; text: string }
+  | { kind: 'author'; text: string }
+  | { kind: 'message'; text: string }
+
 /**
- * Helpers for building portable `git log` argv (Windows + macOS / Apple Git + Homebrew).
+ * Interpret the history search box: an explicit `author:` filter, a commit id (7–40 hex digits),
+ * or plain text that is matched literally and case-insensitively against commit messages.
  */
-import { isShaPrefix } from '@shared/sha'
-
-/** Escape a user string for `--basic-regexp` so metacharacters match literally. */
-export function escapeBasicRegexp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, (ch) => `\\${ch}`)
-}
-
-export function isShaLike(text: string): boolean {
-  return isShaPrefix(text)
-}
-
-export function looksLikeAuthorQuery(text: string): boolean {
-  const t = text.trim()
-  if (!t) return false
-  if (t.includes('@')) return true
-  // "First Last" style — prefer --author over --grep
-  return /\s/.test(t) && !/[\\/]/.test(t)
+export function parseHistorySearch(raw: string | undefined): HistorySearch | null {
+  const text = raw?.trim() ?? ''
+  if (!text) return null
+  const author = /^author:\s*(.+)$/i.exec(text)
+  if (author) return { kind: 'author', text: author[1].trim() }
+  if (isSha(text)) return { kind: 'sha', sha: text, text }
+  return { kind: 'message', text }
 }

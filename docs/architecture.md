@@ -72,7 +72,7 @@ flowchart LR
 ### Conflict resolve
 
 1. Merge/rebase that leaves conflicts opens [`MergeEditorModal`](../src/renderer/src/features/merge-editor/MergeEditorModal.tsx).
-2. Worker supplies base/ours/theirs/result via `merge:get-sides`; merge-core parses markers into regions.
+2. Worker supplies base/ours/theirs from index stages 1–3 and the result from the work-tree file via `merge:get-sides` — Git's own merge, with markers only around real conflicts; merge-core parses markers into regions. Binary or oversized conflicts are resolved by taking a whole side (`merge:resolve-side`).
 3. Saving writes the result and stages the path; rebase continue/abort are available when a rebase is in progress.
 
 ## Cross-cutting concerns
@@ -80,10 +80,11 @@ flowchart LR
 | Concern | Approach |
 |---|---|
 | Process isolation | `contextIsolation`, `sandbox`, no Node in renderer; DevTools disabled in production window prefs |
-| Git worker | Prefer Electron `utilityProcess` (`git-utility.js`) on Windows and macOS; fall back to in-process ops |
-| IPC trust | Handlers call `assertSender`; payloads validated with Zod where schemas exist |
-| Secrets | Provider tokens via Electron `safeStorage` when available ([`storage.ts`](../src/main/storage.ts)); Git URL credentials redacted in CLI output |
-| Preferences | Zod-validated `AppPreferences` in `userData/state/preferences.json` |
+| Git worker | Electron `utilityProcess` (`git-utility.js`) on every platform; falls back to in-process ops if the worker cannot start |
+| IPC trust | Handlers call `assertSender`, which accepts only the app's own top-level document (the exact `file://…/index.html`, or the dev-server origin when unpackaged). Payloads are validated with Zod: refs may not look like options, file paths must stay inside the repository, and git-worker ops re-check the same rules |
+| Navigation & CSP | All navigation is blocked, including file drops. The CSP is a `<meta>` tag generated per build mode ([`electron.vite.config.ts`](../electron.vite.config.ts)); production allows no inline or eval scripts and no network access |
+| Secrets | Provider tokens are encrypted with Electron `safeStorage` (DPAPI / Keychain / a Linux secret store) and each entry records its scheme ([`secrets.ts`](../src/main/secrets.ts)). Without OS encryption — including Linux `basic_text` — tokens are stored base64-encoded and the Accounts dialog says so. Git URL credentials are redacted in CLI output |
+| Preferences & state | Zod-validated `AppPreferences` in `userData/state/preferences.json`; each invalid field falls back on its own (sizes are clamped), so a bad file never blocks startup. State files are written atomically (temp file + rename); a corrupt file is kept aside as `*.corrupt-<time>` ([`json-store.ts`](../src/main/json-store.ts)). One app instance runs per profile |
 | Theme | `system` \| `light` \| `dark` → CSS `[data-theme]` + window background + Monaco theme |
 | Updates | `electron-updater` against GitHub Releases when packaged; no-op check in dev |
 | About | [`AboutModal`](../src/renderer/src/features/about/AboutModal.tsx) shows `AppInfo` (`app:get-info`) and links to releases/license |

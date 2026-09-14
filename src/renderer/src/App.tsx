@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type React from 'react'
-import type { ProviderAccount, RemoteRepo, UpdateStatus } from '@shared/ipc'
+import type { ProviderAccount, UpdateStatus } from '@shared/ipc'
 import { MenuChannels } from '@shared/ipc'
 import { AccountsModal } from './features/accounts/AccountsModal'
 import { CloneModal } from './features/clone/CloneModal'
@@ -10,7 +10,7 @@ import { IdentityModal } from './features/identity/IdentityModal'
 import { CreateBranchModal } from './features/branches/CreateBranchModal'
 import { BranchPickModal } from './features/branches/BranchPickModal'
 import { MergeEditorModal } from './features/merge-editor/MergeEditorModal'
-import { ConfirmDialog } from './components/ui'
+import { RemoveRepoDialog } from './features/repositories/RemoveRepoDialog'
 import { CLONE_URL_SESSION_KEY } from './lib/copy'
 import { toErrorMessage } from './lib/errors'
 import { runWithBusy } from './lib/useAsyncAction'
@@ -117,17 +117,18 @@ export function App(): React.JSX.Element {
 
   const runGit = useCallback(
     async (op: 'fetch' | 'pull' | 'push'): Promise<void> => {
-      if (!session.activeRepo) return
+      const repo = session.activeRepo
+      if (!repo) return
       await runWithBusy(
         async () => {
-          await window.gitManager.git[op](session.activeRepo!.path)
-          await session.refreshRepoMeta(session.activeRepo!)
-          await history.refreshHistoryTip(session.activeRepo!)
+          await window.gitManager.git[op](repo.path)
+          // Refreshes whichever repository is active by now, never switching back to `repo`.
+          await session.afterGitMutation({ history: 'tip' })
         },
         { setBusy, setError }
       )
     },
-    [session, history]
+    [session]
   )
 
   const runMergeOrRebase = useCallback(
@@ -187,29 +188,35 @@ export function App(): React.JSX.Element {
     [session, busy]
   )
 
+  // Handlers close over fresh state every render; subscribe to the menu once and call the latest.
+  const menuHandlersRef = useRef<Record<string, () => void>>({})
+  menuHandlersRef.current = {
+    [MenuChannels.addRepo]: () => void addRepo(),
+    [MenuChannels.cloneRepo]: () => openClone(),
+    [MenuChannels.accounts]: () => setAccountsOpen(true),
+    [MenuChannels.identity]: () => setIdentityOpen(true),
+    [MenuChannels.createBranch]: () => setCreateBranchOpen(true),
+    [MenuChannels.merge]: () => setMergePickOpen(true),
+    [MenuChannels.rebase]: () => setRebasePickOpen(true),
+    [MenuChannels.focusSearch]: () => searchRef.current?.focus(),
+    [MenuChannels.fetch]: () => void runGit('fetch'),
+    [MenuChannels.pull]: () => void runGit('pull'),
+    [MenuChannels.push]: () => void runGit('push'),
+    [MenuChannels.updates]: () => setUpdatesOpen(true),
+    [MenuChannels.about]: () => setAboutOpen(true),
+    [MenuChannels.viewHistory]: () => working.goHistory(),
+    [MenuChannels.viewChanges]: () => working.selectWorkingCopy(),
+    [MenuChannels.toggleDock]: () => layout.toggleDock(),
+    [MenuChannels.toggleSidebar]: () => layout.toggleSidebar()
+  }
+
   useEffect(() => {
     if (!window.gitManagerMenu) return
-    const offs = [
-      window.gitManagerMenu.on(MenuChannels.addRepo, () => void addRepo()),
-      window.gitManagerMenu.on(MenuChannels.cloneRepo, () => openClone()),
-      window.gitManagerMenu.on(MenuChannels.accounts, () => setAccountsOpen(true)),
-      window.gitManagerMenu.on(MenuChannels.identity, () => setIdentityOpen(true)),
-      window.gitManagerMenu.on(MenuChannels.createBranch, () => setCreateBranchOpen(true)),
-      window.gitManagerMenu.on(MenuChannels.merge, () => setMergePickOpen(true)),
-      window.gitManagerMenu.on(MenuChannels.rebase, () => setRebasePickOpen(true)),
-      window.gitManagerMenu.on(MenuChannels.focusSearch, () => searchRef.current?.focus()),
-      window.gitManagerMenu.on(MenuChannels.fetch, () => void runGit('fetch')),
-      window.gitManagerMenu.on(MenuChannels.pull, () => void runGit('pull')),
-      window.gitManagerMenu.on(MenuChannels.push, () => void runGit('push')),
-      window.gitManagerMenu.on(MenuChannels.updates, () => setUpdatesOpen(true)),
-      window.gitManagerMenu.on(MenuChannels.about, () => setAboutOpen(true)),
-      window.gitManagerMenu.on(MenuChannels.viewHistory, () => working.goHistory()),
-      window.gitManagerMenu.on(MenuChannels.viewChanges, () => working.selectWorkingCopy()),
-      window.gitManagerMenu.on(MenuChannels.toggleDock, () => layout.toggleDock()),
-      window.gitManagerMenu.on(MenuChannels.toggleSidebar, () => layout.toggleSidebar())
-    ]
+    const offs = Object.keys(menuHandlersRef.current).map((channel) =>
+      window.gitManagerMenu.on(channel, () => menuHandlersRef.current[channel]?.())
+    )
     return () => offs.forEach((off) => off())
-  })
+  }, [])
 
   const onSearchSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
@@ -304,6 +311,7 @@ export function App(): React.JSX.Element {
           setDiffSide={wt.setDiffSide}
           identity={session.identity}
           rebaseInProgress={session.rebaseInProgress}
+          mergeInProgress={session.mergeInProgress}
           error={error}
           onToggleSidebar={layout.toggleSidebar}
           onToggleBranches={layout.toggleBranches}
@@ -320,9 +328,14 @@ export function App(): React.JSX.Element {
           }}
           onCreateBranch={() => setCreateBranchOpen(true)}
           onCheckoutBranch={(name) => {
-            void window.gitManager.git.checkout(activeRepo.path, name).then(async () => {
-              await session.afterGitMutation({ history: 'full' })
-            })
+            if (busy) return
+            void runWithBusy(
+              async () => {
+                await window.gitManager.git.checkout(activeRepo.path, name)
+                await session.afterGitMutation({ history: 'full' })
+              },
+              { setBusy, setError }
+            )
           }}
           onMergeBranch={(name) => void runMergeOrRebase('merge', name)}
           onRebaseOnto={(name) => void runMergeOrRebase('rebase', name)}
@@ -339,6 +352,15 @@ export function App(): React.JSX.Element {
             await session.afterGitMutation({ history: 'full' })
             if (result.conflicts.length > 0) setMergeOpen(true)
           }}
+          onRebaseSkip={async () => {
+            const result = await window.gitManager.git.rebaseSkip(activeRepo.path)
+            await session.afterGitMutation({ history: 'full' })
+            if (result.conflicts.length > 0) setMergeOpen(true)
+          }}
+          onMergeAbort={async () => {
+            await window.gitManager.git.mergeAbort(activeRepo.path)
+            await session.afterGitMutation({ history: 'full' })
+          }}
           onRebaseAbort={async () => {
             await window.gitManager.git.rebaseAbort(activeRepo.path)
             await session.afterGitMutation({ history: 'full' })
@@ -347,13 +369,8 @@ export function App(): React.JSX.Element {
       )}
 
       {session.repoPendingRemove && (
-        <ConfirmDialog
-          title="Remove repository"
-          message={`Remove “${session.repoPendingRemove.name}” from the list?`}
-          checkboxLabel="Also delete files from disk"
-          confirmLabel="Remove"
-          confirmLabelChecked="Delete from disk"
-          danger
+        <RemoveRepoDialog
+          repo={session.repoPendingRemove}
           busy={session.repoRemoveBusy}
           error={session.repoRemoveError}
           onCancel={() => {
@@ -361,8 +378,8 @@ export function App(): React.JSX.Element {
             session.setRepoPendingRemove(null)
             session.setRepoRemoveError(null)
           }}
-          onConfirm={({ checked }) =>
-            void session.removeRepoFromList(session.repoPendingRemove!, checked)
+          onConfirm={(deleteFiles) =>
+            void session.removeRepoFromList(session.repoPendingRemove!, deleteFiles)
           }
         />
       )}
@@ -371,11 +388,11 @@ export function App(): React.JSX.Element {
           accounts={accounts}
           onClose={() => setAccountsOpen(false)}
           onChanged={async () => setAccounts(await window.gitManager.providers.listAccounts())}
-          onCloneRemote={(repo: RemoteRepo) => {
+          onCloneRemote={(url) => {
             if (!requireGit()) return
             setAccountsOpen(false)
             setCloneOpen(true)
-            sessionStorage.setItem(CLONE_URL_SESSION_KEY, repo.cloneUrlHttps)
+            sessionStorage.setItem(CLONE_URL_SESSION_KEY, url)
           }}
         />
       )}
@@ -449,12 +466,22 @@ export function App(): React.JSX.Element {
         <MergeEditorModal
           repoPath={activeRepo.path}
           rebaseInProgress={session.rebaseInProgress}
+          mergeInProgress={session.mergeInProgress}
           onClose={() => setMergeOpen(false)}
           onResolved={() => session.afterGitMutation({ history: 'full' })}
           onRebaseContinue={async () => {
             const result = await window.gitManager.git.rebaseContinue(activeRepo.path)
             await session.afterGitMutation({ history: 'full' })
             if (result.conflicts.length === 0) setMergeOpen(false)
+          }}
+          onRebaseSkip={async () => {
+            const result = await window.gitManager.git.rebaseSkip(activeRepo.path)
+            await session.afterGitMutation({ history: 'full' })
+            if (result.conflicts.length === 0) setMergeOpen(false)
+          }}
+          onMergeAbort={async () => {
+            await window.gitManager.git.mergeAbort(activeRepo.path)
+            await session.afterGitMutation({ history: 'full' })
           }}
           onRebaseAbort={async () => {
             await window.gitManager.git.rebaseAbort(activeRepo.path)

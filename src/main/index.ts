@@ -1,6 +1,7 @@
-import { BrowserWindow, app, nativeTheme, session } from 'electron'
+import { BrowserWindow, app, nativeTheme } from 'electron'
 import { existsSync } from 'fs'
 import { join } from 'path'
+import { getDevServerUrl, getRendererEntryFile, isTrustedAppUrl } from './app-url'
 import { registerIpcHandlers } from './ipc'
 import { buildAppMenu } from './menu'
 import { loadPreferences } from './storage'
@@ -19,7 +20,7 @@ function resolveAppIcon(): string | undefined {
   return candidates.find((p) => existsSync(p))
 }
 
-/** Block Chromium chrome shortcuts (DevTools, fullscreen, reload, zoom). */
+/** Block Chromium chrome shortcuts (DevTools, fullscreen, reload). Zoom stays available via View. */
 function blockChromiumShortcuts(win: BrowserWindow): void {
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return
@@ -46,11 +47,6 @@ function blockChromiumShortcuts(win: BrowserWindow): void {
       return
     }
     if (ctrlOrCmd && key === 'r') {
-      event.preventDefault()
-      return
-    }
-
-    if (ctrlOrCmd && (key === '=' || key === '+' || key === '-' || key === '_' || key === '0')) {
       event.preventDefault()
     }
   })
@@ -87,36 +83,37 @@ function createWindow(): void {
   blockChromiumShortcuts(mainWindow)
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // The renderer never navigates. This also stops a dropped file (e.g. an .html from a cloned
+  // repo) from loading into a window that has the privileged preload bridge.
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const allowed =
-      url.startsWith('file:') ||
-      url.startsWith('http://localhost') ||
-      url.startsWith('http://127.0.0.1')
-    if (!allowed) event.preventDefault()
+    if (!isTrustedAppUrl(url)) event.preventDefault()
   })
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+  const devServerUrl = getDevServerUrl()
+  if (devServerUrl) {
+    void mainWindow.loadURL(devServerUrl)
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void mainWindow.loadFile(getRendererEntryFile())
   }
 }
 
-app.whenReady().then(() => {
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const isDev = Boolean(process.env.ELECTRON_RENDERER_URL)
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          isDev
-            ? "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' https: http://localhost:* ws://localhost:* wss://localhost:*"
-            : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' https:"
-        ]
-      }
-    })
+// One instance per profile: two would overwrite each other's state files and run two updaters.
+const hasInstanceLock = app.requestSingleInstanceLock()
+if (!hasInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.focus()
   })
+}
 
+app.whenReady().then(() => {
+  if (!hasInstanceLock) return
+  // CSP is a <meta> tag generated per build mode (see electron.vite.config.ts): response-header
+  // injection does not apply to the file:// page of packaged builds.
   registerIpcHandlers()
   buildAppMenu()
   createWindow()

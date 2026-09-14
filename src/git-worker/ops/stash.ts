@@ -1,3 +1,4 @@
+import { assertStashRef } from './guards'
 import { gitOk, resolveHeadSha, runGit } from './shared'
 
 export async function stashSave(repoPath: string, message?: string): Promise<void> {
@@ -36,13 +37,13 @@ export async function listStashes(repoPath: string): Promise<
 }
 
 export async function stashApply(repoPath: string, ref = 'stash@{0}'): Promise<void> {
-  await gitOk(repoPath, ['stash', 'apply', ref])
+  await gitOk(repoPath, ['stash', 'apply', assertStashRef(ref)])
 }
 
 export async function stashPop(repoPath: string, ref = 'stash@{0}'): Promise<void> {
-  await gitOk(repoPath, ['stash', 'pop', ref])
+  await gitOk(repoPath, ['stash', 'pop', assertStashRef(ref)])
 }
 
 export async function stashDrop(repoPath: string, ref = 'stash@{0}'): Promise<void> {
-  await gitOk(repoPath, ['stash', 'drop', ref])
+  await gitOk(repoPath, ['stash', 'drop', assertStashRef(ref)])
 }

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IpcChannels } from '@shared/ipc/channels'
+import { IpcChannels, MenuChannels } from '@shared/ipc/channels'
 
 const api = {
   repo: {
@@ -24,7 +24,8 @@ const api = {
       const listener = (_: Electron.IpcRendererEvent, event: unknown): void => callback(event)
       ipcRenderer.on(IpcChannels.repo.onChanged, listener)
       return () => ipcRenderer.removeListener(IpcChannels.repo.onChanged, listener)
-    }
+    },
+    removalInfo: (id: string) => ipcRenderer.invoke(IpcChannels.repo.removalInfo, id)
   },
   history: {
     load: (query: unknown) => ipcRenderer.invoke(IpcChannels.history.load, query),
@@ -56,6 +57,9 @@ const api = {
     rebaseContinue: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.rebaseContinue, repoPath),
     rebaseAbort: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.rebaseAbort, repoPath),
     rebaseInProgress: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.rebaseInProgress, repoPath),
+    rebaseSkip: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.rebaseSkip, repoPath),
+    mergeAbort: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.mergeAbort, repoPath),
+    mergeInProgress: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.mergeInProgress, repoPath),
     stash: (repoPath: string, message?: string) => ipcRenderer.invoke(IpcChannels.git.stash, repoPath, message),
     stashList: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.stashList, repoPath),
     stashApply: (repoPath: string, ref?: string) =>
@@ -71,7 +75,9 @@ const api = {
     listConflicts: (repoPath: string) => ipcRenderer.invoke(IpcChannels.merge.listConflicts, repoPath),
     getSides: (repoPath: string, path: string) => ipcRenderer.invoke(IpcChannels.merge.getSides, repoPath, path),
     saveResult: (repoPath: string, path: string, content: string) =>
-      ipcRenderer.invoke(IpcChannels.merge.saveResult, repoPath, path, content)
+      ipcRenderer.invoke(IpcChannels.merge.saveResult, repoPath, path, content),
+    resolveSide: (repoPath: string, path: string, side: string) =>
+      ipcRenderer.invoke(IpcChannels.merge.resolveSide, repoPath, path, side)
   },
   providers: {
     listAccounts: () => ipcRenderer.invoke(IpcChannels.providers.listAccounts),
@@ -98,16 +104,17 @@ const api = {
     getInfo: () => ipcRenderer.invoke(IpcChannels.app.getInfo)
   },
   shell: {
-    openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.shell.openExternal, url),
-    openPath: (path: string) => ipcRenderer.invoke(IpcChannels.shell.openPath, path),
-    showItemInFolder: (path: string) => ipcRenderer.invoke(IpcChannels.shell.showItemInFolder, path)
+    openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.shell.openExternal, url)
   }
 }
 
 contextBridge.exposeInMainWorld('gitManager', api)
 
+const menuChannels = new Set<string>(Object.values(MenuChannels))
+
 contextBridge.exposeInMainWorld('gitManagerMenu', {
   on: (event: string, cb: () => void) => {
+    if (!menuChannels.has(event)) throw new Error(`Unknown menu channel: ${event}`)
     const handler = (): void => cb()
     ipcRenderer.on(event, handler)
     return () => ipcRenderer.removeListener(event, handler)

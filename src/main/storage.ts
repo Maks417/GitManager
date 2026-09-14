@@ -1,7 +1,17 @@
 import { app, safeStorage } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
 import { join } from 'path'
-import { AppPreferencesSchema, type AppPreferences, type ProviderAccount, type Repository } from '@shared/ipc'
+import { z } from 'zod'
+import {
+  AppPreferencesSchema,
+  ProviderAccountSchema,
+  RepositorySchema,
+  type AppPreferences,
+  type ProviderAccount,
+  type Repository
+} from '@shared/ipc'
+import { readJsonFile, writeJsonFileAtomic } from './json-store'
+import { decodeSecret, encodeSecret } from './secrets'
 
 function dataDir(): string {
   const dir = join(app.getPath('userData'), 'state')
@@ -9,80 +19,72 @@ function dataDir(): string {
   return dir
 }
 
-function readJson<T>(file: string, fallback: T): T {
-  try {
-    return JSON.parse(readFileSync(file, 'utf8')) as T
-  } catch {
-    return fallback
-  }
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function writeJson(file: string, value: unknown): void {
-  writeFileSync(file, JSON.stringify(value, null, 2), 'utf8')
+/** Entries that no longer match the schema are dropped instead of crashing callers. */
+function parseList<T>(raw: unknown, schema: z.ZodType<T, z.ZodTypeDef, unknown>): T[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item) => {
+    const parsed = schema.safeParse(item)
+    return parsed.success ? [parsed.data] : []
+  })
 }
 
 export function loadPreferences(): AppPreferences {
-  const raw = readJson(join(dataDir(), 'preferences.json'), {})
-  return AppPreferencesSchema.parse(raw)
+  const raw = readJsonFile<unknown>(join(dataDir(), 'preferences.json'), {})
+  return AppPreferencesSchema.parse(isPlainObject(raw) ? raw : {})
 }
 
 export function savePreferences(partial: Partial<AppPreferences>): AppPreferences {
-  const next = AppPreferencesSchema.parse({ ...loadPreferences(), ...partial })
-  writeJson(join(dataDir(), 'preferences.json'), next)
+  const next = AppPreferencesSchema.parse({
+    ...loadPreferences(),
+    ...(isPlainObject(partial) ? partial : {})
+  })
+  writeJsonFileAtomic(join(dataDir(), 'preferences.json'), next)
   return next
 }
 
 export function loadRepositories(): Repository[] {
-  return readJson(join(dataDir(), 'repositories.json'), [])
+  return parseList(readJsonFile<unknown>(join(dataDir(), 'repositories.json'), []), RepositorySchema)
 }
 
 export function saveRepositories(repos: Repository[]): void {
-  writeJson(join(dataDir(), 'repositories.json'), repos)
+  writeJsonFileAtomic(join(dataDir(), 'repositories.json'), repos)
 }
 
-interface StoredAccount extends ProviderAccount {
-  tokenEnc?: string
-  tokenPlain?: string
-}
+const StoredAccountSchema = ProviderAccountSchema.extend({
+  tokenEnc: z.string().optional(),
+  /** How `tokenEnc` was produced; missing for entries saved by older versions. */
+  tokenScheme: z.enum(['safeStorage', 'plain']).optional(),
+  /** Identity the token is paired with for API calls (the Atlassian email for Bitbucket). */
+  authUser: z.string().optional()
+})
+type StoredAccount = z.infer<typeof StoredAccountSchema>
 
 export function loadAccounts(): StoredAccount[] {
-  return readJson(join(dataDir(), 'accounts.json'), [])
+  return parseList(readJsonFile<unknown>(join(dataDir(), 'accounts.json'), []), StoredAccountSchema)
 }
 
 export function saveAccounts(accounts: StoredAccount[]): void {
-  writeJson(join(dataDir(), 'accounts.json'), accounts)
+  writeJsonFileAtomic(join(dataDir(), 'accounts.json'), accounts)
 }
 
-export function encryptSecret(value: string): string {
-  if (safeStorage.isEncryptionAvailable()) {
-    return safeStorage.encryptString(value).toString('base64')
-  }
-  return Buffer.from(value, 'utf8').toString('base64')
-}
-
-export function decryptSecret(value: string): string {
-  if (safeStorage.isEncryptionAvailable()) {
-    return safeStorage.decryptString(Buffer.from(value, 'base64'))
-  }
-  return Buffer.from(value, 'base64').toString('utf8')
-}
-
-export function storeAccountToken(account: ProviderAccount, token: string): ProviderAccount {
+export function storeAccountToken(
+  account: ProviderAccount,
+  token: string,
+  authUser?: string
+): ProviderAccount {
+  const { scheme, data } = encodeSecret(safeStorage, token)
   const accounts = loadAccounts().filter((a) => a.id !== account.id)
-  accounts.push({
-    ...account,
-    tokenEnc: encryptSecret(token)
-  })
+  accounts.push({ ...account, tokenEnc: data, tokenScheme: scheme, ...(authUser ? { authUser } : {}) })
   saveAccounts(accounts)
-  return account
+  return { ...account, secureStorage: scheme === 'safeStorage' }
 }
 
 export function getAccountToken(accountId: string): string | null {
   const account = loadAccounts().find((a) => a.id === accountId)
   if (!account?.tokenEnc) return null
-  try {
-    return decryptSecret(account.tokenEnc)
-  } catch {
-    return null
-  }
+  return decodeSecret(safeStorage, account.tokenEnc, account.tokenScheme)
 }

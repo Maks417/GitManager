@@ -131,7 +131,7 @@ export function AppToolbar({
             <input
               ref={searchRef}
               className="search"
-              placeholder="Find commit by message, author, SHA, branch…"
+              placeholder="Search messages, a commit SHA, or author:name…"
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               disabled={!activeRepo}

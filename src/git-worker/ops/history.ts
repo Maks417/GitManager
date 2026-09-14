@@ -1,5 +1,3 @@
-import { existsSync, openSync, readSync, closeSync, statSync } from 'fs'
-import { join } from 'path'
 import type {
   Commit,
   CommitDetail,
@@ -10,8 +8,10 @@ import type {
   HistoryQuery
 } from '@shared/ipc'
 import { decorateCommitsWithColors, layoutCommitGraph } from '@history-core/layout'
-import { escapeBasicRegexp, isShaLike, looksLikeAuthorQuery } from '../history-query'
+import { HISTORY_PAGE_SIZE } from '@shared/layout-defaults'
+import { parseHistorySearch, type HistorySearch } from '../history-query'
 import { gitOk, readGitShowCapped, runGit, runGitDelimited } from '../git-runner'
+import { assertRevision, assertSha, readRepoFile, resolveRepoPath } from './guards'
 import { resolveHeadSha, SHA_RE } from './shared'
 
 /** List payload omits body (`%b`) — load body only in commit detail. */
@@ -29,23 +29,24 @@ const DETAIL_LOG_FORMAT = [
   '%D'
 ].join('%x1f') + '%x1e'
 
+function shortRefName(ref: string): string {
+  return ref.replace(/^refs\/(heads|remotes|tags)\//, '')
+}
+
+/** Parse `%D` from `--decorate=full`: full ref names tell local branches, remotes and tags apart. */
 function parseRefs(decorate: string): CommitRef[] {
   if (!decorate.trim()) return []
   return decorate
-    .split(',')
+    .split(', ')
     .map((p) => p.trim())
     .filter(Boolean)
-    .map((name) => {
-      if (name === 'HEAD' || name.startsWith('HEAD ->')) {
-        return { name: name.replace('HEAD -> ', 'HEAD → '), type: 'head' as const }
-      }
-      if (name.startsWith('tag: ')) {
-        return { name: name.slice(5), type: 'tag' as const }
-      }
-      if (name.includes('/')) {
-        return { name, type: 'remote' as const }
-      }
-      return { name, type: 'local' as const }
+    .map((name): CommitRef => {
+      if (name === 'HEAD') return { name, type: 'head' }
+      if (name.startsWith('HEAD -> ')) return { name: `HEAD → ${shortRefName(name.slice(8))}`, type: 'head' }
+      if (name.startsWith('tag: ')) return { name: shortRefName(name.slice(5)), type: 'tag' }
+      if (name.startsWith('refs/remotes/')) return { name: shortRefName(name), type: 'remote' }
+      if (name.startsWith('refs/tags/')) return { name: shortRefName(name), type: 'tag' }
+      return { name: shortRefName(name), type: 'local' }
     })
 }
 
@@ -67,44 +68,42 @@ function parseListCommitRecord(record: string): Commit | null {
   }
 }
 
-function appendSearchArgs(args: string[], searchRaw: string | undefined, authorRaw: string | undefined): void {
-  if (authorRaw?.trim()) {
-    args.push(`--author=${authorRaw.trim()}`)
-  }
-  const search = searchRaw?.trim()
-  if (!search || isShaLike(search)) return
-
-  if (looksLikeAuthorQuery(search) && !authorRaw) {
-    args.push(`--author=${search}`)
-    return
-  }
-  args.push(`--grep=${escapeBasicRegexp(search)}`, '--regexp-ignore-case', '--basic-regexp')
+function appendSearchArgs(args: string[], search: HistorySearch | null, author: string | undefined): void {
+  const authorText = author?.trim() || (search?.kind === 'author' ? search.text : '')
+  // A commit id that did not resolve (or later pages) is still looked for in messages.
+  const messageText = search && search.kind !== 'author' ? search.text : ''
+  if (!authorText && !messageText) return
+  // Literal, case-insensitive matching: `(`, `|`, `{` and friends are never regex operators.
+  args.push('--fixed-strings', '--regexp-ignore-case')
+  if (authorText) args.push(`--author=${authorText}`)
+  if (messageText) args.push(`--grep=${messageText}`)
 }
 
 export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
   const headSha = await resolveHeadSha(query.repoPath)
-  const limit = query.limit ?? 200
+  const limit = query.limit ?? HISTORY_PAGE_SIZE
+  const skip = query.skip ?? 0
 
   // Unborn branch / empty repo: no commits yet
   if (!headSha && !query.branch) {
     return { commits: [], graph: [], nextCursor: null, headSha: null }
   }
 
-  const search = query.search?.trim()
-  const shaSearch = search && isShaLike(search) ? search : null
+  if (query.branch) assertRevision(query.branch, 'branch')
+  const search = parseHistorySearch(query.search)
 
-  // Exact / prefix SHA lookup via rev-parse (portable); avoids scanning the whole history.
-  if (shaSearch && !query.cursor && !query.skip) {
+  // A commit id jumps straight to that commit (first page only).
+  if (search?.kind === 'sha' && skip === 0) {
     const resolved = await runGit({
       cwd: query.repoPath,
-      args: ['rev-parse', '--verify', `${shaSearch}^{commit}`]
+      args: ['rev-parse', '--verify', '--quiet', `${search.sha}^{commit}`]
     })
     if (resolved.code === 0) {
       const fullSha = resolved.stdout.trim()
       if (SHA_RE.test(fullSha)) {
         const one = await runGitDelimited({
           cwd: query.repoPath,
-          args: ['log', '--decorate=short', `--format=${LIST_LOG_FORMAT}`, '-n', '1', fullSha],
+          args: ['log', '--decorate=full', `--format=${LIST_LOG_FORMAT}`, '-n', '1', fullSha],
           delimiter: '\x1e',
           maxRecords: 2
         })
@@ -128,37 +127,23 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
     }
   }
 
-  const args = ['log', '--decorate=short', `--format=${LIST_LOG_FORMAT}`, `--max-count=${limit}`]
-
+  // --date-order keeps children before parents, which the lane layout relies on. Pages are offsets
+  // into that single walk, so commits reachable only from other branches are never skipped.
+  const args = ['log', '--date-order', '--decorate=full', `--format=${LIST_LOG_FORMAT}`, `--max-count=${limit}`]
+  if (skip > 0) args.push(`--skip=${skip}`)
   if (query.mergesOnly) args.push('--merges')
-  appendSearchArgs(args, query.search, query.author)
+  appendSearchArgs(args, search, query.author)
 
-  if (query.path) {
-    if (query.branch) {
-      if (!SHA_RE.test(query.branch) && query.branch === 'HEAD' && !headSha) {
-        return { commits: [], graph: [], nextCursor: null, headSha: null }
-      }
-      if (query.skip && query.skip > 0) args.push(`--skip=${query.skip}`)
-      args.push(query.branch)
-    } else if (query.cursor && SHA_RE.test(query.cursor)) {
-      args.push(`${query.cursor}^@`)
-    } else {
-      args.push('--all')
-    }
-    args.push('--', query.path)
-  } else if (query.branch) {
-    if (!SHA_RE.test(query.branch) && query.branch === 'HEAD' && !headSha) {
+  if (query.branch) {
+    if (query.branch === 'HEAD' && !headSha) {
       return { commits: [], graph: [], nextCursor: null, headSha: null }
     }
-    // Branch-filtered paging: portable --skip (works when cursor^@ would not apply).
-    if (query.skip && query.skip > 0) args.push(`--skip=${query.skip}`)
     args.push(query.branch)
-  } else if (query.cursor && SHA_RE.test(query.cursor)) {
-    // --all paging: walk ancestors of the last visible commit (excludes the cursor itself).
-    args.push(`${query.cursor}^@`)
   } else {
-    args.push('--all')
+    // Stash entries are refs too, but they are not history.
+    args.push('--exclude=refs/stash', '--all')
   }
+  if (query.path) args.push('--', query.path)
 
   const logResult = await runGitDelimited({
     cwd: query.repoPath,
@@ -212,11 +197,9 @@ export async function getCommitDetail(repoPath: string, sha: string): Promise<Co
 
   const showOut = await gitOk(repoPath, [
     'show',
+    '--no-patch',
+    '--decorate=full',
     '--format=' + DETAIL_LOG_FORMAT,
-    '--name-status',
-    '--find-renames',
-    '-m',
-    '--first-parent',
     sha
   ])
   const [header] = showOut.split('\x1e')
@@ -233,30 +216,51 @@ export async function getCommitDetail(repoPath: string, sha: string): Promise<Co
     refs: parseRefs(parts[8] || '')
   }
 
-  const nameStatus = await gitOk(repoPath, ['diff-tree', '--no-commit-id', '--name-status', '-r', '-m', '--first-parent', sha])
-  const files: FileChange[] = nameStatus
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [status, ...paths] = line.split('\t')
-      const mapStatus = (s: string): FileChange['status'] => {
-        if (s.startsWith('A')) return 'added'
-        if (s.startsWith('D')) return 'deleted'
-        if (s.startsWith('R')) return 'renamed'
-        if (s.startsWith('C')) return 'copied'
-        if (s.startsWith('U')) return 'unmerged'
-        if (s.startsWith('T')) return 'typechange'
-        return 'modified'
-      }
-      return {
-        path: paths[paths.length - 1] || '',
-        oldPath: paths.length > 1 ? paths[0] : undefined,
-        status: mapStatus(status)
-      }
-    })
+  // -z: raw (unquoted) paths; --root: list the initial commit's files; -M: detect renames.
+  const nameStatus = await gitOk(repoPath, [
+    'diff-tree',
+    '-z',
+    '--no-commit-id',
+    '--name-status',
+    '-r',
+    '-M',
+    '--root',
+    '-m',
+    '--first-parent',
+    sha
+  ])
 
-  return { commit: decorateCommitsWithColors([commit])[0], files }
+  return { commit: decorateCommitsWithColors([commit])[0], files: parseNameStatusZ(nameStatus) }
+}
+
+function mapNameStatus(s: string): FileChange['status'] {
+  if (s.startsWith('A')) return 'added'
+  if (s.startsWith('D')) return 'deleted'
+  if (s.startsWith('R')) return 'renamed'
+  if (s.startsWith('C')) return 'copied'
+  if (s.startsWith('U')) return 'unmerged'
+  if (s.startsWith('T')) return 'typechange'
+  return 'modified'
+}
+
+/** Parse `--name-status -z` output: `S\0path\0`, or `R100\0old\0new\0` for renames/copies. */
+export function parseNameStatusZ(out: string): FileChange[] {
+  const tokens = out.split('\0')
+  const files: FileChange[] = []
+  let i = 0
+  while (i < tokens.length) {
+    const status = tokens[i++]
+    if (!status) continue
+    if (status[0] === 'R' || status[0] === 'C') {
+      const oldPath = tokens[i++]
+      const path = tokens[i++]
+      if (path) files.push({ path, oldPath, status: mapNameStatus(status) })
+    } else {
+      const path = tokens[i++]
+      if (path) files.push({ path, status: mapNameStatus(status) })
+    }
+  }
+  return files
 }
 
 function guessLanguage(path: string): string | undefined {
@@ -313,33 +317,26 @@ async function readGitBlobText(repoPath: string, spec: string): Promise<{ text: 
   return { text: capDiffText(shown.buffer.toString('utf8')), binary: false }
 }
 
-function readWorktreeFileCapped(repoPath: string, path: string): { text: string; binary: boolean } {
-  const abs = join(repoPath, path)
-  if (!existsSync(abs)) return { text: '', binary: false }
-  try {
-    const st = statSync(abs)
-    if (st.size === 0) return { text: '', binary: false }
-    const toRead = Math.min(st.size, MAX_DIFF_BYTES)
-    const buf = Buffer.alloc(toRead)
-    const fd = openSync(abs, 'r')
-    try {
-      readSync(fd, buf, 0, toRead, 0)
-    } finally {
-      closeSync(fd)
-    }
-    if (buf.includes(0)) return { text: '', binary: true }
-    return { text: capDiffText(buf.toString('utf8')), binary: false }
-  } catch {
-    return { text: '', binary: false }
-  }
+async function readWorktreeFileCapped(
+  repoPath: string,
+  path: string
+): Promise<{ text: string; binary: boolean }> {
+  const file = await readRepoFile(repoPath, path, MAX_DIFF_BYTES)
+  if (!file.exists || file.buffer.length === 0) return { text: '', binary: false }
+  if (file.buffer.includes(0)) return { text: '', binary: true }
+  return { text: capDiffText(file.buffer.toString('utf8')), binary: false }
 }
 
 export async function getFileDiff(
   repoPath: string,
   sha: string,
   path: string,
-  parentIndex = 0
+  parentIndex = 0,
+  oldPath?: string
 ): Promise<DiffResult> {
+  assertSha(sha)
+  resolveRepoPath(repoPath, path)
+  if (oldPath) resolveRepoPath(repoPath, oldPath)
   const parentsOut = await gitOk(repoPath, ['rev-list', '--parents', '-n', '1', sha])
   const tokens = parentsOut.trim().split(/\s+/)
   const parents = tokens.slice(1)
@@ -357,7 +354,7 @@ export async function getFileDiff(
   }
 
   const [oldSide, newSide] = await Promise.all([
-    readGitBlobText(repoPath, `${parent}:${path}`),
+    readGitBlobText(repoPath, `${parent}:${oldPath || path}`),
     readGitBlobText(repoPath, `${sha}:${path}`)
   ])
   const binary = oldSide.binary || newSide.binary
@@ -383,6 +380,7 @@ export async function getWorkingTreeDiff(
   path: string,
   side: 'staged' | 'unstaged'
 ): Promise<DiffResult> {
+  resolveRepoPath(repoPath, path)
   let oldSide = { text: '', binary: false }
   let newSide = { text: '', binary: false }
 
@@ -391,7 +389,7 @@ export async function getWorkingTreeDiff(
   } else {
     const indexBlob = await blobInIndex(repoPath, path)
     oldSide = indexBlob.text || indexBlob.binary ? indexBlob : await blobAtHead(repoPath, path)
-    newSide = readWorktreeFileCapped(repoPath, path)
+    newSide = await readWorktreeFileCapped(repoPath, path)
   }
 
   const binary = oldSide.binary || newSide.binary

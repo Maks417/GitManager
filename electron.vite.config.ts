@@ -1,6 +1,32 @@
 import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import type { Plugin } from 'vite'
+
+const CSP_PLACEHOLDER = '__CONTENT_SECURITY_POLICY__'
+
+/** Vite HMR and React Refresh need inline scripts, eval and a websocket to the dev server. */
+const DEV_CSP =
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' ws://localhost:* http://localhost:*"
+
+/** Packaged renderer: bundled scripts only, no eval, no network. Monaco injects <style> tags. */
+const PROD_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+
+function contentSecurityPolicy(): Plugin {
+  let isDev = false
+  return {
+    name: 'git-manager-csp',
+    configResolved(config) {
+      isDev = config.command === 'serve'
+    },
+    transformIndexHtml(html) {
+      // Fail the build rather than ship a page without a policy.
+      if (!html.includes(CSP_PLACEHOLDER)) throw new Error('index.html is missing the CSP placeholder')
+      return html.replace(CSP_PLACEHOLDER, isDev ? DEV_CSP : PROD_CSP)
+    }
+  }
+}
 
 export default defineConfig({
   main: {
@@ -38,7 +64,7 @@ export default defineConfig({
         '@merge-core': resolve('src/merge-core')
       }
     },
-    plugins: [react()],
+    plugins: [react(), contentSecurityPolicy()],
     optimizeDeps: {
       include: ['monaco-editor', '@monaco-editor/react']
     },

@@ -53,6 +53,8 @@ export function buildAppMenu(): void {
         isMac ? { role: 'close' } : { role: 'quit' }
       ]
     },
+    // Required on macOS: without an Edit menu, Cmd+C / Cmd+V / Cmd+A / Cmd+Z do nothing in text inputs.
+    { role: 'editMenu' },
     {
       label: 'View',
       submenu: [
@@ -81,7 +83,11 @@ export function buildAppMenu(): void {
           label: 'Toggle Sidebar',
           accelerator: 'CmdOrCtrl+B',
           click: () => sendMenu(MenuChannels.toggleSidebar)
-        }
+        },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' }
       ]
     },
     {
@@ -98,8 +104,9 @@ export function buildAppMenu(): void {
           click: () => sendMenu(MenuChannels.pull)
         },
         {
+          // No accelerator on purpose: Ctrl/Cmd+Shift+P is the command palette in most editors,
+          // and a push publishes commits.
           label: 'Push',
-          accelerator: 'CmdOrCtrl+Shift+P',
           click: () => sendMenu(MenuChannels.push)
         },
         { type: 'separator' },
@@ -122,6 +129,7 @@ export function buildAppMenu(): void {
         }
       ]
     },
+    ...(isMac ? [{ role: 'windowMenu' as const }] : []),
     {
       label: 'Help',
       submenu: [

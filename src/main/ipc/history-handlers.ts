@@ -23,7 +23,7 @@ export function registerHistoryHandlers(): void {
   ipcMain.handle(IpcChannels.history.fileDiff, async (event, raw: unknown) => {
     assertSender(event)
     const req = DiffRequestSchema.parse(raw)
-    return git.getFileDiff(req.repoPath, req.sha, req.path, req.parentIndex)
+    return git.getFileDiff(req.repoPath, req.sha, req.path, req.parentIndex, req.oldPath)
   })
 
   ipcMain.handle(IpcChannels.history.workingTreeDiff, async (event, raw: unknown) => {

@@ -14,9 +14,11 @@ export {
 
 export {
   getStatus,
+  filterIgnoredPaths,
   stagePaths,
   unstagePaths,
-  discardPaths,
+  planDiscard,
+  restoreWorktree,
   friendlyCommitError,
   commit
 } from './ops/status'
@@ -34,7 +36,11 @@ export {
   rebaseOnto,
   rebaseContinue,
   rebaseAbort,
+  rebaseSkip,
   isRebaseInProgress,
+  isMergeInProgress,
+  mergeAbort,
+  friendlyPushError,
   deleteBranch
 } from './ops/branches'
 
@@ -49,7 +55,10 @@ export {
 export {
   listConflictFiles,
   getMergeSides,
-  saveMergeResult
+  saveMergeResult,
+  resolveConflictSide
 } from './ops/merge'
 
 export { getGitIdentity, setGitIdentity } from './ops/identity'
+
+export { inspectRepoForRemoval } from './ops/removal'

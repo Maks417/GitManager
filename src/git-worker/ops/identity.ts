@@ -53,7 +53,9 @@ export async function setGitIdentity(
   const trimmedEmail = email.trim()
   if (!trimmedName) throw new Error('Name is required')
   if (!trimmedEmail) throw new Error('Email is required')
-  await gitOk(repoPath, ['config', `--${scope}`, 'user.name', trimmedName])
-  await gitOk(repoPath, ['config', `--${scope}`, 'user.email', trimmedEmail])
+  if (scope !== 'local' && scope !== 'global') throw new Error(`Invalid config scope: ${String(scope)}`)
+  // `--` keeps a value that starts with "-" from being parsed as an option.
+  await gitOk(repoPath, ['config', `--${scope}`, '--', 'user.name', trimmedName])
+  await gitOk(repoPath, ['config', `--${scope}`, '--', 'user.email', trimmedEmail])
   return getGitIdentity(repoPath)
 }

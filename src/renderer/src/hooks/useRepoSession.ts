@@ -11,6 +11,7 @@ import type {
   UpdateStatus
 } from '@shared/ipc'
 import { toErrorMessage } from '../lib/errors'
+import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
 import type { HistoryRefreshMode, Selection, ViewMode } from './selection'
 
@@ -52,6 +53,7 @@ export function useRepoSession({
   identity: GitIdentity | null
   setIdentity: React.Dispatch<React.SetStateAction<GitIdentity | null>>
   rebaseInProgress: boolean
+  mergeInProgress: boolean
   gitMissing: boolean
   currentBranch: BranchInfo | null
   localBranchNames: Set<string>
@@ -61,7 +63,7 @@ export function useRepoSession({
   repoRemoveError: string | null
   setRepoRemoveError: React.Dispatch<React.SetStateAction<string | null>>
   refreshRepos: (opts?: { activateFirst?: boolean }) => Promise<void>
-  refreshRepoMeta: (repo: Repository) => Promise<void>
+  refreshRepoMeta: (repo: Repository) => Promise<Repository>
   afterGitMutation: (opts?: { history?: HistoryRefreshMode }) => Promise<void>
   removeRepoFromList: (repo: Repository, deleteFiles?: boolean) => Promise<void>
 } {
@@ -72,6 +74,7 @@ export function useRepoSession({
   const [status, setStatus] = useState<StatusEntry[]>([])
   const [identity, setIdentity] = useState<GitIdentity | null>(null)
   const [rebaseInProgress, setRebaseInProgress] = useState(false)
+  const [mergeInProgress, setMergeInProgress] = useState(false)
   const [gitMissing, setGitMissing] = useState(false)
   const [repoPendingRemove, setRepoPendingRemove] = useState<Repository | null>(null)
   const [repoRemoveBusy, setRepoRemoveBusy] = useState(false)
@@ -80,6 +83,7 @@ export function useRepoSession({
   activeRepoRef.current = activeRepo
   const onConflictsDetectedRef = useRef(onConflictsDetected)
   onConflictsDetectedRef.current = onConflictsDetected
+  const conflictStateRef = useRef<{ path: string; conflicted: boolean } | null>(null)
 
   const currentBranch = useMemo(() => branches.find((b) => b.current) ?? null, [branches])
   const localBranchNames = useMemo(() => new Set(branches.map((b) => b.name)), [branches])
@@ -93,24 +97,50 @@ export function useRepoSession({
     if (activateFirst && !activeRepoRef.current && list[0]) setActiveRepo(list[0])
   }, [])
 
-  const refreshRepoMeta = useCallback(async (repo: Repository) => {
-    const [b, remoteB, s, fresh, id, rebasing] = await Promise.all([
+  // Open the merge editor when the repository enters a conflicted state, not on every refresh,
+  // so it can stay closed while conflicts are resolved elsewhere.
+  const noteConflicts = useCallback((repoPath: string, entries: StatusEntry[]): void => {
+    const conflicted = entries.some((e) => e.conflicted)
+    const previous = conflictStateRef.current
+    const wasConflicted = Boolean(previous?.conflicted && sameRepoPath(previous.path, repoPath))
+    conflictStateRef.current = { path: repoPath, conflicted }
+    if (conflicted && !wasConflicted) onConflictsDetectedRef.current()
+  }, [])
+
+  /** Work-tree edits only change status; branches, identity and history stay as they are. */
+  const refreshStatus = useCallback(
+    async (repo: Repository): Promise<void> => {
+      const entries = await window.gitManager.repo.status(repo.path)
+      if (!sameRepoPath(activeRepoRef.current?.path, repo.path)) return
+      setStatus(entries)
+      noteConflicts(repo.path, entries)
+    },
+    [noteConflicts]
+  )
+
+  const refreshRepoMeta = useCallback(async (repo: Repository): Promise<Repository> => {
+    const [b, remoteB, s, fresh, id, rebasing, merging] = await Promise.all([
       window.gitManager.repo.branches(repo.path),
       window.gitManager.repo.remoteBranches(repo.path),
       window.gitManager.repo.status(repo.path),
       window.gitManager.repo.get(repo.id),
       window.gitManager.git.getIdentity(repo.path),
-      window.gitManager.git.rebaseInProgress(repo.path)
+      window.gitManager.git.rebaseInProgress(repo.path),
+      window.gitManager.git.mergeInProgress(repo.path)
     ])
+    // The user may have switched repositories while these requests ran. Never apply another
+    // repository's branches or status, and never switch the app back to it.
+    if (!sameRepoPath(activeRepoRef.current?.path, repo.path)) return fresh ?? repo
     setBranches(b)
     setRemoteBranches(remoteB)
     setStatus(s)
     setIdentity(id)
     setRebaseInProgress(rebasing)
+    setMergeInProgress(merging)
     if (fresh) {
       setActiveRepo((prev) => {
+        if (!prev || !sameRepoPath(prev.path, repo.path)) return prev
         if (
-          prev &&
           prev.id === fresh.id &&
           prev.path === fresh.path &&
           prev.currentBranch === fresh.currentBranch &&
@@ -143,19 +173,21 @@ export function useRepoSession({
         return replaced ? deduped : [fresh, ...deduped]
       })
     }
-    if (s.some((e) => e.conflicted)) onConflictsDetectedRef.current()
-  }, [])
+    noteConflicts(repo.path, s)
+    return fresh ?? repo
+  }, [noteConflicts])
 
   const afterGitMutation = useCallback(
     async (opts?: { history?: HistoryRefreshMode }): Promise<void> => {
       const repo = activeRepoRef.current
       if (!repo) return
-      await refreshRepoMeta(repo)
+      // History uses the refreshed repository so a "current branch" filter follows a checkout.
+      const fresh = await refreshRepoMeta(repo)
       const mode = opts?.history ?? 'tip'
       const fns = historyFnsRef.current
-      if (!fns) return
-      if (mode === 'full') await fns.loadHistory(repo)
-      else if (mode === 'tip') await fns.refreshHistoryTip(repo)
+      if (!fns || !sameRepoPath(activeRepoRef.current?.path, repo.path)) return
+      if (mode === 'full') await fns.loadHistory(fresh)
+      else if (mode === 'tip') await fns.refreshHistoryTip(fresh)
     },
     [refreshRepoMeta, historyFnsRef]
   )
@@ -249,18 +281,22 @@ export function useRepoSession({
       const repo = activeRepoRef.current
       if (!repo || repo.path !== repoPath) return
       void (async () => {
-        await refreshRepoMeta(repo)
         if (event.kind === 'git-meta') {
-          await historyFnsRef.current?.refreshHistoryTip(repo)
+          const fresh = await refreshRepoMeta(repo)
+          await historyFnsRef.current?.refreshHistoryTip(fresh)
+        } else {
+          await refreshStatus(repo)
         }
-      })()
+      })().catch((err) => {
+        if (sameRepoPath(activeRepoRef.current?.path, repoPath)) setError(toErrorMessage(err))
+      })
     })
 
     return () => {
       off()
       void window.gitManager.repo.unwatch()
     }
-  }, [activeRepo?.path, liveStatusWatch, refreshRepoMeta, historyFnsRef])
+  }, [activeRepo?.path, liveStatusWatch, refreshRepoMeta, refreshStatus, historyFnsRef])
 
   return {
     repos,
@@ -273,6 +309,7 @@ export function useRepoSession({
     identity,
     setIdentity,
     rebaseInProgress,
+    mergeInProgress,
     gitMissing,
     currentBranch,
     localBranchNames,

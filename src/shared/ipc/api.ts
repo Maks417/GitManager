@@ -5,6 +5,7 @@ import type {
   CloneRequest,
   CommitDetail,
   ConflictFile,
+  ConflictSide,
   DiffRequest,
   DiffResult,
   GitIdentity,
@@ -15,6 +16,7 @@ import type {
   ProviderAccount,
   RemoteBranchInfo,
   RemoteRepo,
+  RepoRemovalInfo,
   Repository,
   RepoWatchEvent,
   SetGitIdentityRequest,
@@ -42,6 +44,8 @@ export interface GitManagerApi {
     watch: (repoPath: string) => Promise<void>
     unwatch: () => Promise<void>
     onChanged: (callback: (event: RepoWatchEvent) => void) => () => void
+    /** Uncommitted / stashed / unpushed work that deleting the folder would lose. */
+    removalInfo: (id: string) => Promise<RepoRemovalInfo & { path: string }>
   }
   history: {
     load: (query: HistoryQuery) => Promise<HistoryPage>
@@ -66,6 +70,9 @@ export interface GitManagerApi {
     rebaseContinue: (repoPath: string) => Promise<{ conflicts: string[] }>
     rebaseAbort: (repoPath: string) => Promise<void>
     rebaseInProgress: (repoPath: string) => Promise<boolean>
+    rebaseSkip: (repoPath: string) => Promise<{ conflicts: string[] }>
+    mergeAbort: (repoPath: string) => Promise<void>
+    mergeInProgress: (repoPath: string) => Promise<boolean>
     stash: (repoPath: string, message?: string) => Promise<void>
     stashList: (repoPath: string) => Promise<StashEntry[]>
     stashApply: (repoPath: string, ref?: string) => Promise<void>
@@ -79,6 +86,8 @@ export interface GitManagerApi {
     listConflicts: (repoPath: string) => Promise<ConflictFile[]>
     getSides: (repoPath: string, path: string) => Promise<MergeSides>
     saveResult: (repoPath: string, path: string, content: string) => Promise<void>
+    /** Take one side as the whole file (or the deletion, when that side deleted it) and stage it. */
+    resolveSide: (repoPath: string, path: string, side: ConflictSide) => Promise<void>
   }
   providers: {
     listAccounts: () => Promise<ProviderAccount[]>
@@ -105,8 +114,6 @@ export interface GitManagerApi {
   }
   shell: {
     openExternal: (url: string) => Promise<void>
-    openPath: (path: string) => Promise<string>
-    showItemInFolder: (path: string) => Promise<void>
   }
 }
 
