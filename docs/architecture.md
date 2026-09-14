@@ -8,7 +8,7 @@ Git Manager is an Electron desktop app (`electron-vite`) with a React renderer. 
 
 | Component | Responsibility | Key files |
 |---|---|---|
-| Electron main | Window, CSP, menus, theme background, updater, repo watcher | [`src/main/index.ts`](../src/main/index.ts), [`src/main/menu.ts`](../src/main/menu.ts) |
+| Electron main | Window, CSP, menus, native theme and window background, updater, repo watcher | [`src/main/index.ts`](../src/main/index.ts), [`src/main/menu.ts`](../src/main/menu.ts) |
 | IPC handlers | Zod-validated channels by domain (repo, history, git, merge, providers, prefs, app/shell) | [`src/main/ipc.ts`](../src/main/ipc.ts), [`src/main/ipc/`](../src/main/ipc/) |
 | Preload bridge | Narrow `contextBridge` API as `window.gitManager` | [`src/preload/index.ts`](../src/preload/index.ts) |
 | Shared IPC contracts | Zod schemas, channel names, `GitManagerApi` | [`src/shared/ipc/`](../src/shared/ipc/) |
@@ -86,7 +86,7 @@ flowchart LR
 | Navigation & CSP | All navigation is blocked, including file drops. The CSP is a `<meta>` tag generated per build mode ([`electron.vite.config.ts`](../electron.vite.config.ts)); production allows no inline or eval scripts and no network access |
 | Secrets | Provider tokens are encrypted with Electron `safeStorage` (DPAPI / Keychain / a Linux secret store) and each entry records its scheme ([`secrets.ts`](../src/main/secrets.ts)). Without OS encryption — including Linux `basic_text` — tokens are stored base64-encoded and the Accounts dialog says so. Git URL credentials are redacted in CLI output |
 | Preferences & state | Zod-validated `AppPreferences` in `userData/state/preferences.json`; each invalid field falls back on its own (sizes are clamped), so a bad file never blocks startup. State files are written atomically (temp file + rename); a corrupt file is kept aside as `*.corrupt-<time>` ([`json-store.ts`](../src/main/json-store.ts)). One app instance runs per profile |
-| Theme | `system` \| `light` \| `dark` → CSS `[data-theme]` + window background + Monaco theme |
+| Theme | `system` \| `light` \| `dark` → CSS `[data-theme]` + window background + Monaco theme + Electron `nativeTheme.themeSource` ([`theme.ts`](../src/main/theme.ts)), set before the window is created. The page CSS cannot reach the window frame, title bar or Windows/Linux menu bar, and the renderer's `prefers-color-scheme` follows `themeSource` too. Monaco and text fields use an explicit I-beam (`--cursor-text`): some GPU drivers draw the system XOR I-beam solid white |
 | Updates | `electron-updater` against GitHub Releases when packaged; no-op check in dev |
 | About | [`AboutModal`](../src/renderer/src/features/about/AboutModal.tsx) shows `AppInfo` (`app:get-info`) and links to releases/license |
 | Git binary | `GIT_MANAGER_GIT_PATH` override, else `git` / `git.exe`; startup `git.probe` / `probeGit` surfaces missing CLI (incl. macOS CLT stub) |

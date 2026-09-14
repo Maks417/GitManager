@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { IpcChannels } from '@shared/ipc'
 import { loadPreferences, savePreferences } from '../storage'
-import { applyWindowThemeBackground } from '../theme'
+import { applyThemePreference } from '../theme'
 import { assertSender } from './assert-sender'
 
 export function registerPrefsHandlers(): void {
@@ -12,7 +12,7 @@ export function registerPrefsHandlers(): void {
   ipcMain.handle(IpcChannels.prefs.set, async (event, partial: unknown) => {
     assertSender(event)
     const next = savePreferences(partial as Record<string, unknown>)
-    applyWindowThemeBackground(next.theme)
+    applyThemePreference(next.theme)
     return next
   })
 }

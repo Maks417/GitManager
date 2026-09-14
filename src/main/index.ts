@@ -5,7 +5,7 @@ import { getDevServerUrl, getRendererEntryFile, isTrustedAppUrl } from './app-ur
 import { registerIpcHandlers } from './ipc'
 import { buildAppMenu } from './menu'
 import { loadPreferences } from './storage'
-import { applyWindowThemeBackground, resolvedWindowBackground } from './theme'
+import { applyThemePreference, applyWindowThemeBackground, resolvedWindowBackground } from './theme'
 import { maybeCheckOnStartup } from './updater'
 
 function resolveAppIcon(): string | undefined {
@@ -115,6 +115,8 @@ app.whenReady().then(() => {
   // CSP is a <meta> tag generated per build mode (see electron.vite.config.ts): response-header
   // injection does not apply to the file:// page of packaged builds.
   registerIpcHandlers()
+  // Before any window exists, so its frame and menu bar start in the saved theme.
+  applyThemePreference()
   buildAppMenu()
   createWindow()
 

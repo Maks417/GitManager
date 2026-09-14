@@ -112,7 +112,9 @@ Layout prefs remain: `--sidebar-width`, `--inspector-height`, `--detail-width`, 
 
 ## Theme
 
-`AppPreferences.theme`: `system` | `light` | `dark`. Resolved to `document.documentElement.dataset.theme` and Electron `BrowserWindow` background. Monaco uses `vs` / `vs-dark`.
+`AppPreferences.theme`: `system` | `light` | `dark`. Resolved to `document.documentElement.dataset.theme`, the Electron `BrowserWindow` background and `nativeTheme.themeSource`, which themes what CSS cannot reach: the window frame, title bar and Windows/Linux menu bar. Monaco uses `vs` / `vs-dark`.
+
+**Text cursor:** `--cursor-text` is an explicit I-beam per theme — a dark stem with a light halo in light mode, the reverse in dark mode — used by Monaco editors and text fields. The system I-beam is an XOR cursor, and some GPU drivers (AMD on Windows 11) draw it solid white, which disappears on light surfaces.
 
 ## Components
 

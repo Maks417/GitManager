@@ -86,6 +86,7 @@
   --welcome-glow: rgba(232, 93, 4, 0.12);
   --splitter-active: rgba(232, 93, 4, 0.4);
   --head-stroke: #f2ede6;
+  --cursor-text: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='20'%3E%3Cpath fill='%2312110f' d='M1 1h9v3H1zM4 4h3v12H4zM1 16h9v3H1z'/%3E%3Cpath fill='%23f2ede6' d='M2 2h3v1H2zM6 2h3v1H6zM5 3h1v14H5zM2 17h3v1H2zM6 17h3v1H6z'/%3E%3C/svg%3E") 5 10, text;
 }
 
 [data-theme="light"] {
@@ -126,6 +127,7 @@
   --welcome-glow: rgba(232, 93, 4, 0.1);
   --splitter-active: rgba(232, 93, 4, 0.35);
   --head-stroke: #ffffff;
+  --cursor-text: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='20'%3E%3Cpath fill='%23fff' d='M1 1h9v3H1zM4 4h3v12H4zM1 16h9v3H1z'/%3E%3Cpath fill='%231a1d21' d='M2 2h3v1H2zM6 2h3v1H6zM5 3h1v14H5zM2 17h3v1H2zM6 17h3v1H6z'/%3E%3C/svg%3E") 5 10, text;
 }
 
 html {
@@ -408,6 +410,13 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: var(--accent);
+}
+
+/* An explicit I-beam: the system one is an XOR cursor, which some GPU drivers draw solid white. */
+.monaco-editor .monaco-mouse-cursor-text,
+textarea:not(:disabled),
+input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="password"], [type="url"]):not(:disabled) {
+  cursor: var(--cursor-text);
 }
 
 .field {
