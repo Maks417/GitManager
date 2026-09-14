@@ -12,57 +12,46 @@ import {
   Monitor,
   Moon,
   RefreshCw,
-  Search,
-  Sun
+  Sun,
+  X
 } from 'lucide-react'
-import type { BranchInfo } from '@shared/ipc'
-import type { ThemePreference } from '@shared/theme'
-import { Button, SegmentedControl } from '../components/ui'
-import type { ViewMode } from '../hooks/selection'
+import { Button, IconButton, SegmentedControl } from '../components/ui'
+import { nextListIndex } from '../logic/list-nav'
+import { useAppStatus } from '../state/AppStatusProvider'
+import { useDialogActions } from '../state/DialogsProvider'
+import { useGitActions, useRemoteOp, type RemoteOpState } from '../state/GitActionsProvider'
+import { useLayout } from '../state/LayoutProvider'
+import { useSession, useStatus } from '../state/RepoSessionProvider'
+import { useSelection } from '../state/SelectionProvider'
+import { useWorkingTreeActions } from '../state/WorkingTreeProvider'
+import { HistorySearchBox } from './HistorySearchBox'
 
-type AppToolbarProps = {
-  activeRepo: boolean
-  busy: boolean
-  viewMode: ViewMode
-  statusCount: number
-  conflictCount: number
-  search: string
-  onSearchChange: (value: string) => void
-  onSearchSubmit: (e: React.FormEvent) => void
-  searchRef: React.RefObject<HTMLInputElement | null>
-  currentBranch: BranchInfo | null
-  theme: ThemePreference
-  onThemeChange: (theme: ThemePreference) => void
-  onGoHistory: () => void
-  onSelectWorkingCopy: () => void
-  onResolveConflicts: () => void
-  onFetch: () => void
-  onPull: () => void
-  onPush: () => void
+const REMOTE_OP_LABEL = { fetch: 'Fetching', pull: 'Pulling', push: 'Pushing' } as const
+const MENU_ITEMS = '[role="menuitem"]:not(:disabled)'
+
+function remoteOpLabel(op: RemoteOpState): string {
+  if (op.cancelling) return 'Cancelling…'
+  const phase = op.phase ? ` · ${op.phase}` : '…'
+  const percent = op.percent !== null ? ` ${op.percent}%` : ''
+  return `${REMOTE_OP_LABEL[op.kind]}${phase}${percent}`
 }
 
-export function AppToolbar({
-  activeRepo,
-  busy,
-  viewMode,
-  statusCount,
-  conflictCount,
-  search,
-  onSearchChange,
-  onSearchSubmit,
-  searchRef,
-  currentBranch,
-  theme,
-  onThemeChange,
-  onGoHistory,
-  onSelectWorkingCopy,
-  onResolveConflicts,
-  onFetch,
-  onPull,
-  onPush
-}: AppToolbarProps): React.JSX.Element {
+export function AppToolbar(): React.JSX.Element {
+  const { busy } = useAppStatus()
+  const { activeRepo, currentBranch } = useSession()
+  const { status, conflictCount } = useStatus()
+  const { viewMode } = useSelection()
+  const { prefs, setThemePref } = useLayout()
+  const { goHistory, selectWorkingCopy } = useWorkingTreeActions()
+  const { openDialog } = useDialogActions()
+  const { runSync, cancelRemote } = useGitActions()
+  const remoteOp = useRemoteOp()
+  const hasRepo = Boolean(activeRepo)
+
   const [syncMenuOpen, setSyncMenuOpen] = useState(false)
   const syncRef = useRef<HTMLDivElement>(null)
+  const syncTriggerRef = useRef<HTMLButtonElement>(null)
+  const syncMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!syncMenuOpen) return
@@ -73,6 +62,31 @@ export function AppToolbar({
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [syncMenuOpen])
+
+  // The menu opens with its first item focused, so the arrow keys work at once.
+  useEffect(() => {
+    if (syncMenuOpen) syncMenuRef.current?.querySelector<HTMLElement>(MENU_ITEMS)?.focus()
+  }, [syncMenuOpen])
+
+  const onSyncMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setSyncMenuOpen(false)
+      syncTriggerRef.current?.focus()
+      return
+    }
+    if (e.key === 'Tab') {
+      setSyncMenuOpen(false)
+      return
+    }
+    const items = [...e.currentTarget.querySelectorAll<HTMLElement>(MENU_ITEMS)]
+    const next = nextListIndex(e.key, items.indexOf(document.activeElement as HTMLElement), items.length, {
+      wrap: true
+    })
+    if (next === null) return
+    e.preventDefault()
+    items[next].focus()
+  }
 
   const syncBadge =
     currentBranch && (currentBranch.ahead > 0 || currentBranch.behind > 0) ? (
@@ -89,11 +103,11 @@ export function AppToolbar({
       <SegmentedControl
         ariaLabel="View mode"
         className="mode-switch"
-        disabled={!activeRepo}
+        disabled={!hasRepo}
         value={viewMode}
         onChange={(mode) => {
-          if (mode === 'history') onGoHistory()
-          else onSelectWorkingCopy()
+          if (mode === 'history') goHistory()
+          else selectWorkingCopy()
         }}
         options={[
           {
@@ -104,7 +118,7 @@ export function AppToolbar({
           },
           {
             value: 'changes',
-            label: statusCount ? `Changes (${statusCount})` : 'Changes',
+            label: status.length ? `Changes (${status.length})` : 'Changes',
             hint: 'Working tree changes',
             icon: <FileDiff size={16} strokeWidth={1.75} />
           }
@@ -118,99 +132,112 @@ export function AppToolbar({
           hint="Resolve merge conflicts"
           title="Resolve merge conflicts"
           className="has-hint-above"
-          onClick={onResolveConflicts}
+          onClick={() => openDialog('mergeEditor')}
         >
           Resolve conflicts ({conflictCount})
         </Button>
       )}
 
-      {viewMode === 'history' && (
-        <form className="spacer search-form" onSubmit={onSearchSubmit}>
-          <div className="search-field">
-            <Search className="search-field-icon" size={16} strokeWidth={1.75} aria-hidden />
-            <input
-              ref={searchRef}
-              className="search"
-              placeholder="Search messages, a commit SHA, or author:name…"
-              value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
-              disabled={!activeRepo}
-              title="Search commits"
-            />
-          </div>
-        </form>
-      )}
+      {viewMode === 'history' && <HistorySearchBox disabled={!hasRepo} />}
       {viewMode !== 'history' && <div className="spacer" />}
 
-      <div className="toolbar-menu" ref={syncRef}>
-        <button
-          type="button"
-          disabled={!activeRepo || busy}
-          className={['btn-icon', 'has-hint', 'has-hint-above', syncMenuOpen ? 'primary' : '']
-            .filter(Boolean)
-            .join(' ')}
-          onClick={() => setSyncMenuOpen((o) => !o)}
-          title="Fetch, pull, or push"
-          data-hint="Fetch, pull, or push"
-        >
-          <RefreshCw size={16} strokeWidth={1.75} />
-          Sync{syncBadge ? <> {syncBadge}</> : null}
-        </button>
-        {syncMenuOpen && (
-          <div className="dropdown-menu dropdown-menu-end" role="menu">
-            <button
-              type="button"
-              role="menuitem"
-              disabled={busy}
-              className="btn-icon has-hint has-hint-above"
-              title="Fetch remotes"
-              data-hint="Fetch remotes"
-              onClick={() => {
-                setSyncMenuOpen(false)
-                onFetch()
-              }}
+      {remoteOp ? (
+        <div className="sync-progress" role="status" aria-live="polite" title={remoteOp.repoName}>
+          <RefreshCw className="spin" size={16} strokeWidth={1.75} aria-hidden />
+          <span className="sync-progress-label cell-ellipsis">{remoteOpLabel(remoteOp)}</span>
+          <span className={`sync-progress-bar${remoteOp.percent === null ? ' indeterminate' : ''}`} aria-hidden>
+            <span style={remoteOp.percent === null ? undefined : { width: `${remoteOp.percent}%` }} />
+          </span>
+          <IconButton
+            label={`Cancel ${remoteOp.kind}`}
+            hint={remoteOp.cancellable ? `Cancel ${remoteOp.kind}` : 'Updating files; this step cannot be cancelled'}
+            className="has-hint-above"
+            disabled={!remoteOp.cancellable || remoteOp.cancelling}
+            onClick={cancelRemote}
+          >
+            <X size={14} strokeWidth={2} />
+          </IconButton>
+        </div>
+      ) : (
+        <div className="toolbar-menu" ref={syncRef}>
+          <button
+            ref={syncTriggerRef}
+            type="button"
+            disabled={!hasRepo || busy}
+            aria-haspopup="menu"
+            aria-expanded={syncMenuOpen}
+            className={['btn-icon', 'has-hint', 'has-hint-above', syncMenuOpen ? 'primary' : '']
+              .filter(Boolean)
+              .join(' ')}
+            onClick={() => setSyncMenuOpen((o) => !o)}
+            title="Fetch, pull, or push"
+            data-hint="Fetch, pull, or push"
+          >
+            <RefreshCw size={16} strokeWidth={1.75} />
+            Sync{syncBadge ? <> {syncBadge}</> : null}
+          </button>
+          {syncMenuOpen && (
+            <div
+              ref={syncMenuRef}
+              className="dropdown-menu dropdown-menu-end"
+              role="menu"
+              aria-label="Sync"
+              onKeyDown={onSyncMenuKeyDown}
             >
-              <Download size={16} strokeWidth={1.75} />
-              Fetch
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              disabled={busy}
-              className="btn-icon has-hint has-hint-above"
-              title="Pull from upstream"
-              data-hint="Pull from upstream"
-              onClick={() => {
-                setSyncMenuOpen(false)
-                onPull()
-              }}
-            >
-              <ArrowDownToLine size={16} strokeWidth={1.75} />
-              Pull
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              disabled={busy}
-              className="btn-icon has-hint has-hint-above"
-              title="Push to upstream"
-              data-hint="Push to upstream"
-              onClick={() => {
-                setSyncMenuOpen(false)
-                onPush()
-              }}
-            >
-              <ArrowUpFromLine size={16} strokeWidth={1.75} />
-              Push
-            </button>
-          </div>
-        )}
-      </div>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                className="btn-icon has-hint has-hint-above"
+                title="Fetch remotes"
+                data-hint="Fetch remotes"
+                onClick={() => {
+                  setSyncMenuOpen(false)
+                  void runSync('fetch')
+                }}
+              >
+                <Download size={16} strokeWidth={1.75} />
+                Fetch
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                className="btn-icon has-hint has-hint-above"
+                title="Pull from upstream"
+                data-hint="Pull from upstream"
+                onClick={() => {
+                  setSyncMenuOpen(false)
+                  void runSync('pull')
+                }}
+              >
+                <ArrowDownToLine size={16} strokeWidth={1.75} />
+                Pull
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                className="btn-icon has-hint has-hint-above"
+                title="Push to upstream"
+                data-hint="Push to upstream"
+                onClick={() => {
+                  setSyncMenuOpen(false)
+                  void runSync('push')
+                }}
+              >
+                <ArrowUpFromLine size={16} strokeWidth={1.75} />
+                Push
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <SegmentedControl
         ariaLabel="Theme"
-        value={theme}
-        onChange={onThemeChange}
+        value={prefs?.theme ?? 'system'}
+        onChange={setThemePref}
         options={[
           {
             value: 'system',

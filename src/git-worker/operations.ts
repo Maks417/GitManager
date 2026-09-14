@@ -2,7 +2,8 @@
 export {
   inspectRepository,
   initRepository,
-  cloneRepository
+  cloneRepository,
+  getGitDirs
 } from './ops/repo'
 
 export {

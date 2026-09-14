@@ -78,17 +78,18 @@ export function useLayoutPrefs(): {
     resolveAndApplyTheme(p.theme)
   }, [])
 
+  const themePref = prefs?.theme
   useEffect(() => {
-    if (!prefs) return
-    resolveAndApplyTheme(prefs.theme)
-    if (prefs.theme !== 'system') return
+    if (!themePref) return
+    resolveAndApplyTheme(themePref)
+    if (themePref !== 'system') return
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const onChange = (): void => {
       resolveAndApplyTheme('system')
     }
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
-  }, [prefs?.theme])
+  }, [themePref])
 
   const toggleDock = useCallback((): void => {
     void window.gitManager.prefs

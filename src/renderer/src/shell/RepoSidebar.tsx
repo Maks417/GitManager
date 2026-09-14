@@ -7,80 +7,118 @@ import {
   GitBranch,
   GitBranchPlus,
   GitMerge,
+  ListFilter,
+  Locate,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Trash2
 } from 'lucide-react'
-import type { BranchInfo, RemoteBranchInfo, Repository } from '@shared/ipc'
-import { CONFIRM_MERGE, CONFIRM_REBASE } from '../lib/copy'
+import { confirmDeleteBranch, confirmMerge, confirmRebase } from '../lib/copy'
 import { IconButton } from '../components/ui'
+import { useRovingList } from '../hooks/useRovingList'
+import { useAppStatus } from '../state/AppStatusProvider'
+import { useConfirm } from '../state/ConfirmProvider'
+import { useDialogActions } from '../state/DialogsProvider'
+import { useGitActions } from '../state/GitActionsProvider'
+import { useHistoryActions } from '../state/HistoryProvider'
+import { useLayout } from '../state/LayoutProvider'
+import { useActiveRepo, useSession } from '../state/RepoSessionProvider'
 
-type RepoSidebarProps = {
-  repos: Repository[]
-  activeRepo: Repository
-  branches: BranchInfo[]
-  remoteBranches: RemoteBranchInfo[]
-  currentBranch: BranchInfo | null
-  localBranchNames: Set<string>
-  sidebarCollapsed: boolean
-  branchesExpanded: boolean
-  remoteBranchesExpanded: boolean
-  busy: boolean
-  onToggleSidebar: () => void
-  onToggleBranches: () => void
-  onToggleRemoteBranches: () => void
-  onSelectRepo: (repo: Repository) => void
-  onRequestRemove: (repo: Repository) => void
-  onCreateBranch: () => void
-  onCheckoutBranch: (name: string) => void
-  onMergeBranch: (name: string) => void
-  onRebaseOnto: (name: string) => void
-  onDeleteBranch: (name: string) => void
-  onCheckoutRemote: (remoteRef: string) => void
+// Double-clicking a row checks the branch out; clicks on its buttons must not.
+const stopRowEvents = {
+  onClick: (e: React.MouseEvent) => e.stopPropagation(),
+  onDoubleClick: (e: React.MouseEvent) => e.stopPropagation()
 }
 
-export function RepoSidebar({
-  repos,
-  activeRepo,
-  branches,
-  remoteBranches,
-  currentBranch,
-  localBranchNames,
-  sidebarCollapsed,
-  branchesExpanded,
-  remoteBranchesExpanded,
-  busy,
-  onToggleSidebar,
-  onToggleBranches,
-  onToggleRemoteBranches,
-  onSelectRepo,
-  onRequestRemove,
-  onCreateBranch,
-  onCheckoutBranch,
-  onMergeBranch,
-  onRebaseOnto,
-  onDeleteBranch,
-  onCheckoutRemote
-}: RepoSidebarProps): React.JSX.Element {
+export function RepoSidebar(): React.JSX.Element {
+  const { busy } = useAppStatus()
+  const activeRepo = useActiveRepo()
+  const { repos, branches, remoteBranches, currentBranch, localBranchNames } = useSession()
+  const {
+    sidebarCollapsed,
+    branchesExpanded,
+    remoteBranchesExpanded,
+    toggleSidebar,
+    toggleBranches,
+    toggleRemoteBranches
+  } = useLayout()
+  const { openDialog } = useDialogActions()
+  const confirm = useConfirm()
+  const {
+    selectRepo,
+    requestRemoveRepo,
+    checkoutBranch,
+    runMergeOrRebase,
+    deleteBranch,
+    checkoutRemote
+  } = useGitActions()
+  const { showBranchHistory, revealCommit } = useHistoryActions()
+
+  // Each list is one Tab stop: arrows move between rows, Enter opens the repository or checks out the branch.
+  const repoRows = useRovingList(
+    repos.length,
+    repos.findIndex((r) => r.id === activeRepo.id),
+    (index) => {
+      const repo = repos[index]
+      if (repo) selectRepo(repo)
+    }
+  )
+  const branchRows = useRovingList(
+    branches.length,
+    branches.findIndex((b) => b.current),
+    (index) => {
+      const branch = branches[index]
+      if (branch) void checkoutBranch(branch.name)
+    }
+  )
+  const remoteRows = useRovingList(remoteBranches.length, 0, (index) => {
+    const branch = remoteBranches[index]
+    if (branch) void checkoutRemote(branch.name)
+  })
+
+  const historyButtons = (name: string, sha: string | null): React.JSX.Element => (
+    <>
+      <IconButton
+        label={`Show only ${name} in history`}
+        hint="Show only this branch"
+        disabled={busy}
+        onClick={() => void showBranchHistory(name, sha)}
+      >
+        <ListFilter size={14} strokeWidth={1.75} />
+      </IconButton>
+      <IconButton
+        label={`Jump to the tip of ${name}`}
+        hint="Jump to tip"
+        disabled={busy || !sha}
+        onClick={() => {
+          if (sha) void revealCommit(sha, name)
+        }}
+      >
+        <Locate size={14} strokeWidth={1.75} />
+      </IconButton>
+    </>
+  )
+
   return (
-    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+    <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`} data-pane="sidebar">
       <div className="sidebar-top">
         <IconButton
           label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           className="sidebar-toggle"
-          onClick={onToggleSidebar}
+          onClick={toggleSidebar}
         >
           {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
         </IconButton>
         {!sidebarCollapsed && <div className="panel-title sidebar-heading">Repositories</div>}
       </div>
-      <ul className="repo-list">
-        {repos.map((r) => (
+      <ul className="repo-list" aria-label="Repositories" onKeyDown={repoRows.onKeyDown}>
+        {repos.map((r, index) => (
           <li
             key={r.id}
+            {...repoRows.rowProps(index)}
             className={r.id === activeRepo.id ? 'active' : ''}
-            onClick={() => onSelectRepo(r)}
+            onClick={() => selectRepo(r)}
             title={
               sidebarCollapsed
                 ? `${r.name}${r.currentBranch ? ` (${r.currentBranch})` : ''}`
@@ -103,7 +141,7 @@ export function RepoSidebar({
                   label={`Remove ${r.name} from list`}
                   hint="Remove from list"
                   disabled={busy}
-                  onClick={() => onRequestRemove(r)}
+                  onClick={() => requestRemoveRepo(r)}
                 >
                   <Trash2 size={14} strokeWidth={1.75} />
                 </IconButton>
@@ -137,24 +175,25 @@ export function RepoSidebar({
       {!sidebarCollapsed && (
         <>
           <div className="panel-disclosure-row">
-            <button type="button" className="panel-title panel-disclosure" onClick={onToggleBranches}>
+            <button type="button" className="panel-title panel-disclosure" onClick={toggleBranches}>
               <span>Branches</span>
               <span className="muted">
                 {branchesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </span>
             </button>
-            <IconButton label="New branch" onClick={onCreateBranch}>
+            <IconButton label="New branch" onClick={() => openDialog('createBranch')}>
               <Plus size={16} />
             </IconButton>
           </div>
           {branchesExpanded && (
-            <ul className="branch-list">
-              {branches.map((b) => (
+            <ul className="branch-list" aria-label="Branches" onKeyDown={branchRows.onKeyDown}>
+              {branches.map((b, index) => (
                 <li
                   key={b.name}
+                  {...branchRows.rowProps(index)}
                   className={b.current ? 'active' : ''}
-                  onDoubleClick={() => onCheckoutBranch(b.name)}
-                  title="Double-click to checkout"
+                  onDoubleClick={() => void checkoutBranch(b.name)}
+                  title="Double-click or press Enter to check out"
                 >
                   <div className="branch-row-main">
                     <div className="cell-ellipsis">{b.name}</div>
@@ -167,41 +206,47 @@ export function RepoSidebar({
                       </div>
                     )}
                   </div>
-                  {!b.current && (
-                    <div className="branch-row-actions" onClick={(e) => e.stopPropagation()}>
-                      <IconButton
-                        label={`Merge ${b.name} into current`}
-                        disabled={busy}
-                        onClick={() => {
-                          if (!confirm(CONFIRM_MERGE(b.name))) return
-                          onMergeBranch(b.name)
-                        }}
-                      >
-                        <GitMerge size={14} strokeWidth={1.75} />
-                      </IconButton>
-                      <IconButton
-                        label={`Rebase current onto ${b.name}`}
-                        disabled={busy}
-                        onClick={() => {
-                          if (!confirm(CONFIRM_REBASE(b.name))) return
-                          onRebaseOnto(b.name)
-                        }}
-                      >
-                        <GitBranchPlus size={14} strokeWidth={1.75} />
-                      </IconButton>
-                      <IconButton
-                        label={`Delete branch ${b.name}`}
-                        hint={`Delete ${b.name}`}
-                        disabled={busy}
-                        onClick={() => {
-                          if (!confirm(`Delete branch "${b.name}"?`)) return
-                          onDeleteBranch(b.name)
-                        }}
-                      >
-                        <Trash2 size={14} strokeWidth={1.75} />
-                      </IconButton>
-                    </div>
-                  )}
+                  <div className="branch-row-actions" {...stopRowEvents}>
+                    {historyButtons(b.name, b.sha)}
+                    {!b.current && (
+                      <>
+                        <IconButton
+                          label={`Merge ${b.name} into current`}
+                          disabled={busy}
+                          onClick={() =>
+                            void confirm(confirmMerge(b.name)).then((ok) => {
+                              if (ok) void runMergeOrRebase('merge', b.name)
+                            })
+                          }
+                        >
+                          <GitMerge size={14} strokeWidth={1.75} />
+                        </IconButton>
+                        <IconButton
+                          label={`Rebase current onto ${b.name}`}
+                          disabled={busy}
+                          onClick={() =>
+                            void confirm(confirmRebase(b.name)).then((ok) => {
+                              if (ok) void runMergeOrRebase('rebase', b.name)
+                            })
+                          }
+                        >
+                          <GitBranchPlus size={14} strokeWidth={1.75} />
+                        </IconButton>
+                        <IconButton
+                          label={`Delete branch ${b.name}`}
+                          hint={`Delete ${b.name}`}
+                          disabled={busy}
+                          onClick={() =>
+                            void confirm(confirmDeleteBranch(b.name)).then((ok) => {
+                              if (ok) void deleteBranch(b.name)
+                            })
+                          }
+                        >
+                          <Trash2 size={14} strokeWidth={1.75} />
+                        </IconButton>
+                      </>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -213,7 +258,7 @@ export function RepoSidebar({
                 <button
                   type="button"
                   className="panel-title panel-disclosure"
-                  onClick={onToggleRemoteBranches}
+                  onClick={toggleRemoteBranches}
                 >
                   <span>Remote branches</span>
                   <span className="muted">
@@ -226,24 +271,26 @@ export function RepoSidebar({
                 </button>
               </div>
               {remoteBranchesExpanded && (
-                <ul className="branch-list">
-                  {remoteBranches.map((b) => {
+                <ul className="branch-list" aria-label="Remote branches" onKeyDown={remoteRows.onKeyDown}>
+                  {remoteBranches.map((b, index) => {
                     const hasLocal = localBranchNames.has(b.shortName)
                     return (
                       <li
                         key={b.name}
-                        onDoubleClick={() => onCheckoutRemote(b.name)}
+                        {...remoteRows.rowProps(index)}
+                        onDoubleClick={() => void checkoutRemote(b.name)}
                         title={
                           hasLocal
-                            ? `Double-click to checkout local "${b.shortName}"`
-                            : 'Double-click to create local tracking branch and checkout'
+                            ? `Double-click or press Enter to check out local "${b.shortName}"`
+                            : 'Double-click or press Enter to create a local tracking branch and check it out'
                         }
                       >
                         <div className="branch-row-main">
                           <div className="cell-ellipsis">{b.name}</div>
                           {hasLocal && <div className="muted text-xs">local</div>}
                         </div>
-                        <div className="branch-row-actions" onClick={(e) => e.stopPropagation()}>
+                        <div className="branch-row-actions" {...stopRowEvents}>
+                          {historyButtons(b.name, b.sha)}
                           <IconButton
                             label={
                               hasLocal
@@ -251,7 +298,7 @@ export function RepoSidebar({
                                 : `Checkout and track ${b.name}`
                             }
                             disabled={busy}
-                            onClick={() => onCheckoutRemote(b.name)}
+                            onClick={() => void checkoutRemote(b.name)}
                           >
                             <GitBranch size={14} strokeWidth={1.75} />
                           </IconButton>

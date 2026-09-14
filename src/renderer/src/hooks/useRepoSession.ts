@@ -13,10 +13,11 @@ import type {
 import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
+import { createLatestGate } from '../logic/latest-gate'
 import type { HistoryRefreshMode, Selection, ViewMode } from './selection'
 
 export type HistoryFns = {
-  loadHistory: (repo: Repository, searchText?: string) => Promise<void>
+  loadHistory: (repo: Repository, searchText?: string) => Promise<unknown>
   refreshHistoryTip: (repo: Repository) => Promise<void>
 }
 
@@ -46,6 +47,8 @@ export function useRepoSession({
   repos: Repository[]
   activeRepo: Repository | null
   setActiveRepo: React.Dispatch<React.SetStateAction<Repository | null>>
+  /** The active repository at call time, for actions that outlive the render they were created in. */
+  getActiveRepo: () => Repository | null
   branches: BranchInfo[]
   remoteBranches: RemoteBranchInfo[]
   setRemoteBranches: React.Dispatch<React.SetStateAction<RemoteBranchInfo[]>>
@@ -84,9 +87,15 @@ export function useRepoSession({
   const onConflictsDetectedRef = useRef(onConflictsDetected)
   onConflictsDetectedRef.current = onConflictsDetected
   const conflictStateRef = useRef<{ path: string; conflicted: boolean } | null>(null)
+  // Refreshes overlap (watcher events, Git actions) and finish in any order. Only the newest may apply:
+  // an older response would put back branches or status from before the latest change.
+  const [metaGate] = useState(createLatestGate)
+  const [statusGate] = useState(createLatestGate)
 
   const currentBranch = useMemo(() => branches.find((b) => b.current) ?? null, [branches])
   const localBranchNames = useMemo(() => new Set(branches.map((b) => b.name)), [branches])
+
+  const getActiveRepo = useCallback((): Repository | null => activeRepoRef.current, [])
 
   const refreshRepos = useCallback(async (opts?: { activateFirst?: boolean }) => {
     const list = await window.gitManager.repo.list()
@@ -110,72 +119,83 @@ export function useRepoSession({
   /** Work-tree edits only change status; branches, identity and history stay as they are. */
   const refreshStatus = useCallback(
     async (repo: Repository): Promise<void> => {
+      const token = statusGate.begin()
       const entries = await window.gitManager.repo.status(repo.path)
-      if (!sameRepoPath(activeRepoRef.current?.path, repo.path)) return
+      if (!statusGate.isLatest(token) || !sameRepoPath(activeRepoRef.current?.path, repo.path)) return
       setStatus(entries)
       noteConflicts(repo.path, entries)
     },
-    [noteConflicts]
+    [noteConflicts, statusGate]
   )
 
-  const refreshRepoMeta = useCallback(async (repo: Repository): Promise<Repository> => {
-    const [b, remoteB, s, fresh, id, rebasing, merging] = await Promise.all([
-      window.gitManager.repo.branches(repo.path),
-      window.gitManager.repo.remoteBranches(repo.path),
-      window.gitManager.repo.status(repo.path),
-      window.gitManager.repo.get(repo.id),
-      window.gitManager.git.getIdentity(repo.path),
-      window.gitManager.git.rebaseInProgress(repo.path),
-      window.gitManager.git.mergeInProgress(repo.path)
-    ])
-    // The user may have switched repositories while these requests ran. Never apply another
-    // repository's branches or status, and never switch the app back to it.
-    if (!sameRepoPath(activeRepoRef.current?.path, repo.path)) return fresh ?? repo
-    setBranches(b)
-    setRemoteBranches(remoteB)
-    setStatus(s)
-    setIdentity(id)
-    setRebaseInProgress(rebasing)
-    setMergeInProgress(merging)
-    if (fresh) {
-      setActiveRepo((prev) => {
-        if (!prev || !sameRepoPath(prev.path, repo.path)) return prev
-        if (
-          prev.id === fresh.id &&
-          prev.path === fresh.path &&
-          prev.currentBranch === fresh.currentBranch &&
-          prev.name === fresh.name
-        ) {
-          return prev
-        }
-        return fresh
-      })
-      setRepos((prev) => {
-        let replaced = false
-        const next = prev.map((r) => {
+  const refreshRepoMeta = useCallback(
+    async (repo: Repository): Promise<Repository> => {
+      const metaToken = metaGate.begin()
+      const statusToken = statusGate.begin()
+      const [b, remoteB, s, fresh, id, rebasing, merging] = await Promise.all([
+        window.gitManager.repo.branches(repo.path),
+        window.gitManager.repo.remoteBranches(repo.path),
+        window.gitManager.repo.status(repo.path),
+        window.gitManager.repo.get(repo.id),
+        window.gitManager.git.getIdentity(repo.path),
+        window.gitManager.git.rebaseInProgress(repo.path),
+        window.gitManager.git.mergeInProgress(repo.path)
+      ])
+      // The user may have switched repositories while these requests ran. Never apply another
+      // repository's branches or status, and never switch the app back to it. A newer refresh of this
+      // repository that started meanwhile applies its own, fresher results instead.
+      if (!sameRepoPath(activeRepoRef.current?.path, repo.path) || !metaGate.isLatest(metaToken)) {
+        return fresh ?? repo
+      }
+      setBranches(b)
+      setRemoteBranches(remoteB)
+      setIdentity(id)
+      setRebaseInProgress(rebasing)
+      setMergeInProgress(merging)
+      if (statusGate.isLatest(statusToken)) {
+        setStatus(s)
+        noteConflicts(repo.path, s)
+      }
+      if (fresh) {
+        setActiveRepo((prev) => {
+          if (!prev || !sameRepoPath(prev.path, repo.path)) return prev
           if (
-            r.id === fresh.id ||
-            r.id === repo.id ||
-            r.path.toLowerCase() === fresh.path.toLowerCase()
+            prev.id === fresh.id &&
+            prev.path === fresh.path &&
+            prev.currentBranch === fresh.currentBranch &&
+            prev.name === fresh.name
           ) {
-            replaced = true
-            return fresh
+            return prev
           }
-          return r
+          return fresh
         })
-        const seen = new Set<string>()
-        const deduped = next.filter((r) => {
-          const key = r.path.toLowerCase()
-          if (seen.has(key)) return false
-          seen.add(key)
-          return true
+        setRepos((prev) => {
+          let replaced = false
+          const next = prev.map((r) => {
+            if (
+              r.id === fresh.id ||
+              r.id === repo.id ||
+              r.path.toLowerCase() === fresh.path.toLowerCase()
+            ) {
+              replaced = true
+              return fresh
+            }
+            return r
+          })
+          const seen = new Set<string>()
+          const deduped = next.filter((r) => {
+            const key = r.path.toLowerCase()
+            if (seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+          return replaced ? deduped : [fresh, ...deduped]
         })
-        return replaced ? deduped : [fresh, ...deduped]
-      })
-    }
-    noteConflicts(repo.path, s)
-    return fresh ?? repo
-  }, [noteConflicts])
+      }
+      return fresh ?? repo
+    },
+    [noteConflicts, metaGate, statusGate]
+  )
 
   const afterGitMutation = useCallback(
     async (opts?: { history?: HistoryRefreshMode }): Promise<void> => {
@@ -296,12 +316,13 @@ export function useRepoSession({
       off()
       void window.gitManager.repo.unwatch()
     }
-  }, [activeRepo?.path, liveStatusWatch, refreshRepoMeta, refreshStatus, historyFnsRef])
+  }, [activeRepo?.path, liveStatusWatch, refreshRepoMeta, refreshStatus, historyFnsRef, setError])
 
   return {
     repos,
     activeRepo,
     setActiveRepo,
+    getActiveRepo,
     branches,
     remoteBranches,
     setRemoteBranches,

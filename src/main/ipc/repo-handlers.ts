@@ -122,19 +122,27 @@ export function registerRepoHandlers(): void {
     return result.filePaths[0]
   })
 
+  /** Bumped by every watch / unwatch request, so a slower earlier request never starts a stale watch. */
+  let watchRequest = 0
+
   ipcMain.handle(IpcChannels.repo.watch, async (event, repoPath: unknown) => {
     assertSender(event)
     const path = parseRepoPath(repoPath)
+    const request = ++watchRequest
     const prefs = loadPreferences()
     if (prefs.liveStatusWatch === false) {
       stopRepoWatch()
       return
     }
-    startRepoWatch(path, (root, paths) => git.filterIgnoredPaths(root, paths))
+    // Linked worktrees and submodules keep HEAD, the index and refs outside the work tree.
+    const gitDirs = await git.getGitDirs(path).catch(() => undefined)
+    if (request !== watchRequest) return
+    startRepoWatch(path, { ignoreFilter: (root, paths) => git.filterIgnoredPaths(root, paths), gitDirs })
   })
 
   ipcMain.handle(IpcChannels.repo.unwatch, async (event) => {
     assertSender(event)
+    watchRequest++
     stopRepoWatch()
   })
 

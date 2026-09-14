@@ -179,4 +179,40 @@ describe('branch merge rebase stash ops', () => {
     const after = await getBranches(clone)
     expect(after.find((b) => b.name === 'feature-remote')?.current).toBe(true)
   }, 60000)
+
+  it('reports branch tips and a branch that is ahead of and behind its upstream at once', async () => {
+    const dir = await initRepo()
+    await git(dir, 'checkout', '-q', '-b', 'theirs')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', 'theirs 1')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', 'theirs 2')
+    await git(dir, 'checkout', '-q', 'main')
+    await git(dir, 'commit', '-q', '--allow-empty', '-m', 'ours')
+    // A remote that is never contacted: for-each-ref only needs its fetch refspec.
+    await git(dir, 'remote', 'add', 'origin', join(dir, 'nowhere.git'))
+    await git(dir, 'update-ref', 'refs/remotes/origin/main', 'theirs')
+    await git(dir, 'branch', '-q', '-D', 'theirs')
+    await git(dir, 'config', 'branch.main.remote', 'origin')
+    await git(dir, 'config', 'branch.main.merge', 'refs/heads/main')
+
+    const main = (await getBranches(dir)).find((b) => b.name === 'main')
+    expect(main).toMatchObject({ current: true, upstream: 'origin/main', ahead: 1, behind: 2 })
+    expect(main?.sha).toBe((await git(dir, 'rev-parse', 'main')).trim())
+    expect(await getRemoteBranches(dir)).toEqual([
+      {
+        name: 'origin/main',
+        remote: 'origin',
+        shortName: 'main',
+        sha: (await git(dir, 'rev-parse', 'refs/remotes/origin/main')).trim()
+      }
+    ])
+  }, 30000)
+
+  it('lists an unborn current branch without a tip', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gm-ops-'))
+    dirs.push(dir)
+    await runGit({ cwd: dir, args: ['init', '-b', 'main'] })
+    expect(await getBranches(dir)).toEqual([
+      { name: 'main', current: true, upstream: null, ahead: 0, behind: 0, sha: null }
+    ])
+  }, 30000)
 })

@@ -8,13 +8,14 @@
 | Commit | History entry from `git log` | `sha`, `shortSha`, `subject`, `body`, author, `authoredAt`, `parents[]`, `refs[]` |
 | CommitRef | Decorations on a commit | `name`, `type` (`local` \| `remote` \| `tag` \| `head`), optional `color` |
 | GraphNode | Layout of one commit in the topology graph | `sha`, `lane`, `lanes[]`, `passThrough[]`, `joins[]`, `hasIncoming`, `connections[]` |
-| HistoryPage | Paged history payload | `commits`, `graph`, `nextCursor`, `headSha` |
+| HistoryQuery | Request for a history page | `repoPath`, `search` (text, `author:`, `branch:`), `branch` (current-branch filter), `skip`, `limit`, `revealSha` (load down to a commit) |
+| HistoryPage | Paged history payload | `commits`, `graph`, `nextCursor`, `headSha`; `branches` and `notice` for a `branch:` search; `revealed` for a jump |
 | FileChange | File touched by a commit | `path`, `status`, optional stats / `oldPath` |
 | CommitDetail | Commit + changed files | `commit`, `files` |
 | DiffResult | Text for Monaco (or binary flag) | `path`, `oldText`, `newText`, `binary`, `language?` |
 | StatusEntry | Working-tree / index status line | `path`, index/worktree letters, `staged`, `unstaged`, `untracked`, `conflicted` |
-| BranchInfo | Local branch + upstream divergence | `name`, `current`, `upstream`, `ahead`, `behind` |
-| RemoteBranchInfo | Remote-tracking branch short name | `name`, `remote` |
+| BranchInfo | Local branch + upstream divergence | `name`, `current`, `upstream`, `ahead`, `behind`, `sha` (tip; null before the first commit) |
+| RemoteBranchInfo | Remote-tracking branch | `name`, `remote`, `shortName`, `sha` |
 | StashEntry | Stash reflog entry | `index`, `message`, `reflogSelector` |
 | ConflictFile | Path with unmerged stages | `path`, `hasBase`, `hasOurs`, `hasTheirs` |
 | MergeSides | Three-way content + work-tree result | `path`, `base`, `ours`, `theirs`, `result`, `binary`, `tooLarge` |
@@ -27,6 +28,9 @@
 | AppInfo | About-dialog metadata | `name`, `version`, `architecture`, `homepage` |
 | AppPreferences | UI layout and behavior prefs | theme, dock, column widths, filters, live watch, etc. |
 | RepoWatchEvent | Live FS watch notification | `repoPath`, `kind` (`worktree` \| `git-meta`) |
+| RemoteOpRequest | Start a fetch, pull or push | `repoPath`, `opId` (chosen by the renderer) |
+| GitProgress | Progress of a running fetch, pull or push | `opId`, `repoPath`, `kind`, `phase`, `percent`, `cancellable` |
+| RemoteOpResult | How a fetch, pull or push ended | `outcome` (`done` \| `cancelled`) |
 | UpdateStatus | Auto-update progress | checking / available / downloaded / version / error / progress |
 
 Schemas: [`src/shared/ipc/schemas.ts`](../src/shared/ipc/schemas.ts). Conflict regions: [`src/merge-core/conflict.ts`](../src/merge-core/conflict.ts).

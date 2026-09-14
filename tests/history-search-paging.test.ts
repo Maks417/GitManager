@@ -3,7 +3,7 @@ import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import { runGit } from '../src/git-worker/git-runner'
 import { loadHistory } from '../src/git-worker/operations'
-import { git, initRepo, trackTempDirs } from './helpers/git-fixture'
+import { git, importCommits, initRepo, trackTempDirs } from './helpers/git-fixture'
 
 const tempDir = trackTempDirs()
 
@@ -92,22 +92,160 @@ describe('history search', () => {
   }, 30000)
 })
 
-describe('ref decorations', () => {
-  it('tells local branches with slashes, remote branches, tags and HEAD apart', async () => {
-    const dir = await initRepo(tempDir('gm-refs-'))
-    await git(dir, 'branch', 'feature/login')
-    await git(dir, 'tag', 'v1.0')
-    await git(dir, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+describe('branch search', () => {
+  /** main, two feature branches and a hotfix branch with interleaved commits, plus two remote-tracking branches. */
+  async function branchRepo(): Promise<string> {
+    const dir = await initRepo(tempDir('gm-branch-'), { initialCommit: false })
+    await commitAt(dir, 'base', '2026-04-01T00:00:00Z')
+    for (const branch of ['feature/login', 'feature/signup', 'hotfix']) await git(dir, 'branch', branch)
+    const steps: Array<[string, string, string]> = [
+      ['feature/login', 'login form', '2026-04-02T00:00:00Z'],
+      ['main', 'main work', '2026-04-03T00:00:00Z'],
+      ['feature/signup', 'signup form', '2026-04-04T00:00:00Z'],
+      ['feature/login', 'fix login bug', '2026-04-05T00:00:00Z'],
+      ['hotfix', 'fix crash', '2026-04-06T00:00:00Z'],
+      ['main', 'more main work', '2026-04-07T00:00:00Z']
+    ]
+    for (const [branch, message, date] of steps) {
+      await git(dir, 'checkout', '-q', branch)
+      await commitAt(dir, message, date)
+    }
+    await git(dir, 'checkout', '-q', 'main')
+    await git(dir, 'update-ref', 'refs/remotes/origin/main', 'main~1')
+    await git(dir, 'update-ref', 'refs/remotes/origin/feature/login', 'feature/login~1')
+    return dir
+  }
 
-    const [commit] = (await loadHistory({ repoPath: dir, limit: 5 })).commits
-    const refs = commit.refs.map(({ name, type }) => ({ name, type }))
-    expect(refs).toEqual(
-      expect.arrayContaining([
-        { name: 'HEAD → main', type: 'head' },
-        { name: 'feature/login', type: 'local' },
-        { name: 'origin/main', type: 'remote' },
-        { name: 'v1.0', type: 'tag' }
-      ])
+  it('limits history to the branches a pattern matches, page by page', async () => {
+    const dir = await branchRepo()
+    const expected = (
+      await git(
+        dir,
+        'rev-list',
+        '--date-order',
+        'refs/heads/feature/login',
+        'refs/heads/feature/signup',
+        'refs/remotes/origin/feature/login'
+      )
     )
+      .trim()
+      .split('\n')
+
+    const seen: string[] = []
+    for (let skip = 0; ; ) {
+      const page = await loadHistory({ repoPath: dir, search: 'branch:feature/*', limit: 2, skip })
+      expect(page.branches).toEqual(['feature/login', 'feature/signup', 'origin/feature/login'])
+      seen.push(...page.commits.map((c) => c.sha))
+      if (!page.nextCursor) break
+      skip += page.commits.length
+    }
+    expect(seen).toEqual(expected)
   }, 30000)
+
+  it('matches main exactly, with its remote-tracking branch, and combines with other search terms', async () => {
+    const dir = await branchRepo()
+    const main = await loadHistory({ repoPath: dir, search: 'branch:main', limit: 50 })
+    expect(main.branches).toEqual(['main', 'origin/main'])
+    expect(main.commits.map((c) => c.subject)).toEqual(['more main work', 'main work', 'base'])
+
+    expect(await subjects(dir, { search: 'fix branch:feature/login' })).toEqual(['fix login bug'])
+    expect(await subjects(dir, { search: 'branch:hotfix branch:signup' })).toEqual(['fix crash', 'signup form', 'base'])
+    expect(await subjects(dir, { search: 'branch:feature/login author:Test User' })).toEqual([
+      'fix login bug',
+      'login form',
+      'base'
+    ])
+  }, 30000)
+
+  it('replaces the current-branch filter', async () => {
+    const dir = await branchRepo()
+    expect(await subjects(dir, { branch: 'main', search: 'branch:hotfix' })).toEqual(['fix crash', 'base'])
+  }, 30000)
+
+  it('says so when no branch matches', async () => {
+    const dir = await branchRepo()
+    const page = await loadHistory({ repoPath: dir, search: 'fix branch:nothing-here branch:nor-this', limit: 50 })
+    expect(page).toMatchObject({ commits: [], nextCursor: null, branches: [] })
+    expect(page.notice).toBe('No branch matches "nothing-here" or "nor-this".')
+  }, 30000)
+
+  it('passes any number of matching branches to Git', async () => {
+    const dir = await initRepo(tempDir('gm-branch-many-'))
+    const root = (await git(dir, 'rev-parse', 'HEAD')).trim()
+    const tip = await importCommits(dir, { ref: 'refs/heads/topics', count: 2500, startEpoch: 1_900_000_000, from: root })
+    const chain = (await git(dir, 'rev-list', '--reverse', `${root}..topics`)).trim().split('\n')
+    // About 100 KB of ref names: far more than a Windows command line (32,767 characters) holds.
+    const updates = chain
+      .map((sha, i) => `create refs/heads/topic/${String(i).padStart(4, '0')}-with-a-longer-name ${sha}\n`)
+      .join('')
+    const created = await runGit({ cwd: dir, args: ['update-ref', '--stdin'], input: updates })
+    expect(created.code).toBe(0)
+
+    const page = await loadHistory({ repoPath: dir, search: 'branch:topic/*', limit: 500 })
+    expect(page.branches).toHaveLength(2500)
+    expect(page.commits).toHaveLength(500)
+    expect(page.commits[0].sha).toBe(tip)
+    expect(page.nextCursor).not.toBeNull()
+  }, 60000)
+})
+
+describe('jump to a commit', () => {
+  /** A root commit, a side branch `old` with one old commit, then `count` newer commits on main. */
+  async function deepRepo(count: number): Promise<{ dir: string; old: string }> {
+    const dir = await initRepo(tempDir('gm-reveal-'), { initialCommit: false })
+    const root = await importCommits(dir, {
+      ref: 'refs/heads/main',
+      count: 1,
+      startEpoch: 1_700_000_000,
+      subject: () => 'root'
+    })
+    const old = await importCommits(dir, {
+      ref: 'refs/heads/old',
+      count: 1,
+      startEpoch: 1_700_000_010,
+      from: root,
+      subject: () => 'old tip'
+    })
+    await importCommits(dir, { ref: 'refs/heads/main', count, startEpoch: 1_700_000_100, from: root })
+    return { dir, old }
+  }
+
+  it('loads every commit down to one far below the first page, and one page more', async () => {
+    const { dir, old } = await deepRepo(450)
+    const page = await loadHistory({ repoPath: dir, limit: 50, revealSha: old })
+    expect(page.revealed).toBe(true)
+    expect(page.commits.findIndex((c) => c.sha === old)).toBe(450)
+    // Only the root commit is left below it.
+    expect(page.commits.slice(-2).map((c) => c.subject)).toEqual(['old tip', 'root'])
+    expect(page.nextCursor).toBeNull()
+    expect(page.graph).toHaveLength(page.commits.length)
+  }, 30000)
+
+  it('stops one page past the commit, and paging continues from there', async () => {
+    const { dir } = await deepRepo(300)
+    const target = (await git(dir, 'rev-parse', 'main~100')).trim()
+    const page = await loadHistory({ repoPath: dir, limit: 50, revealSha: target })
+    expect(page.revealed).toBe(true)
+    expect(page.commits.findIndex((c) => c.sha === target)).toBe(100)
+    expect(page.commits).toHaveLength(151)
+    expect(page.nextCursor).toBe(page.commits[150].sha)
+
+    const next = await loadHistory({ repoPath: dir, limit: 50, skip: page.commits.length })
+    expect(next.commits[0].sha).toBe((await git(dir, 'rev-parse', 'main~151')).trim())
+  }, 30000)
+
+  it('reports a commit that the walk does not reach', async () => {
+    const { dir, old } = await deepRepo(60)
+    const page = await loadHistory({ repoPath: dir, limit: 50, branch: 'main', revealSha: old })
+    expect(page.revealed).toBe(false)
+    expect(page.commits).toHaveLength(50)
+    expect(page.nextCursor).toBe(page.commits[49].sha)
+  }, 30000)
+
+  it('gives up after 10,000 commits', async () => {
+    const { dir, old } = await deepRepo(10_050)
+    const page = await loadHistory({ repoPath: dir, limit: 50, revealSha: old })
+    expect(page.revealed).toBe(false)
+    expect(page.commits).toHaveLength(50)
+  }, 60000)
 })

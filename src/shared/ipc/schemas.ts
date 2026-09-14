@@ -73,7 +73,13 @@ export const HistoryPageSchema = z.object({
   commits: z.array(CommitSchema),
   graph: z.array(GraphNodeSchema),
   nextCursor: z.string().nullable(),
-  headSha: z.string().nullable()
+  headSha: z.string().nullable(),
+  /** Branches a `branch:` search selected (short names); absent without one. */
+  branches: z.array(z.string()).optional(),
+  /** Why the page is empty when that needs saying, e.g. no branch matches the search. */
+  notice: z.string().optional(),
+  /** Answer to `HistoryQuery.revealSha`: when found, the page runs one page past that commit. */
+  revealed: z.boolean().optional()
 })
 export type HistoryPage = z.infer<typeof HistoryPageSchema>
 
@@ -134,14 +140,18 @@ export const BranchInfoSchema = z.object({
   current: z.boolean(),
   upstream: z.string().nullable(),
   ahead: z.number(),
-  behind: z.number()
+  behind: z.number(),
+  /** Tip commit; null for a branch that has no commits yet. */
+  sha: z.string().nullable()
 })
 export type BranchInfo = z.infer<typeof BranchInfoSchema>
 
 export const RemoteBranchInfoSchema = z.object({
   name: z.string(),
   remote: z.string(),
-  shortName: z.string()
+  shortName: z.string(),
+  /** Tip commit. */
+  sha: z.string()
 })
 export type RemoteBranchInfo = z.infer<typeof RemoteBranchInfoSchema>
 
@@ -273,9 +283,45 @@ export const HistoryQuerySchema = z.object({
   mergesOnly: z.boolean().optional(),
   /** Commits already shown; the next page starts after them (`git log --skip`). */
   skip: z.number().int().min(0).max(1_000_000).optional(),
-  limit: z.number().min(1).max(500).default(HISTORY_PAGE_SIZE)
+  limit: z.number().min(1).max(500).default(HISTORY_PAGE_SIZE),
+  /** Load from the top down to this commit and one page past it, instead of a page from `skip`. */
+  revealSha: z
+    .string()
+    .regex(/^[0-9a-f]{40}$/i, 'Invalid commit id')
+    .optional()
 })
 export type HistoryQuery = z.infer<typeof HistoryQuerySchema>
+
+export const RemoteOpKindSchema = z.enum(['fetch', 'pull', 'push'])
+export type RemoteOpKind = z.infer<typeof RemoteOpKindSchema>
+
+export const RemoteOpRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  /** Chosen by the renderer, which uses it to match progress events and to cancel. */
+  opId: z.string().regex(/^[\w-]{8,64}$/, 'Invalid operation id')
+})
+export type RemoteOpRequest = z.infer<typeof RemoteOpRequestSchema>
+
+export const RemoteProgressSchema = z.object({
+  /** Git's current step, e.g. "Receiving objects". */
+  phase: z.string(),
+  percent: z.number().min(0).max(100).nullable(),
+  /** False while a pull updates the work tree, which must not be interrupted. */
+  cancellable: z.boolean()
+})
+export type RemoteProgress = z.infer<typeof RemoteProgressSchema>
+
+export const GitProgressSchema = RemoteProgressSchema.extend({
+  opId: z.string(),
+  repoPath: z.string(),
+  kind: RemoteOpKindSchema
+})
+export type GitProgress = z.infer<typeof GitProgressSchema>
+
+export const RemoteOpResultSchema = z.object({
+  outcome: z.enum(['done', 'cancelled'])
+})
+export type RemoteOpResult = z.infer<typeof RemoteOpResultSchema>
 
 export const CloneRequestSchema = z.object({
   url: z.string().min(1),

@@ -12,9 +12,14 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 4. Stash panel: stash (includes untracked), apply / pop / drop entries.
 5. Identity modal: set `user.name` / `user.email` at local or global scope.
 
+## Keyboard
+
+- The file list is one Tab stop. ↑ / ↓, PageUp / PageDown, Home and End move through the staged files and then the other changes (as far as their sections are expanded) and show each diff. Space checks or unchecks the active file for Stage, Unstage and Discard.
+- Tab leaves the read-only diff. F6 / Shift+F6 move between the sidebar, the changes and the rest of the window ([History graph](history-graph.md#keyboard)).
+
 ## Live status
 
-When preference `liveStatusWatch` is enabled (default), the main process recursively watches the active repository with Node `fs.watch({ recursive: true })` (Windows and macOS). Debounced work-tree edits (and index changes) refresh status only; changes to HEAD, refs or merge/rebase state also refresh branches and tip-refresh history. Git's ignore rules decide which work-tree changes matter (`git check-ignore`, so tracked `build/` or `dist/` files still count); dependency folders such as `node_modules`, `.git/objects`, lock files and editor temps are skipped outright. Background reads never take the index lock (`GIT_OPTIONAL_LOCKS=0`).
+When preference `liveStatusWatch` is enabled (default), the main process recursively watches the active repository with Node `fs.watch({ recursive: true })`. Debounced work-tree edits (and index changes) refresh status only; changes to HEAD, refs or merge/rebase state also refresh branches and tip-refresh history. Linked worktrees and submodules keep that metadata outside the work tree (their `.git` is a file), so it is watched where Git keeps it: a linked worktree's own folder under the main repository's `.git/worktrees/` plus the shared `refs/` and `packed-refs`, or a submodule's repository under the superproject's `.git/modules/`. Another worktree's metadata never refreshes this one, and a submodule's commits refresh the superproject's status. Git's ignore rules decide which work-tree changes matter (`git check-ignore`, so tracked `build/` or `dist/` files still count); dependency folders such as `node_modules`, `.git/objects`, lock files and editor temps are skipped outright. Background reads never take the index lock (`GIT_OPTIONAL_LOCKS=0`).
 
 | Piece | File |
 |---|---|
@@ -44,7 +49,7 @@ When preference `liveStatusWatch` is enabled (default), the main process recursi
 
 ## Edge cases & rules
 
-- Discard restores tracked files from the index and moves untracked files and folders to the Trash; conflicted paths are refused. The UI confirms first.
+- Discard restores tracked files from the index and moves untracked files and folders to the Trash; conflicted paths are refused. Discarding and dropping a stash ask first, in an in-app dialog.
 - Staging, unstaging and discarding many paths is split into batches that fit on one command line.
 - Commit + push: when the push fails, the commit is kept, the form is cleared, and the error says the push failed.
 - Conflicted paths surface in status and typically open the merge editor from the shell.

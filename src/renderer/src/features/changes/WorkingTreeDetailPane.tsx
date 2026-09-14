@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type React from 'react'
 import {
   Archive,
@@ -15,48 +15,25 @@ import {
   Plus,
   Trash2
 } from 'lucide-react'
-import type { DiffResult, GitIdentity, StashEntry, StatusEntry } from '@shared/ipc'
+import type { GitIdentity, StashEntry, StatusEntry } from '@shared/ipc'
+import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { OperationBar } from '../../components/OperationBar'
 import { Splitter } from '../../components/Splitter'
 import { Button, RefPill } from '../../components/ui'
-import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
+import type { DiffSide } from '../../hooks/selection'
+import { CONFIRM_DISCARD, confirmDropStash } from '../../lib/copy'
 import { toErrorMessage } from '../../lib/errors'
-
-export type DiffSide = 'staged' | 'unstaged'
-
-interface Props {
-  repoPath: string
-  status: StatusEntry[]
-  focusedPath: string | null
-  diffSide: DiffSide
-  diff: DiffResult | null
-  diffLoading: boolean
-  onFocusFile: (path: string) => void
-  onDiffSideChange: (side: DiffSide) => void
-  onRefresh: () => Promise<void>
-  onError: (msg: string | null) => void
-  onBrowseHistory?: () => void
-  onEditIdentity?: () => void
-  identity?: GitIdentity | null
-  canAmend?: boolean
-  rebaseInProgress?: boolean
-  onRebaseContinue?: () => Promise<void>
-  onRebaseSkip?: () => Promise<void>
-  onRebaseAbort?: () => Promise<void>
-  mergeInProgress?: boolean
-  onMergeAbort?: () => Promise<void>
-  filesWidth?: number
-  onFilesWidthChange?: (width: number) => void
-  onFilesWidthCommit?: (width: number) => void
-}
-
-function defaultSideFor(entry: StatusEntry | undefined): DiffSide {
-  if (!entry) return 'unstaged'
-  if (entry.unstaged || entry.untracked) return 'unstaged'
-  if (entry.staged) return 'staged'
-  return 'unstaged'
-}
+import { nextListIndex } from '../../logic/list-nav'
+import { useAppStatusActions } from '../../state/AppStatusProvider'
+import { useConfirm } from '../../state/ConfirmProvider'
+import { useDialogActions } from '../../state/DialogsProvider'
+import { useGitActions } from '../../state/GitActionsProvider'
+import { useHistoryState } from '../../state/HistoryProvider'
+import { useLayout } from '../../state/LayoutProvider'
+import { useActiveRepo, useSession, useSessionActions, useStatus } from '../../state/RepoSessionProvider'
+import { useSelection, useSelectionActions } from '../../state/SelectionProvider'
+import { useWorkingTreeActions } from '../../state/WorkingTreeProvider'
 
 function formatIdentity(id: GitIdentity | null | undefined): string {
   if (!id) return 'Loading identity…'
@@ -68,31 +45,25 @@ function formatIdentity(id: GitIdentity | null | undefined): string {
 
 const STAGE_BEFORE_COMMIT = NOTHING_STAGED_COMMIT
 
-export function WorkingTreeDetailPane({
-  repoPath,
-  status,
-  focusedPath,
-  diffSide,
-  diff,
-  diffLoading,
-  onFocusFile,
-  onDiffSideChange,
-  onRefresh,
-  onError,
-  onBrowseHistory,
-  onEditIdentity,
-  identity,
-  canAmend = false,
-  rebaseInProgress = false,
-  onRebaseContinue,
-  onRebaseSkip,
-  onRebaseAbort,
-  mergeInProgress = false,
-  onMergeAbort,
-  filesWidth = 300,
-  onFilesWidthChange,
-  onFilesWidthCommit
-}: Props): React.JSX.Element {
+const changesRowId = (index: number): string => `changes-row-${index}`
+const rowKey = (side: DiffSide, path: string): string => `${side}\0${path}`
+
+export function WorkingTreeDetailPane(): React.JSX.Element {
+  const repoPath = useActiveRepo().path
+  const { status } = useStatus()
+  const { identity, rebaseInProgress, mergeInProgress } = useSession()
+  const { afterGitMutation } = useSessionActions()
+  const { focusedStatusPath: focusedPath, diffSide, diff, diffLoading } = useSelection()
+  const { setFocusedStatusPath, setDiffSide } = useSelectionActions()
+  const { headSha } = useHistoryState()
+  const { setError: onError } = useAppStatusActions()
+  const { goHistory } = useWorkingTreeActions()
+  const { openDialog } = useDialogActions()
+  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, runRemote } = useGitActions()
+  const { changesFilesWidth: filesWidth, setChangesFilesWidth, persistLayout } = useLayout()
+  const confirm = useConfirm()
+  const canAmend = Boolean(headSha)
+
   const [message, setMessage] = useState('')
   const [amend, setAmend] = useState(false)
   const [pushAfterCommit, setPushAfterCommit] = useState(false)
@@ -113,17 +84,32 @@ export function WorkingTreeDetailPane({
   const stageablePaths = useMemo(() => changesEntries.map((s) => s.path), [changesEntries])
   const unstageablePaths = useMemo(() => stagedEntries.map((s) => s.path), [stagedEntries])
 
-  const loadStashes = async (): Promise<void> => {
+  // The rows the arrow keys walk through: staged files, then the other changes, as far as they are expanded.
+  const navRows = useMemo(
+    () => [
+      ...(stagedExpanded ? stagedEntries.map((entry) => ({ entry, side: 'staged' as DiffSide })) : []),
+      ...(changesExpanded ? changesEntries.map((entry) => ({ entry, side: 'unstaged' as DiffSide })) : [])
+    ],
+    [stagedExpanded, stagedEntries, changesExpanded, changesEntries]
+  )
+  const navIndexByKey = useMemo(
+    () => new Map(navRows.map((row, index) => [rowKey(row.side, row.entry.path), index])),
+    [navRows]
+  )
+  const navIndex = focusedPath ? (navIndexByKey.get(rowKey(diffSide, focusedPath)) ?? -1) : -1
+
+  const loadStashes = useCallback(async (): Promise<void> => {
     try {
       setStashes(await window.gitManager.git.stashList(repoPath))
     } catch {
       setStashes([])
     }
-  }
+  }, [repoPath])
 
+  // Stashing, popping and committing change the file count; reload the stash list when it changes.
   useEffect(() => {
     void loadStashes()
-  }, [repoPath, status.length])
+  }, [loadStashes, status.length])
 
   useEffect(() => {
     if (!canAmend) setAmend(false)
@@ -139,7 +125,7 @@ export function WorkingTreeDetailPane({
     } finally {
       // Refresh after failures too: a failed step (a push after a successful commit, a stash pop
       // with conflicts) can still have changed the repository.
-      await onRefresh().catch(() => undefined)
+      await afterGitMutation({ history: 'tip' }).catch(() => undefined)
       await loadStashes()
       setBusy(false)
     }
@@ -165,38 +151,65 @@ export function WorkingTreeDetailPane({
 
   const targets = checked
 
-  const renderFileRow = (s: StatusEntry, side: DiffSide): React.JSX.Element => (
-    <li
-      key={`${side}:${s.path}`}
-      className={[
-        focusedPath === s.path && diffSide === side ? 'active' : '',
-        checked.includes(s.path) ? 'checked' : ''
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      onClick={() => {
-        onFocusFile(s.path)
-        onDiffSideChange(side)
-      }}
-      title={s.path}
-    >
-      <div className="row-inline">
-        <input
-          type="checkbox"
-          checked={checked.includes(s.path)}
-          onChange={() => toggleChecked(s.path)}
-          onClick={(e) => e.stopPropagation()}
-          title="Check to include in Stage / Unstage / Discard"
-        />
-        <code className="status-code">
-          {s.indexStatus}
-          {s.workTreeStatus}
-        </code>
-        <span className="cell-ellipsis">{s.path}</span>
-        {s.conflicted && <RefPill tone="danger">conflict</RefPill>}
-      </div>
-    </li>
-  )
+  const onFilesKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    // Section checkboxes and toggles handle their own keys.
+    if (e.target !== e.currentTarget) return
+    if (e.key === ' ') {
+      const row = navRows[navIndex]
+      if (!row) return
+      e.preventDefault()
+      toggleChecked(row.entry.path)
+      return
+    }
+    const next = nextListIndex(e.key, navIndex, navRows.length)
+    if (next === null) return
+    e.preventDefault()
+    const row = navRows[next]
+    setFocusedStatusPath(row.entry.path)
+    setDiffSide(row.side)
+    document.getElementById(changesRowId(next))?.scrollIntoView({ block: 'nearest' })
+  }
+
+  const renderFileRow = (s: StatusEntry, side: DiffSide): React.JSX.Element => {
+    const index = navIndexByKey.get(rowKey(side, s.path)) ?? -1
+    const isActive = focusedPath === s.path && diffSide === side
+    const isChecked = checked.includes(s.path)
+    return (
+      <li
+        key={`${side}:${s.path}`}
+        id={index >= 0 ? changesRowId(index) : undefined}
+        role="option"
+        aria-selected={isActive}
+        aria-checked={isChecked}
+        className={[isActive ? 'active' : '', isChecked ? 'checked' : ''].filter(Boolean).join(' ')}
+        onClick={() => {
+          setFocusedStatusPath(s.path)
+          setDiffSide(side)
+        }}
+        title={s.path}
+      >
+        <div className="row-inline">
+          <input
+            type="checkbox"
+            checked={isChecked}
+            // Space on the list checks the active file, so the boxes stay out of the Tab order and a
+            // click leaves keyboard focus on the list.
+            tabIndex={-1}
+            onMouseDown={(e) => e.preventDefault()}
+            onChange={() => toggleChecked(s.path)}
+            onClick={(e) => e.stopPropagation()}
+            title="Check to include in Stage / Unstage / Discard"
+          />
+          <code className="status-code">
+            {s.indexStatus}
+            {s.workTreeStatus}
+          </code>
+          <span className="cell-ellipsis">{s.path}</span>
+          {s.conflicted && <RefPill tone="danger">conflict</RefPill>}
+        </div>
+      </li>
+    )
+  }
 
   const renderFileSection = (
     label: string,
@@ -208,7 +221,7 @@ export function WorkingTreeDetailPane({
     if (entries.length === 0) return null
     const paths = entries.map((s) => s.path)
     return (
-      <div className="changes-file-section">
+      <div className="changes-file-section" role="group" aria-label={label}>
         <div className="changes-file-section-header">
           <label className="row-inline changes-select-all changes-file-section-check">
             <input
@@ -234,7 +247,11 @@ export function WorkingTreeDetailPane({
             </span>
           </button>
         </div>
-        {expanded && <ul className="file-list">{entries.map((s) => renderFileRow(s, side))}</ul>}
+        {expanded && (
+          <ul className="file-list" role="presentation">
+            {entries.map((s) => renderFileRow(s, side))}
+          </ul>
+        )}
       </div>
     )
   }
@@ -244,11 +261,9 @@ export function WorkingTreeDetailPane({
       <div className="cell-ellipsis muted" title={formatIdentity(identity)}>
         Committing as {formatIdentity(identity)}
       </div>
-      {onEditIdentity && (
-        <button type="button" className="ghost-btn" onClick={onEditIdentity}>
-          Change…
-        </button>
-      )}
+      <button type="button" className="ghost-btn" onClick={() => openDialog('identity')}>
+        Change…
+      </button>
     </div>
   )
 
@@ -257,17 +272,12 @@ export function WorkingTreeDetailPane({
       kind="rebase"
       variant="pane"
       busy={busy}
-      onContinue={onRebaseContinue ? () => run(() => onRebaseContinue()) : undefined}
-      onSkip={onRebaseSkip ? () => run(() => onRebaseSkip()) : undefined}
-      onAbort={onRebaseAbort ? () => run(() => onRebaseAbort()) : undefined}
+      onContinue={() => run(rebaseContinue)}
+      onSkip={() => run(rebaseSkip)}
+      onAbort={() => run(rebaseAbort)}
     />
   ) : mergeInProgress ? (
-    <OperationBar
-      kind="merge"
-      variant="pane"
-      busy={busy}
-      onAbort={onMergeAbort ? () => run(() => onMergeAbort()) : undefined}
-    />
+    <OperationBar kind="merge" variant="pane" busy={busy} onAbort={() => run(mergeAbort)} />
   ) : null
 
   const stashPanel = (
@@ -329,10 +339,11 @@ export function WorkingTreeDetailPane({
                   disabled={busy}
                   hint={`Drop ${s.reflogSelector}`}
                   title={`Drop ${s.reflogSelector}`}
-                  onClick={() => {
-                    if (!confirm(`Drop ${s.reflogSelector}?`)) return
-                    void run(() => window.gitManager.git.stashDrop(repoPath, s.reflogSelector))
-                  }}
+                  onClick={() =>
+                    void confirm(confirmDropStash(s.reflogSelector)).then((ok) => {
+                      if (ok) void run(() => window.gitManager.git.stashDrop(repoPath, s.reflogSelector))
+                    })
+                  }
                 >
                   Drop
                 </Button>
@@ -352,18 +363,16 @@ export function WorkingTreeDetailPane({
           <div>
             <h3>Working tree clean</h3>
             <p className="muted">No uncommitted changes.</p>
-            {onBrowseHistory && (
-              <Button
-                variant="primary"
-                className="mt-3"
-                icon={<History size={16} strokeWidth={1.75} />}
-                hint="Browse commit history"
-                title="Browse commit history"
-                onClick={onBrowseHistory}
-              >
-                Browse History
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              className="mt-3"
+              icon={<History size={16} strokeWidth={1.75} />}
+              hint="Browse commit history"
+              title="Browse commit history"
+              onClick={goHistory}
+            >
+              Browse History
+            </Button>
           </div>
         </div>
         <div className="changes-footer-stack">
@@ -471,16 +480,13 @@ export function WorkingTreeDetailPane({
               title="Discard local changes for selected files"
               disabled={busy || !targets.length}
               onClick={() => {
-                if (
-                  !confirm(
-                    'Discard changes in the selected files?\n\nModified files go back to their staged or committed version. Untracked files are moved to the Trash.'
-                  )
-                ) {
-                  return
-                }
-                void run(async () => {
-                  await window.gitManager.git.discard(repoPath, targets)
-                  setChecked([])
+                const paths = targets
+                void confirm(CONFIRM_DISCARD).then((ok) => {
+                  if (!ok) return
+                  void run(async () => {
+                    await window.gitManager.git.discard(repoPath, paths)
+                    setChecked([])
+                  })
                 })
               }}
             >
@@ -488,7 +494,15 @@ export function WorkingTreeDetailPane({
             </Button>
           </div>
         </div>
-        <div className="changes-file-list">
+        <div
+          className="changes-file-list"
+          role="listbox"
+          aria-label="Changed files"
+          tabIndex={0}
+          aria-activedescendant={navIndex >= 0 ? changesRowId(navIndex) : undefined}
+          onKeyDown={onFilesKeyDown}
+          data-pane-focus
+        >
           {renderFileSection('Staged', stagedEntries, 'staged', stagedExpanded, () =>
             setStagedExpanded((v) => !v)
           )}
@@ -575,7 +589,8 @@ export function WorkingTreeDetailPane({
                 setChecked([])
                 if (pushAfterCommit) {
                   try {
-                    await window.gitManager.git.push(repoPath)
+                    // Same path as Sync → Push: progress and Cancel in the toolbar.
+                    await runRemote('push')
                   } catch (err) {
                     throw new Error(`Committed, but the push failed: ${toErrorMessage(err)}`)
                   }
@@ -587,26 +602,24 @@ export function WorkingTreeDetailPane({
           </Button>
         </div>
       </aside>
-      {onFilesWidthChange && (
-        <Splitter
-          axis="x"
-          className="splitter-inline-x"
-          value={filesWidth}
-          min={200}
-          max={560}
-          onChange={onFilesWidthChange}
-          onChangeEnd={onFilesWidthCommit}
-          title="Resize changes panel"
-        />
-      )}
+      <Splitter
+        axis="x"
+        className="splitter-inline-x"
+        value={filesWidth}
+        min={200}
+        max={560}
+        onChange={setChangesFilesWidth}
+        onChangeEnd={(w) => persistLayout({ changesFilesWidth: w })}
+        title="Resize changes panel"
+      />
       <div className="diff-host changes-diff">
         {bothSides && (
           <div className="diff-side-tabs">
             <span className="muted">Show</span>
-            <button className={diffSide === 'unstaged' ? 'primary' : ''} onClick={() => onDiffSideChange('unstaged')}>
+            <button className={diffSide === 'unstaged' ? 'primary' : ''} onClick={() => setDiffSide('unstaged')}>
               Unstaged
             </button>
-            <button className={diffSide === 'staged' ? 'primary' : ''} onClick={() => onDiffSideChange('staged')}>
+            <button className={diffSide === 'staged' ? 'primary' : ''} onClick={() => setDiffSide('staged')}>
               Staged
             </button>
           </div>
@@ -624,5 +637,3 @@ export function WorkingTreeDetailPane({
     </div>
   )
 }
-
-export { defaultSideFor }

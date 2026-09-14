@@ -61,6 +61,35 @@ Clone, fetch, and push still use your normal Git credentials: **HTTPS** via Git 
 
 More detail: [`docs/features/host-accounts.md`](docs/features/host-accounts.md).
 
+## Search history
+
+Type in the search box above the history and press Enter. Search runs in Git across all branches, unless you narrow it:
+
+| Search | Finds |
+|---|---|
+| `fix login` | Commits whose message contains the text, ignoring case |
+| `author:Ada` | Commits by that author |
+| `3f2c1ab` | That commit (7–40 hex digits) |
+| `branch:main` | The history of `main`, together with remote-tracking copies such as `origin/main` |
+| `branch:feature/*` | The history of every branch the pattern matches (`*` and `?` are wildcards) |
+| `branch:main fix` | A branch filter combined with a message search |
+
+While you type, matching branches are suggested: ↑/↓ to pick one, Enter to show that branch, Alt+Enter (Option+Enter on macOS) to jump to its tip. Each branch in the sidebar also has **Show only this branch** and **Jump to tip**.
+
+More detail: [`docs/features/history-graph.md`](docs/features/history-graph.md).
+
+## Keyboard
+
+| Key | Does |
+|---|---|
+| F6 / Shift+F6 | Move between the sidebar, history or changes, the inspector, and the search box |
+| ↑ / ↓, PageUp / PageDown, Home / End | Move through commits, changed files, repositories and branches |
+| Enter | Commit list: go to the commit's files. Sidebar: open the repository or check out the branch |
+| Escape | Commit files: back to the commit list. Menus and suggestions: close them |
+| Space | Changes: check or uncheck the file |
+| Tab | Leave a read-only diff |
+| Arrow keys on a divider or column edge | Resize it (Shift: bigger steps; Home / End: smallest / largest) |
+
 ## Develop
 
 ```bash

@@ -71,7 +71,9 @@ export const IpcChannels = {
     stashDrop: 'git:stash-drop',
     discard: 'git:discard',
     getIdentity: 'git:get-identity',
-    setIdentity: 'git:set-identity'
+    setIdentity: 'git:set-identity',
+    cancelOperation: 'git:cancel-operation',
+    onProgress: 'git:on-progress'
   },
   merge: {
     listConflicts: 'merge:list-conflicts',

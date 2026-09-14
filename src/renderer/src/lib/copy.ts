@@ -1,11 +1,78 @@
-export const CONFIRM_ABORT_REBASE = 'Abort the in-progress rebase?'
+import type { ConfirmRequest } from '../logic/confirm-queue'
 
-export const CONFIRM_ABORT_MERGE =
-  'Abort the merge? Conflict resolutions made so far are discarded and the branch returns to where it was before the merge.'
+export const CONFIRM_ABORT_REBASE: ConfirmRequest = {
+  title: 'Abort rebase',
+  message: 'Abort the in-progress rebase? The branch returns to where it was before the rebase started.',
+  confirmLabel: 'Abort rebase',
+  danger: true
+}
 
-export const CONFIRM_MERGE = (ref: string): string => `Merge ${ref} into the current branch?`
+export const CONFIRM_ABORT_MERGE: ConfirmRequest = {
+  title: 'Abort merge',
+  message:
+    'Abort the merge? Conflict resolutions made so far are discarded and the branch returns to where it was before the merge.',
+  confirmLabel: 'Abort merge',
+  danger: true
+}
 
-export const CONFIRM_REBASE = (ref: string): string => `Rebase the current branch onto ${ref}?`
+export const CONFIRM_DISCARD: ConfirmRequest = {
+  title: 'Discard changes',
+  message:
+    'Discard changes in the selected files?\n\nModified files go back to their staged or committed version. Untracked files are moved to the Trash.',
+  confirmLabel: 'Discard',
+  danger: true
+}
+
+export const confirmMerge = (ref: string): ConfirmRequest => ({
+  title: 'Merge',
+  message: `Merge ${ref} into the current branch?`,
+  confirmLabel: 'Merge'
+})
+
+export const confirmRebase = (ref: string): ConfirmRequest => ({
+  title: 'Rebase',
+  message: `Rebase the current branch onto ${ref}?`,
+  confirmLabel: 'Rebase'
+})
+
+export const confirmDeleteBranch = (name: string): ConfirmRequest => ({
+  title: 'Delete branch',
+  message: `Delete branch "${name}"?`,
+  confirmLabel: 'Delete',
+  danger: true
+})
+
+export const confirmForceDeleteBranch = (name: string, reason: string): ConfirmRequest => ({
+  title: 'Force delete branch',
+  message: `${reason}\n\nForce delete branch "${name}"? Commits that exist only on this branch will no longer be on any branch.`,
+  confirmLabel: 'Force delete',
+  danger: true
+})
+
+export const confirmDropStash = (selector: string): ConfirmRequest => ({
+  title: 'Drop stash',
+  message: `Drop ${selector}? Its changes cannot be restored from the app.`,
+  confirmLabel: 'Drop',
+  danger: true
+})
+
+export const confirmResolveByDeleting = (path: string): ConfirmRequest => ({
+  title: 'Resolve by deleting',
+  message: `Resolve the conflict by deleting ${path}?`,
+  confirmLabel: 'Delete file',
+  danger: true
+})
+
+export const COMMIT_TOO_DEEP = 'That commit is more than 10,000 commits down the history, too far to jump to.'
+
+export const branchTipTooDeep = (branch: string): string =>
+  `The tip of ${branch} is more than 10,000 commits down the history, so only ${branch} is shown.`
+
+export const branchNotOnCurrentBranch = (branch: string): string =>
+  `The tip of ${branch} is not in the current branch's history, so only ${branch} is shown.`
+
+export const GIT_MISSING_MESSAGE =
+  'Git was not found on this computer. Install Git from https://git-scm.com/downloads, then restart Git Manager.'
 
 export const CLONE_URL_SESSION_KEY = 'gm.cloneUrl'
 

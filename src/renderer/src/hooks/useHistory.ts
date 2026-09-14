@@ -5,6 +5,7 @@ import type {
   DiffResult,
   FileChange,
   GraphNode,
+  HistoryPage,
   HistoryQuery,
   RemoteBranchInfo,
   Repository
@@ -25,6 +26,8 @@ export function buildHistoryQuery(opts: {
   historyFilter?: 'all' | 'current'
   /** Commits already shown; the next page starts after them. */
   skip?: number
+  /** Load from the top down to this commit, and a page past it. */
+  revealSha?: string
 }): HistoryQuery {
   const branchFilter =
     opts.historyFilter === 'current' ? opts.currentBranch || undefined : undefined
@@ -33,8 +36,14 @@ export function buildHistoryQuery(opts: {
     search: opts.search || undefined,
     limit: HISTORY_PAGE_SIZE,
     branch: branchFilter,
-    skip: opts.skip || undefined
+    skip: opts.skip || undefined,
+    revealSha: opts.revealSha
   }
+}
+
+export interface LoadHistoryOptions {
+  /** Load down to this commit. When it is not found, the list stays as it was. */
+  revealSha?: string
 }
 
 type UseHistoryArgs = {
@@ -74,7 +83,18 @@ export function useHistory({
   headSha: string | null
   nextCursor: string | null
   historyLoadingMore: boolean
-  loadHistory: (repo: Repository, searchText?: string) => Promise<void>
+  /** Branches the applied `branch:` search selected; null without one. */
+  branchFilter: string[] | null
+  /** Why the list is empty or narrower than asked, when that needs saying. */
+  notice: string | null
+  setNotice: React.Dispatch<React.SetStateAction<string | null>>
+  /** Whether the list shown for the active repository contains this commit. */
+  hasCommit: (sha: string) => boolean
+  loadHistory: (
+    repo: Repository,
+    searchText?: string,
+    options?: LoadHistoryOptions
+  ) => Promise<HistoryPage | undefined>
   loadMoreHistory: () => Promise<void>
   refreshHistoryTip: (repo: Repository) => Promise<void>
 } {
@@ -83,6 +103,8 @@ export function useHistory({
   const [headSha, setHeadSha] = useState<string | null>(null)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false)
+  const [branchFilter, setBranchFilter] = useState<string[] | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   /** Path that currently owns `commits` / selection history state. */
   const commitsRepoPathRef = useRef<string | null>(null)
@@ -100,20 +122,34 @@ export function useHistory({
     return sameRepoPath(activePathRef.current, repoPath)
   }, [])
 
+  const hasCommit = useCallback(
+    (sha: string): boolean =>
+      sameRepoPath(commitsRepoPathRef.current, activePathRef.current) &&
+      commitsRef.current.some((c) => c.sha === sha),
+    []
+  )
+
   const loadHistory = useCallback(
-    async (repo: Repository, searchText: string = appliedSearchRef.current) => {
+    async (
+      repo: Repository,
+      searchText: string = appliedSearchRef.current,
+      options: LoadHistoryOptions = {}
+    ): Promise<HistoryPage | undefined> => {
       const repoPath = repo.path
-      await runWithBusy(
+      return runWithBusy(
         async () => {
           const page = await window.gitManager.history.load(
             buildHistoryQuery({
               repoPath,
               search: searchText,
               currentBranch: repo.currentBranch,
-              historyFilter
+              historyFilter,
+              revealSha: options.revealSha
             })
           )
-          if (!isCurrentRepo(repoPath)) return
+          if (!isCurrentRepo(repoPath)) return undefined
+          // A jump that did not find its commit changes nothing; the caller decides what to show.
+          if (options.revealSha && !page.revealed) return page
           appliedSearchRef.current = searchText
           commitsRepoPathRef.current = repoPath
           commitsRef.current = page.commits
@@ -121,6 +157,8 @@ export function useHistory({
           setGraph(page.graph)
           setHeadSha(page.headSha)
           setNextCursor(page.nextCursor)
+          setBranchFilter(page.branches ?? null)
+          setNotice(page.notice ?? null)
           setSelection((prev) => {
             if (prev?.kind === 'working-copy') return prev
             const keep =
@@ -131,6 +169,7 @@ export function useHistory({
           })
           if (!page.headSha && page.commits.length === 0) setViewMode('changes')
           setError(null)
+          return page
         },
         { setBusy, setError }
       )
@@ -201,6 +240,8 @@ export function useHistory({
           return { kind: 'working-copy' }
         })
         setHeadSha(page.headSha)
+        setBranchFilter(page.branches ?? null)
+        setNotice(page.notice ?? null)
         // Splicing keeps the loaded depth; a replaced list pages on from the fresh first page.
         setNextCursor((prev) => {
           if (page.nextCursor === null) return null
@@ -231,6 +272,8 @@ export function useHistory({
     setGraph([])
     setHeadSha(null)
     setNextCursor(null)
+    setBranchFilter(null)
+    setNotice(null)
     setSelection(null)
     setDetail(null)
     setSelectedFile(null)
@@ -258,6 +301,10 @@ export function useHistory({
     headSha,
     nextCursor,
     historyLoadingMore,
+    branchFilter,
+    notice,
+    setNotice,
+    hasCommit,
     loadHistory,
     loadMoreHistory,
     refreshHistoryTip

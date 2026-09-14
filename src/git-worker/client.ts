@@ -5,13 +5,16 @@
 import { app, utilityProcess, type UtilityProcess } from 'electron'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import type { RemoteOpResult, RemoteProgress } from '@shared/ipc'
 import type * as ops from './operations'
+import type { RemoteOpContext } from './ops/branches'
 import { getGitMethod, type GitMethodName } from './method-registry'
 import { cancelAllGit as cancelAllGitLocal, cancelGitIn as cancelGitInLocal, probeGit } from './git-runner'
 
 type Pending = {
   resolve: (value: unknown) => void
   reject: (err: Error) => void
+  onProgress?: (progress: RemoteProgress) => void
 }
 
 let child: UtilityProcess | null = null
@@ -33,7 +36,14 @@ function attachChild(proc: UtilityProcess): void {
   childReady = false
   proc.on('message', (msg: unknown) => {
     if (!msg || typeof msg !== 'object') return
-    const m = msg as { type?: string; id?: number; ok?: boolean; result?: unknown; error?: string }
+    const m = msg as {
+      type?: string
+      id?: number
+      ok?: boolean
+      result?: unknown
+      error?: string
+      progress?: RemoteProgress
+    }
     if (m.type === 'ready') {
       childReady = true
       return
@@ -41,6 +51,10 @@ function attachChild(proc: UtilityProcess): void {
     if (typeof m.id !== 'number') return
     const wait = pending.get(m.id)
     if (!wait) return
+    if (m.type === 'progress') {
+      if (m.progress) wait.onProgress?.(m.progress)
+      return
+    }
     pending.delete(m.id)
     if (m.ok) wait.resolve(m.result)
     else wait.reject(new Error(m.error || 'Git worker error'))
@@ -143,6 +157,58 @@ export function cancelGitIn(root: string): void {
   cancelGitInLocal(root)
 }
 
+export type RemoteMethod = 'fetchRemote' | 'pullRemote' | 'pushRemote'
+
+/**
+ * Start a fetch, pull or push that reports progress and can be cancelled, in the git worker when it is
+ * available and in this process otherwise. `cancel` may be called at any time, even before it starts.
+ */
+export function runRemoteOp(
+  method: RemoteMethod,
+  repoPath: string,
+  onProgress: (progress: RemoteProgress) => void
+): { promise: Promise<RemoteOpResult>; cancel: () => void } {
+  let cancelRequested = false
+  let cancel = (): void => {
+    cancelRequested = true
+  }
+
+  const runInline = (): Promise<RemoteOpResult> => {
+    const controller = new AbortController()
+    cancel = () => controller.abort()
+    if (cancelRequested) controller.abort()
+    const fn = getGitMethod(method) as unknown as (path: string, context: RemoteOpContext) => Promise<RemoteOpResult>
+    return fn(repoPath, { signal: controller.signal, onProgress })
+  }
+
+  const promise = (async (): Promise<RemoteOpResult> => {
+    ensureWorker()
+    if (useInline || !child) return runInline()
+    const ready = await waitReady()
+    if (!ready || !child) {
+      useInline = true
+      return runInline()
+    }
+    const worker = child
+    const id = nextId++
+    return new Promise<RemoteOpResult>((resolve, reject) => {
+      pending.set(id, { resolve: resolve as (value: unknown) => void, reject, onProgress })
+      try {
+        worker.postMessage({ id, method, args: [repoPath], cancellable: true })
+      } catch {
+        pending.delete(id)
+        useInline = true
+        void runInline().then(resolve, reject)
+        return
+      }
+      cancel = () => worker.postMessage({ type: 'cancel', id })
+      if (cancelRequested) cancel()
+    })
+  })()
+
+  return { promise, cancel: () => cancel() }
+}
+
 export { probeGit }
 
 function wrap<K extends GitMethodName>(method: K) {
@@ -153,6 +219,7 @@ function wrap<K extends GitMethodName>(method: K) {
 export const inspectRepository = wrap('inspectRepository')
 export const initRepository = wrap('initRepository')
 export const cloneRepository = wrap('cloneRepository')
+export const getGitDirs = wrap('getGitDirs')
 export const loadHistory = wrap('loadHistory')
 export const getCommitDetail = wrap('getCommitDetail')
 export const getFileDiff = wrap('getFileDiff')
@@ -166,9 +233,6 @@ export const unstagePaths = wrap('unstagePaths')
 export const planDiscard = wrap('planDiscard')
 export const restoreWorktree = wrap('restoreWorktree')
 export const commit = wrap('commit')
-export const fetchRemote = wrap('fetchRemote')
-export const pullRemote = wrap('pullRemote')
-export const pushRemote = wrap('pushRemote')
 export const checkoutRef = wrap('checkoutRef')
 export const checkoutRemoteBranch = wrap('checkoutRemoteBranch')
 export const createBranch = wrap('createBranch')

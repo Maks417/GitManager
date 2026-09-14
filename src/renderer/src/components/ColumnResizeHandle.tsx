@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type React from 'react'
+import { nextSizeForKey } from '../logic/resize-keys'
 
 interface Props {
   value: number
@@ -12,7 +13,7 @@ interface Props {
   title?: string
 }
 
-/** Edge drag handle for a fixed-width table column. */
+/** Edge drag handle for a fixed-width table column. With keyboard focus, ←/→ resize it as well. */
 export function ColumnResizeHandle({
   value,
   min,
@@ -26,6 +27,7 @@ export function ColumnResizeHandle({
   const startX = useRef(0)
   const startVal = useRef(0)
   const latest = useRef(value)
+  const keyResized = useRef(false)
 
   useEffect(() => {
     latest.current = value
@@ -71,6 +73,26 @@ export function ColumnResizeHandle({
     [onChangeEnd]
   )
 
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>): void => {
+      const next = nextSizeForKey(e.key, { size: value, min, max, axis: 'x', reverse, shift: e.shiftKey })
+      if (next === null) return
+      // The handle sits inside the commit list, which would take the arrow keys as well.
+      e.preventDefault()
+      e.stopPropagation()
+      latest.current = next
+      keyResized.current = true
+      onChange(next)
+    },
+    [max, min, onChange, reverse, value]
+  )
+
+  const onKeyUp = useCallback((): void => {
+    if (!keyResized.current) return
+    keyResized.current = false
+    onChangeEnd?.(latest.current)
+  }, [onChangeEnd])
+
   return (
     <div
       className={`history-col-resize${reverse ? ' history-col-resize-left' : ''}`}
@@ -79,11 +101,15 @@ export function ColumnResizeHandle({
       aria-valuenow={Math.round(value)}
       aria-valuemin={min}
       aria-valuemax={max}
+      aria-label={title}
+      tabIndex={0}
       title={title}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
+      onKeyDown={onKeyDown}
+      onKeyUp={onKeyUp}
     />
   )
 }

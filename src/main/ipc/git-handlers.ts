@@ -1,9 +1,10 @@
 import { ipcMain, shell } from 'electron'
-import { IpcChannels, SetGitIdentityRequestSchema } from '@shared/ipc'
+import { IpcChannels, RemoteOpRequestSchema, SetGitIdentityRequestSchema } from '@shared/ipc'
 import { z } from 'zod'
 import * as git from '../../git-worker/client'
 import { probeGit } from '../../git-worker/client'
 import { resolveRepoPath } from '../../git-worker/ops/guards'
+import { cancelRemoteOperation, runRemoteOperation } from '../remote-ops'
 import { assertSender } from './assert-sender'
 import {
   NonEmptyStringSchema,
@@ -41,17 +42,21 @@ export function registerGitHandlers(): void {
       )
     }
   )
-  ipcMain.handle(IpcChannels.git.fetch, async (event, repoPath: unknown) => {
+  ipcMain.handle(IpcChannels.git.fetch, async (event, raw: unknown) => {
     assertSender(event)
-    await git.fetchRemote(parseRepoPath(repoPath))
+    return runRemoteOperation(event.sender, 'fetch', RemoteOpRequestSchema.parse(raw))
   })
-  ipcMain.handle(IpcChannels.git.pull, async (event, repoPath: unknown) => {
+  ipcMain.handle(IpcChannels.git.pull, async (event, raw: unknown) => {
     assertSender(event)
-    await git.pullRemote(parseRepoPath(repoPath))
+    return runRemoteOperation(event.sender, 'pull', RemoteOpRequestSchema.parse(raw))
   })
-  ipcMain.handle(IpcChannels.git.push, async (event, repoPath: unknown) => {
+  ipcMain.handle(IpcChannels.git.push, async (event, raw: unknown) => {
     assertSender(event)
-    await git.pushRemote(parseRepoPath(repoPath))
+    return runRemoteOperation(event.sender, 'push', RemoteOpRequestSchema.parse(raw))
+  })
+  ipcMain.handle(IpcChannels.git.cancelOperation, async (event, opId: unknown) => {
+    assertSender(event)
+    cancelRemoteOperation(RemoteOpRequestSchema.shape.opId.parse(opId))
   })
   ipcMain.handle(IpcChannels.git.checkout, async (event, repoPath: unknown, ref: unknown) => {
     assertSender(event)

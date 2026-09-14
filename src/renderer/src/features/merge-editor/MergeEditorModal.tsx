@@ -8,42 +8,39 @@ import {
   parseConflictMarkers
 } from '@merge-core/conflict'
 import { OperationBar } from '../../components/OperationBar'
-import { Banner, Button } from '../../components/ui'
-import { MONACO_FONT_FAMILY } from '../../lib/copy'
+import { Banner, Button, Modal } from '../../components/ui'
+import { confirmResolveByDeleting, MONACO_FONT_FAMILY } from '../../lib/copy'
 import { toErrorMessage } from '../../lib/errors'
 import { useAsyncAction } from '../../lib/useAsyncAction'
 import { monacoThemeFor, useResolvedTheme } from '../../lib/theme'
-
-interface Props {
-  repoPath: string
-  onClose: () => void
-  onResolved: () => Promise<void>
-  rebaseInProgress?: boolean
-  onRebaseContinue?: () => Promise<void>
-  onRebaseSkip?: () => Promise<void>
-  onRebaseAbort?: () => Promise<void>
-  mergeInProgress?: boolean
-  onMergeAbort?: () => Promise<void>
-}
+import { useConfirm } from '../../state/ConfirmProvider'
+import { useDialogActions } from '../../state/DialogsProvider'
+import { useGitActions } from '../../state/GitActionsProvider'
+import { useActiveRepo, useSession, useSessionActions } from '../../state/RepoSessionProvider'
 
 const paneStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', minHeight: 0, gap: 4 }
+
+const dialogStyle: React.CSSProperties = {
+  width: 'min(1100px, 96vw)',
+  height: 'min(820px, 92vh)',
+  display: 'flex',
+  flexDirection: 'column'
+}
 
 function takeSideLabel(file: ConflictFile | undefined, side: ConflictSide): string {
   const present = side === 'ours' ? file?.hasOurs : file?.hasTheirs
   return present ? `Take ${side} (whole file)` : `Take ${side} (delete file)`
 }
 
-export function MergeEditorModal({
-  repoPath,
-  onClose,
-  onResolved,
-  rebaseInProgress = false,
-  onRebaseContinue,
-  onRebaseSkip,
-  onRebaseAbort,
-  mergeInProgress = false,
-  onMergeAbort
-}: Props): React.JSX.Element {
+export function MergeEditorModal(): React.JSX.Element {
+  const repoPath = useActiveRepo().path
+  const { rebaseInProgress, mergeInProgress } = useSession()
+  const { afterGitMutation } = useSessionActions()
+  const { closeDialog } = useDialogActions()
+  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort } = useGitActions()
+  const confirm = useConfirm()
+  const onClose = (): void => closeDialog('mergeEditor')
+
   const theme = useResolvedTheme()
   const monacoTheme = monacoThemeFor(theme)
   const [files, setFiles] = useState<ConflictFile[]>([])
@@ -108,7 +105,7 @@ export function MergeEditorModal({
 
   const afterResolved = async (): Promise<void> => {
     const remaining = await loadFiles()
-    await onResolved()
+    await afterGitMutation({ history: 'full' })
     // While rebasing, stay open so the user can continue the rebase from here.
     if (remaining.length === 0 && !rebaseInProgress) onClose()
   }
@@ -126,11 +123,11 @@ export function MergeEditorModal({
     })
   }
 
-  const takeSide = (side: ConflictSide): void => {
+  const takeSide = async (side: ConflictSide): Promise<void> => {
     if (!activePath) return
     const path = activePath
     const deletes = side === 'ours' ? !activeFile?.hasOurs : !activeFile?.hasTheirs
-    if (deletes && !confirm(`Resolve the conflict by deleting ${path}?`)) return
+    if (deletes && !(await confirm(confirmResolveByDeleting(path)))) return
     void run(async () => {
       await window.gitManager.merge.resolveSide(repoPath, path, side)
       await afterResolved()
@@ -144,175 +141,15 @@ export function MergeEditorModal({
   }
 
   return (
-    <div className="modal-backdrop">
-      <div
-        className="modal"
-        style={{
-          width: 'min(1100px, 96vw)',
-          height: 'min(820px, 92vh)',
-          display: 'flex',
-          flexDirection: 'column'
-        }}
-      >
-        <h3>
-          {rebaseInProgress ? 'Rebase' : 'Merge'} editor — {activePath || 'no conflicts'}
-        </h3>
-        <p className="muted" style={{ margin: 0 }}>
-          The result starts from Git&apos;s merge: changes that don&apos;t overlap are already combined,
-          and markers remain only where both sides changed the same lines.
-        </p>
-        {error && <Banner>{error}</Banner>}
-        {oneSideDeleted && textEditable && (
-          <Banner tone="info">
-            One side deleted this file. Save &amp; stage keeps the version below; taking the deleting
-            side removes the file.
-          </Banner>
-        )}
-        {rebaseInProgress ? (
-          <OperationBar
-            kind="rebase"
-            busy={busy}
-            onContinue={
-              onRebaseContinue
-                ? () =>
-                    run(async () => {
-                      await onRebaseContinue()
-                      await loadFiles()
-                      await onResolved()
-                    })
-                : undefined
-            }
-            onSkip={
-              onRebaseSkip
-                ? () =>
-                    run(async () => {
-                      await onRebaseSkip()
-                      await loadFiles()
-                      await onResolved()
-                    })
-                : undefined
-            }
-            onAbort={
-              onRebaseAbort
-                ? () =>
-                    run(async () => {
-                      await onRebaseAbort()
-                      await onResolved()
-                      onClose()
-                    })
-                : undefined
-            }
-          />
-        ) : mergeInProgress ? (
-          <OperationBar
-            kind="merge"
-            busy={busy}
-            onAbort={
-              onMergeAbort
-                ? () =>
-                    run(async () => {
-                      await onMergeAbort()
-                      await onResolved()
-                      onClose()
-                    })
-                : undefined
-            }
-          />
-        ) : null}
-        <div className="conflict-list">
-          {files.map((f) => (
-            <button
-              key={f.path}
-              className={f.path === activePath ? 'primary' : ''}
-              onClick={() => setActivePath(f.path)}
-            >
-              {f.path}
-            </button>
-          ))}
-          {files.length === 0 && <span className="muted">No unmerged paths</span>}
-        </div>
-        <div className="merge-toolbar">
-          {textEditable && (
-            <>
-              <button disabled={!activeRegion} onClick={() => acceptRegion('ours')}>
-                Accept Ours
-              </button>
-              <button disabled={!activeRegion} onClick={() => acceptRegion('theirs')}>
-                Accept Theirs
-              </button>
-              <button disabled={!activeRegion} onClick={() => acceptRegion('both')}>
-                Accept Both
-              </button>
-              <select
-                value={activeRegion?.id ?? ''}
-                onChange={(e) => setActiveRegionId(e.target.value)}
-                disabled={!regions.length}
-              >
-                {regions.map((r, i) => (
-                  <option key={r.id} value={r.id}>
-                    Conflict {i + 1} of {regions.length}
-                  </option>
-                ))}
-              </select>
-              {sides && regions.length === 0 && (
-                <span className="muted">No conflict markers left</span>
-              )}
-            </>
-          )}
-          <div className="spacer" />
-          <Button disabled={busy || sidesLoading || !activePath} onClick={() => takeSide('ours')}>
-            {takeSideLabel(activeFile, 'ours')}
-          </Button>
-          <Button disabled={busy || sidesLoading || !activePath} onClick={() => takeSide('theirs')}>
-            {takeSideLabel(activeFile, 'theirs')}
-          </Button>
-        </div>
-        <div className="merge-editors" style={{ flex: 1 }}>
-          {sides && !textEditable ? (
-            <div className="empty-state" style={{ gridColumn: '1 / -1' }}>
-              {sides.binary
-                ? 'Binary file — it can’t be edited here. Take ours or theirs.'
-                : 'This file is too large to edit here. Take ours or theirs.'}
-            </div>
-          ) : (
-            <>
-              <div style={paneStyle}>
-                <span className="muted text-xs">Ours</span>
-                <Editor
-                  key={`ours:${activePath}`}
-                  height="100%"
-                  theme={monacoTheme}
-                  language="plaintext"
-                  value={sides?.ours || ''}
-                  options={{ ...editorOpts, readOnly: true }}
-                />
-              </div>
-              <div style={paneStyle}>
-                <span className="muted text-xs">Result</span>
-                <Editor
-                  key={`result:${activePath}`}
-                  height="100%"
-                  theme={monacoTheme}
-                  language="plaintext"
-                  value={result}
-                  onChange={(v) => setResult(v ?? '')}
-                  options={editorOpts}
-                />
-              </div>
-              <div style={paneStyle}>
-                <span className="muted text-xs">Theirs</span>
-                <Editor
-                  key={`theirs:${activePath}`}
-                  height="100%"
-                  theme={monacoTheme}
-                  language="plaintext"
-                  value={sides?.theirs || ''}
-                  options={{ ...editorOpts, readOnly: true }}
-                />
-              </div>
-            </>
-          )}
-        </div>
+    <Modal
+      title={`${rebaseInProgress ? 'Rebase' : 'Merge'} editor — ${activePath || 'no conflicts'}`}
+      onClose={onClose}
+      // Escape or a stray click must not throw away unsaved edits in the result.
+      dismissible={false}
+      className="merge-editor-modal"
+      bodyClassName="merge-editor-body"
+      style={dialogStyle}
+      footer={
         <div className="modal-actions">
           <Button onClick={onClose}>Close</Button>
           <Button
@@ -323,7 +160,149 @@ export function MergeEditorModal({
             Save &amp; stage
           </Button>
         </div>
+      }
+    >
+      <p className="muted" style={{ margin: 0 }}>
+        The result starts from Git&apos;s merge: changes that don&apos;t overlap are already combined,
+        and markers remain only where both sides changed the same lines.
+      </p>
+      {error && <Banner>{error}</Banner>}
+      {oneSideDeleted && textEditable && (
+        <Banner tone="info">
+          One side deleted this file. Save &amp; stage keeps the version below; taking the deleting
+          side removes the file.
+        </Banner>
+      )}
+      {rebaseInProgress ? (
+        <OperationBar
+          kind="rebase"
+          busy={busy}
+          // Each step refreshes the repository and closes this editor once no conflicts remain.
+          onContinue={() =>
+            run(async () => {
+              await rebaseContinue()
+              await loadFiles()
+            })
+          }
+          onSkip={() =>
+            run(async () => {
+              await rebaseSkip()
+              await loadFiles()
+            })
+          }
+          onAbort={() =>
+            run(async () => {
+              await rebaseAbort()
+              onClose()
+            })
+          }
+        />
+      ) : mergeInProgress ? (
+        <OperationBar
+          kind="merge"
+          busy={busy}
+          onAbort={() =>
+            run(async () => {
+              await mergeAbort()
+              onClose()
+            })
+          }
+        />
+      ) : null}
+      <div className="conflict-list">
+        {files.map((f) => (
+          <button
+            key={f.path}
+            className={f.path === activePath ? 'primary' : ''}
+            onClick={() => setActivePath(f.path)}
+          >
+            {f.path}
+          </button>
+        ))}
+        {files.length === 0 && <span className="muted">No unmerged paths</span>}
       </div>
-    </div>
+      <div className="merge-toolbar">
+        {textEditable && (
+          <>
+            <button disabled={!activeRegion} onClick={() => acceptRegion('ours')}>
+              Accept Ours
+            </button>
+            <button disabled={!activeRegion} onClick={() => acceptRegion('theirs')}>
+              Accept Theirs
+            </button>
+            <button disabled={!activeRegion} onClick={() => acceptRegion('both')}>
+              Accept Both
+            </button>
+            <select
+              value={activeRegion?.id ?? ''}
+              onChange={(e) => setActiveRegionId(e.target.value)}
+              disabled={!regions.length}
+            >
+              {regions.map((r, i) => (
+                <option key={r.id} value={r.id}>
+                  Conflict {i + 1} of {regions.length}
+                </option>
+              ))}
+            </select>
+            {sides && regions.length === 0 && (
+              <span className="muted">No conflict markers left</span>
+            )}
+          </>
+        )}
+        <div className="spacer" />
+        <Button disabled={busy || sidesLoading || !activePath} onClick={() => void takeSide('ours')}>
+          {takeSideLabel(activeFile, 'ours')}
+        </Button>
+        <Button disabled={busy || sidesLoading || !activePath} onClick={() => void takeSide('theirs')}>
+          {takeSideLabel(activeFile, 'theirs')}
+        </Button>
+      </div>
+      <div className="merge-editors" style={{ flex: 1 }}>
+        {sides && !textEditable ? (
+          <div className="empty-state" style={{ gridColumn: '1 / -1' }}>
+            {sides.binary
+              ? 'Binary file — it can’t be edited here. Take ours or theirs.'
+              : 'This file is too large to edit here. Take ours or theirs.'}
+          </div>
+        ) : (
+          <>
+            <div style={paneStyle}>
+              <span className="muted text-xs">Ours</span>
+              <Editor
+                key={`ours:${activePath}`}
+                height="100%"
+                theme={monacoTheme}
+                language="plaintext"
+                value={sides?.ours || ''}
+                options={{ ...editorOpts, readOnly: true }}
+              />
+            </div>
+            <div style={paneStyle}>
+              <span className="muted text-xs">Result</span>
+              <Editor
+                key={`result:${activePath}`}
+                height="100%"
+                theme={monacoTheme}
+                language="plaintext"
+                value={result}
+                onChange={(v) => setResult(v ?? '')}
+                options={editorOpts}
+              />
+            </div>
+            <div style={paneStyle}>
+              <span className="muted text-xs">Theirs</span>
+              <Editor
+                key={`theirs:${activePath}`}
+                height="100%"
+                theme={monacoTheme}
+                language="plaintext"
+                value={sides?.theirs || ''}
+                options={{ ...editorOpts, readOnly: true }}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }

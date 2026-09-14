@@ -1,22 +1,35 @@
-import type { BranchInfo, RemoteBranchInfo } from '@shared/ipc'
+import type { BranchInfo, RemoteBranchInfo, RemoteOpResult, RemoteProgress } from '@shared/ipc'
 import { existsSync } from 'fs'
 import { isAbsolute, join } from 'path'
+import { GitCancelledError, type GitRunResult } from '../git-runner'
+import { throttleProgress } from '../progress'
 import { listConflictFiles } from './merge'
 import { assertRevision } from './guards'
 import { currentBranchName, gitOk, runGit } from './shared'
 
+/** Network operations fail after this long without any output from Git: a stalled network or a silent prompt. */
+export const NETWORK_IDLE_TIMEOUT_MS = 5 * 60_000
+
+export interface RemoteOpContext {
+  /** Abort to cancel; the operation then resolves `{ outcome: 'cancelled' }`. */
+  signal?: AbortSignal
+  onProgress?: (progress: RemoteProgress) => void
+  /** Overrides NETWORK_IDLE_TIMEOUT_MS (tests). */
+  idleTimeoutMs?: number
+}
+
 export async function getBranches(repoPath: string): Promise<BranchInfo[]> {
   const out = await gitOk(repoPath, [
     'for-each-ref',
-    '--format=%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(upstream:track)',
+    '--format=%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(upstream:track)%00%(objectname)',
     'refs/heads'
   ])
   const branches = out
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
-    .map((line) => {
-      const [name, head, upstream, track] = line.split('\0')
+    .map((line): BranchInfo => {
+      const [name, head, upstream, track, sha] = line.split('\0')
       let ahead = 0
       let behind = 0
       const aheadMatch = track?.match(/ahead (\d+)/)
@@ -28,7 +41,8 @@ export async function getBranches(repoPath: string): Promise<BranchInfo[]> {
         current: head === '*',
         upstream: upstream || null,
         ahead,
-        behind
+        behind,
+        sha: sha || null
       }
     })
 
@@ -36,35 +50,100 @@ export async function getBranches(repoPath: string): Promise<BranchInfo[]> {
   if (branches.length === 0) {
     const name = await currentBranchName(repoPath)
     if (name) {
-      branches.push({ name, current: true, upstream: null, ahead: 0, behind: 0 })
+      branches.push({ name, current: true, upstream: null, ahead: 0, behind: 0, sha: null })
     }
   }
   return branches
 }
 
 export async function getRemoteBranches(repoPath: string): Promise<RemoteBranchInfo[]> {
-  const out = await gitOk(repoPath, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes'])
+  const out = await gitOk(repoPath, ['for-each-ref', '--format=%(refname:short)%00%(objectname)', 'refs/remotes'])
   const branches: RemoteBranchInfo[] = []
   for (const line of out.split('\n')) {
-    const name = line.trim()
+    const [name = '', sha = ''] = line.trim().split('\0')
     if (!name || name.endsWith('/HEAD')) continue
     const slash = name.indexOf('/')
     if (slash <= 0) continue
     branches.push({
       name,
       remote: name.slice(0, slash),
-      shortName: name.slice(slash + 1)
+      shortName: name.slice(slash + 1),
+      sha
     })
   }
   return branches
 }
 
-export async function fetchRemote(repoPath: string): Promise<void> {
-  await gitOk(repoPath, ['fetch', '--prune', '--all'])
+/** Runs a command that talks to a remote: stoppable, with an idle timeout and throttled progress. */
+async function runNetwork(repoPath: string, args: string[], ctx: RemoteOpContext): Promise<GitRunResult> {
+  const report = ctx.onProgress ? throttleProgress(ctx.onProgress) : undefined
+  return runGit({
+    cwd: repoPath,
+    args,
+    signal: ctx.signal,
+    idleTimeoutMs: ctx.idleTimeoutMs ?? NETWORK_IDLE_TIMEOUT_MS,
+    onProgress: (line) => report?.({ phase: line.phase, percent: line.percent, cancellable: true })
+  })
 }
 
-export async function pullRemote(repoPath: string): Promise<void> {
-  await gitOk(repoPath, ['pull', '--ff-only'])
+async function upstreamOf(repoPath: string): Promise<{ branch: string; hasUpstream: boolean }> {
+  const branch = await currentBranchName(repoPath)
+  if (!branch) throw new Error('Check out a branch first (HEAD is detached).')
+  const upstream = await runGit({
+    cwd: repoPath,
+    args: ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']
+  })
+  return { branch, hasUpstream: upstream.code === 0 }
+}
+
+export async function fetchRemote(repoPath: string, ctx: RemoteOpContext = {}): Promise<RemoteOpResult> {
+  try {
+    const result = await runNetwork(repoPath, ['fetch', '--progress', '--prune', '--all'], ctx)
+    if (result.code !== 0) throw new Error(result.stderr.trim() || `git fetch failed (${result.code})`)
+    return { outcome: 'done' }
+  } catch (err) {
+    if (err instanceof GitCancelledError) return { outcome: 'cancelled' }
+    throw err
+  }
+}
+
+/**
+ * Fetch the branch's remote (cancellable), then fast-forward to its upstream (not cancellable:
+ * stopping a work-tree update half way leaves changed files and a stale index.lock behind).
+ */
+export async function pullRemote(repoPath: string, ctx: RemoteOpContext = {}): Promise<RemoteOpResult> {
+  const { branch, hasUpstream } = await upstreamOf(repoPath)
+  if (!hasUpstream) {
+    throw new Error(`Branch "${branch}" has no upstream to pull from. Push it first to publish it.`)
+  }
+  const remote = (await runGit({ cwd: repoPath, args: ['config', '--get', `branch.${branch}.remote`] })).stdout.trim()
+
+  try {
+    // An upstream in this repository (remote ".") needs no fetch.
+    if (remote && remote !== '.') {
+      const fetched = await runNetwork(repoPath, ['fetch', '--progress', '--prune', assertRevision(remote, 'remote')], ctx)
+      if (fetched.code !== 0) throw new Error(fetched.stderr.trim() || `git fetch failed (${fetched.code})`)
+    }
+  } catch (err) {
+    if (err instanceof GitCancelledError) return { outcome: 'cancelled' }
+    throw err
+  }
+
+  ctx.onProgress?.({ phase: 'Updating files', percent: null, cancellable: false })
+  const merged = await runGit({
+    cwd: repoPath,
+    args: ['merge', '--ff-only', '--progress', '@{upstream}'],
+    onProgress: (line) => ctx.onProgress?.({ phase: line.phase, percent: line.percent, cancellable: false })
+  })
+  if (merged.code !== 0) {
+    if (/not possible to fast-forward/i.test(merged.stderr)) {
+      throw new Error(
+        `Pull stopped: "${branch}" and its upstream have diverged. Merge or rebase them, then pull again.`
+      )
+    }
+    throw new Error(merged.stderr.trim() || merged.stdout.trim() || `git merge failed (${merged.code})`)
+  }
+  return { outcome: 'done' }
 }
 
 /** Remote for a branch that has no upstream yet: `origin` if present, else the only remote. */
@@ -90,7 +169,7 @@ export function friendlyPushError(raw: string): string {
   return raw.trim() || 'Push failed'
 }
 
-export async function pushRemote(repoPath: string): Promise<void> {
+export async function pushRemote(repoPath: string, ctx: RemoteOpContext = {}): Promise<RemoteOpResult> {
   const branch = await currentBranchName(repoPath)
   if (!branch) throw new Error('Check out a branch before pushing (HEAD is detached).')
   const upstream = await runGit({
@@ -100,10 +179,16 @@ export async function pushRemote(repoPath: string): Promise<void> {
   // A branch created here has no upstream yet: publish it and remember where it went.
   const args =
     upstream.code === 0
-      ? ['push']
-      : ['push', '--set-upstream', await defaultPushRemote(repoPath), `HEAD:refs/heads/${branch}`]
-  const result = await runGit({ cwd: repoPath, args })
-  if (result.code !== 0) throw new Error(friendlyPushError(result.stderr || result.stdout))
+      ? ['push', '--progress']
+      : ['push', '--progress', '--set-upstream', await defaultPushRemote(repoPath), `HEAD:refs/heads/${branch}`]
+  try {
+    const result = await runNetwork(repoPath, args, ctx)
+    if (result.code !== 0) throw new Error(friendlyPushError(result.stderr || result.stdout))
+    return { outcome: 'done' }
+  } catch (err) {
+    if (err instanceof GitCancelledError) return { outcome: 'cancelled' }
+    throw err
+  }
 }
 
 export async function checkoutRef(repoPath: string, ref: string): Promise<void> {

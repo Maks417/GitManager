@@ -41,9 +41,15 @@ const api = {
     unstage: (repoPath: string, paths: string[]) => ipcRenderer.invoke(IpcChannels.git.unstage, repoPath, paths),
     commit: (repoPath: string, message: string, amend?: boolean) =>
       ipcRenderer.invoke(IpcChannels.git.commit, repoPath, message, amend),
-    fetch: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.fetch, repoPath),
-    pull: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.pull, repoPath),
-    push: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.push, repoPath),
+    fetch: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.fetch, request),
+    pull: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.pull, request),
+    push: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.push, request),
+    cancelOperation: (opId: string) => ipcRenderer.invoke(IpcChannels.git.cancelOperation, opId),
+    onProgress: (callback: (progress: unknown) => void) => {
+      const listener = (_: Electron.IpcRendererEvent, progress: unknown): void => callback(progress)
+      ipcRenderer.on(IpcChannels.git.onProgress, listener)
+      return () => ipcRenderer.removeListener(IpcChannels.git.onProgress, listener)
+    },
     checkout: (repoPath: string, ref: string) => ipcRenderer.invoke(IpcChannels.git.checkout, repoPath, ref),
     checkoutRemoteBranch: (repoPath: string, remoteRef: string) =>
       ipcRenderer.invoke(IpcChannels.git.checkoutRemoteBranch, repoPath, remoteRef),

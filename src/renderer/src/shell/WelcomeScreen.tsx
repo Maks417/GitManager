@@ -2,22 +2,17 @@ import type React from 'react'
 import { Download, ExternalLink, FolderPlus, Link } from 'lucide-react'
 import { GIT_DOWNLOAD_URL } from '../lib/git-install'
 import { Banner, Button } from '../components/ui'
+import { useAppStatus } from '../state/AppStatusProvider'
+import { useDialogActions } from '../state/DialogsProvider'
+import { useGitActions } from '../state/GitActionsProvider'
+import { useSession } from '../state/RepoSessionProvider'
 
-type WelcomeScreenProps = {
-  error: string | null
-  gitMissing: boolean
-  onAddRepo: () => void
-  onClone: () => void
-  onAccounts: () => void
-}
+export function WelcomeScreen(): React.JSX.Element {
+  const { error } = useAppStatus()
+  const { gitMissing } = useSession()
+  const { addRepo, openClone } = useGitActions()
+  const { openDialog } = useDialogActions()
 
-export function WelcomeScreen({
-  error,
-  gitMissing,
-  onAddRepo,
-  onClone,
-  onAccounts
-}: WelcomeScreenProps): React.JSX.Element {
   const openGitDownload = (): void => {
     void window.gitManager.shell.openExternal(GIT_DOWNLOAD_URL)
   }
@@ -57,7 +52,7 @@ export function WelcomeScreen({
             hint={gitMissing ? 'Install Git first' : 'Add a local Git repository'}
             title={gitMissing ? 'Install Git first' : 'Add a local Git repository'}
             disabled={gitMissing}
-            onClick={onAddRepo}
+            onClick={() => void addRepo()}
           >
             Add local repository
           </Button>
@@ -66,7 +61,7 @@ export function WelcomeScreen({
             hint={gitMissing ? 'Install Git first' : 'Clone a repository from a URL'}
             title={gitMissing ? 'Install Git first' : 'Clone a repository from a URL'}
             disabled={gitMissing}
-            onClick={onClone}
+            onClick={openClone}
           >
             Clone repository
           </Button>
@@ -74,7 +69,7 @@ export function WelcomeScreen({
             icon={<Link size={16} strokeWidth={1.75} />}
             hint="Connect GitHub, GitLab, or Bitbucket"
             title="Connect GitHub, GitLab, or Bitbucket"
-            onClick={onAccounts}
+            onClick={() => openDialog('accounts')}
           >
             Connect GitHub / GitLab / Bitbucket
           </Button>

@@ -2,6 +2,7 @@ import type React from 'react'
 import { Play, SkipForward, X } from 'lucide-react'
 import { Button } from './ui'
 import { CONFIRM_ABORT_MERGE, CONFIRM_ABORT_REBASE } from '../lib/copy'
+import { useConfirm } from '../state/ConfirmProvider'
 
 interface OperationBarProps {
   /** The multi-step Git operation that is in progress. */
@@ -24,14 +25,15 @@ export function OperationBar({
   onAbort,
   variant = 'toolbar'
 }: OperationBarProps): React.JSX.Element | null {
+  const confirm = useConfirm()
   const canContinue = kind === 'rebase' && Boolean(onContinue)
   const canSkip = kind === 'rebase' && Boolean(onSkip)
   if (!canContinue && !canSkip && !onAbort) return null
 
   const pane = variant === 'pane'
-  const runAbort = (): void => {
-    if (!confirm(kind === 'rebase' ? CONFIRM_ABORT_REBASE : CONFIRM_ABORT_MERGE)) return
-    void onAbort?.()
+  const runAbort = async (): Promise<void> => {
+    if (!(await confirm(kind === 'rebase' ? CONFIRM_ABORT_REBASE : CONFIRM_ABORT_MERGE))) return
+    await onAbort?.()
   }
 
   return (
@@ -67,7 +69,7 @@ export function OperationBar({
           disabled={busy}
           hint={`Abort the in-progress ${kind}`}
           title={`Abort the in-progress ${kind}`}
-          onClick={runAbort}
+          onClick={() => void runAbort()}
         >
           {pane && <X size={14} strokeWidth={2} />}
           Abort {kind}

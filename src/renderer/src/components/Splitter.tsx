@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type React from 'react'
+import { nextSizeForKey } from '../logic/resize-keys'
 
 interface Props {
   /** `x` = vertical bar (resize width), `y` = horizontal bar (resize height). */
@@ -18,7 +19,9 @@ interface Props {
 }
 
 /**
- * Drag handle for resizable panes. Parent should size layout from `value`.
+ * Drag handle for resizable panes. Parent should size layout from `value`. With keyboard focus the
+ * arrow keys resize too (Shift for larger steps, Home and End for the limits); the size is saved when
+ * the key is released.
  */
 export function Splitter({
   axis,
@@ -36,6 +39,7 @@ export function Splitter({
   const startPtr = useRef(0)
   const startVal = useRef(0)
   const latest = useRef(value)
+  const keyResized = useRef(false)
 
   useEffect(() => {
     latest.current = value
@@ -82,6 +86,25 @@ export function Splitter({
     [onChangeEnd]
   )
 
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>): void => {
+      if (disabled) return
+      const next = nextSizeForKey(e.key, { size: value, min, max, axis, reverse, shift: e.shiftKey })
+      if (next === null) return
+      e.preventDefault()
+      latest.current = next
+      keyResized.current = true
+      onChange(next)
+    },
+    [axis, disabled, max, min, onChange, reverse, value]
+  )
+
+  const onKeyUp = useCallback((): void => {
+    if (!keyResized.current) return
+    keyResized.current = false
+    onChangeEnd?.(latest.current)
+  }, [onChangeEnd])
+
   return (
     <div
       className={`splitter splitter-${axis} ${disabled ? 'disabled' : ''} ${className}`.trim()}
@@ -90,11 +113,15 @@ export function Splitter({
       aria-valuenow={Math.round(value)}
       aria-valuemin={min}
       aria-valuemax={max}
+      aria-label={title}
+      tabIndex={disabled ? undefined : 0}
       title={title}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
+      onKeyDown={onKeyDown}
+      onKeyUp={onKeyUp}
     />
   )
 }

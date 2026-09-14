@@ -5,6 +5,7 @@ import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker'
 import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker'
 import htmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker'
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
+import { letTabLeaveReadOnlyEditors } from './monaco-keys'
 
 const F1 = monaco.KeyCode.F1
 const CTRL_SHIFT_P = monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP
@@ -95,4 +96,5 @@ export function setupMonaco(): void {
 
   loader.config({ monaco })
   disableCommandPalette(monaco)
+  letTabLeaveReadOnlyEditors()
 }

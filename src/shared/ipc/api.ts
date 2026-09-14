@@ -10,11 +10,14 @@ import type {
   DiffResult,
   GitIdentity,
   GitProbeResult,
+  GitProgress,
   HistoryPage,
   HistoryQuery,
   MergeSides,
   ProviderAccount,
   RemoteBranchInfo,
+  RemoteOpRequest,
+  RemoteOpResult,
   RemoteRepo,
   RepoRemovalInfo,
   Repository,
@@ -58,9 +61,12 @@ export interface GitManagerApi {
     stage: (repoPath: string, paths: string[]) => Promise<void>
     unstage: (repoPath: string, paths: string[]) => Promise<void>
     commit: (repoPath: string, message: string, amend?: boolean) => Promise<string>
-    fetch: (repoPath: string) => Promise<void>
-    pull: (repoPath: string) => Promise<void>
-    push: (repoPath: string) => Promise<void>
+    /** Network operations report progress through `onProgress` and stop with `cancelOperation(opId)`. */
+    fetch: (request: RemoteOpRequest) => Promise<RemoteOpResult>
+    pull: (request: RemoteOpRequest) => Promise<RemoteOpResult>
+    push: (request: RemoteOpRequest) => Promise<RemoteOpResult>
+    cancelOperation: (opId: string) => Promise<void>
+    onProgress: (callback: (progress: GitProgress) => void) => () => void
     checkout: (repoPath: string, ref: string) => Promise<void>
     checkoutRemoteBranch: (repoPath: string, remoteRef: string) => Promise<void>
     createBranch: (repoPath: string, name: string, checkout?: boolean) => Promise<void>

@@ -1,41 +1,29 @@
 import type React from 'react'
 import { Copy, GitBranch, GitMerge } from 'lucide-react'
-import type { CommitDetail, DiffResult, FileChange } from '@shared/ipc'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { Splitter } from '../../components/Splitter'
 import { Button } from '../../components/ui'
+import { confirmMerge, confirmRebase } from '../../lib/copy'
 import { formatRelativeDate } from '../../lib/format'
+import { nextListIndex } from '../../logic/list-nav'
+import { useAppStatus } from '../../state/AppStatusProvider'
+import { useConfirm } from '../../state/ConfirmProvider'
+import { useGitActions } from '../../state/GitActionsProvider'
+import { useLayout } from '../../state/LayoutProvider'
+import { useSelection, useSelectionActions } from '../../state/SelectionProvider'
 
-interface Props {
-  detail: CommitDetail | null
-  selectedFile: FileChange | null
-  diff: DiffResult | null
-  diffLoading?: boolean
-  onSelectFile: (file: FileChange) => void
-  /** Prefer side-by-side when inspector is wide/tall enough. */
-  sideBySide?: boolean
-  busy?: boolean
-  onMergeIntoCurrent?: (sha: string) => Promise<void>
-  onRebaseOnto?: (sha: string) => Promise<void>
-  filesWidth?: number
-  onFilesWidthChange?: (width: number) => void
-  onFilesWidthCommit?: (width: number) => void
-}
+const fileOptionId = (index: number): string => `inspector-file-${index}`
 
-export function CommitDetailPane({
-  detail,
-  selectedFile,
-  diff,
-  diffLoading,
-  onSelectFile,
-  sideBySide = false,
-  busy = false,
-  onMergeIntoCurrent,
-  onRebaseOnto,
-  filesWidth = 200,
-  onFilesWidthChange,
-  onFilesWidthCommit
-}: Props): React.JSX.Element {
+export function CommitDetailPane(): React.JSX.Element {
+  const { busy } = useAppStatus()
+  const { detail, selectedFile, diff, diffLoading } = useSelection()
+  const { setSelectedFile } = useSelectionActions()
+  const { detailDock, inspectorFilesWidth: filesWidth, setInspectorFilesWidth, persistLayout } = useLayout()
+  const { runMergeOrRebase } = useGitActions()
+  const confirm = useConfirm()
+  // Side-by-side needs the width of a right-docked inspector.
+  const sideBySide = detailDock === 'right'
+
   if (!detail) {
     return (
       <div className="empty-state">
@@ -48,6 +36,23 @@ export function CommitDetailPane({
   }
 
   const { commit, files } = detail
+  const selectedIndex = files.findIndex((f) => f.path === selectedFile?.path)
+
+  const onFilesKeyDown = (e: React.KeyboardEvent<HTMLUListElement>): void => {
+    if (e.key === 'Escape') {
+      // Back to the commit list this file list was entered from.
+      const commits = document.querySelector<HTMLElement>('.history-table')
+      if (!commits) return
+      e.preventDefault()
+      commits.focus()
+      return
+    }
+    const next = nextListIndex(e.key, selectedIndex, files.length)
+    if (next === null) return
+    e.preventDefault()
+    setSelectedFile(files[next])
+    document.getElementById(fileOptionId(next))?.scrollIntoView({ block: 'nearest' })
+  }
 
   return (
     <div className="detail-fill inspector-fill">
@@ -74,42 +79,57 @@ export function CommitDetailPane({
           >
             Copy SHA
           </Button>
-          {onMergeIntoCurrent && (
-            <Button
-              variant="ghost"
-              icon={<GitMerge size={14} strokeWidth={1.75} />}
-              hint="Merge this commit into the current branch"
-              title="Merge this commit into the current branch"
-              disabled={busy}
-              onClick={() => void onMergeIntoCurrent(commit.sha)}
-            >
-              Merge into current…
-            </Button>
-          )}
-          {onRebaseOnto && (
-            <Button
-              variant="ghost"
-              icon={<GitBranch size={14} strokeWidth={1.75} />}
-              hint="Rebase the current branch onto this commit"
-              title="Rebase the current branch onto this commit"
-              disabled={busy}
-              onClick={() => void onRebaseOnto(commit.sha)}
-            >
-              Rebase onto…
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            icon={<GitMerge size={14} strokeWidth={1.75} />}
+            hint="Merge this commit into the current branch"
+            title="Merge this commit into the current branch"
+            disabled={busy}
+            onClick={() =>
+              void confirm(confirmMerge(commit.shortSha)).then((ok) => {
+                if (ok) void runMergeOrRebase('merge', commit.sha)
+              })
+            }
+          >
+            Merge into current…
+          </Button>
+          <Button
+            variant="ghost"
+            icon={<GitBranch size={14} strokeWidth={1.75} />}
+            hint="Rebase the current branch onto this commit"
+            title="Rebase the current branch onto this commit"
+            disabled={busy}
+            onClick={() =>
+              void confirm(confirmRebase(commit.shortSha)).then((ok) => {
+                if (ok) void runMergeOrRebase('rebase', commit.sha)
+              })
+            }
+          >
+            Rebase onto…
+          </Button>
         </div>
         {commit.body ? (
           <pre className="commit-body-compact muted">{commit.body}</pre>
         ) : null}
       </div>
       <div className="inspector-body" style={{ ['--inspector-files-width' as string]: `${filesWidth}px` }}>
-        <ul className="file-list inspector-files">
-          {files.map((f) => (
+        <ul
+          className="file-list inspector-files"
+          role="listbox"
+          aria-label="Changed files"
+          tabIndex={0}
+          aria-activedescendant={selectedIndex >= 0 ? fileOptionId(selectedIndex) : undefined}
+          onKeyDown={onFilesKeyDown}
+          data-pane-focus
+        >
+          {files.map((f, index) => (
             <li
               key={f.path}
+              id={fileOptionId(index)}
+              role="option"
+              aria-selected={selectedFile?.path === f.path}
               className={selectedFile?.path === f.path ? 'active' : ''}
-              onClick={() => onSelectFile(f)}
+              onClick={() => setSelectedFile(f)}
               title={f.path}
             >
               <span className="muted" style={{ marginRight: 6 }}>
@@ -118,20 +138,22 @@ export function CommitDetailPane({
               <span className="cell-ellipsis">{f.path}</span>
             </li>
           ))}
-          {files.length === 0 && <li className="muted">No file changes</li>}
+          {files.length === 0 && (
+            <li className="muted" role="presentation">
+              No file changes
+            </li>
+          )}
         </ul>
-        {onFilesWidthChange && (
-          <Splitter
-            axis="x"
-            className="splitter-inline-x"
-            value={filesWidth}
-            min={140}
-            max={480}
-            onChange={onFilesWidthChange}
-            onChangeEnd={onFilesWidthCommit}
-            title="Resize file list"
-          />
-        )}
+        <Splitter
+          axis="x"
+          className="splitter-inline-x"
+          value={filesWidth}
+          min={140}
+          max={480}
+          onChange={setInspectorFilesWidth}
+          onChangeEnd={(w) => persistLayout({ inspectorFilesWidth: w })}
+          title="Resize file list"
+        />
         <div className="diff-host">
           <div className="diff-editor-slot">
             {diffLoading ? (

@@ -8,6 +8,7 @@ import type {
   HistoryQuery
 } from '@shared/ipc'
 import { decorateCommitsWithColors, layoutCommitGraph } from '@history-core/layout'
+import { matchBranchPatterns, splitBranchTokens, type BranchName } from '@shared/branch-search'
 import { HISTORY_PAGE_SIZE } from '@shared/layout-defaults'
 import { parseHistorySearch, type HistorySearch } from '../history-query'
 import { gitOk, readGitShowCapped, runGit, runGitDelimited } from '../git-runner'
@@ -28,6 +29,9 @@ const DETAIL_LOG_FORMAT = [
   '%aI',
   '%D'
 ].join('%x1f') + '%x1e'
+
+/** A jump to a commit reads at most this many commits looking for it. */
+const REVEAL_MAX_COMMITS = 10_000
 
 function shortRefName(ref: string): string {
   return ref.replace(/^refs\/(heads|remotes|tags)\//, '')
@@ -68,6 +72,11 @@ function parseListCommitRecord(record: string): Commit | null {
   }
 }
 
+/** The commit id a list record starts with. */
+function recordSha(record: string): string {
+  return record.trimStart().split('\x1f', 1)[0]
+}
+
 function appendSearchArgs(args: string[], search: HistorySearch | null, author: string | undefined): void {
   const authorText = author?.trim() || (search?.kind === 'author' ? search.text : '')
   // A commit id that did not resolve (or later pages) is still looked for in messages.
@@ -79,21 +88,50 @@ function appendSearchArgs(args: string[], search: HistorySearch | null, author: 
   if (messageText) args.push(`--grep=${messageText}`)
 }
 
+interface BranchRef extends BranchName {
+  /** Full ref name, e.g. `refs/remotes/origin/main`. */
+  refName: string
+}
+
+/** Local and remote-tracking branches. Full ref names keep a local branch called `origin/x` apart from the remote one. */
+async function listBranchRefs(repoPath: string): Promise<BranchRef[]> {
+  const out = await gitOk(repoPath, ['for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes'])
+  const refs: BranchRef[] = []
+  for (const line of out.split('\n')) {
+    const refName = line.trim()
+    if (refName.startsWith('refs/heads/')) {
+      refs.push({ refName, name: refName.slice('refs/heads/'.length), remote: null })
+    } else if (refName.startsWith('refs/remotes/')) {
+      const name = refName.slice('refs/remotes/'.length)
+      const slash = name.indexOf('/')
+      if (slash > 0) refs.push({ refName, name, remote: name.slice(0, slash) })
+    }
+  }
+  return refs
+}
+
+function noBranchMatches(patterns: string[]): string {
+  return `No branch matches ${patterns.map((p) => `"${p}"`).join(' or ')}.`
+}
+
 export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
   const headSha = await resolveHeadSha(query.repoPath)
   const limit = query.limit ?? HISTORY_PAGE_SIZE
-  const skip = query.skip ?? 0
+  const reveal = query.revealSha?.toLowerCase()
+  // A jump reads from the top down to its commit.
+  const skip = reveal ? 0 : (query.skip ?? 0)
+  const { branchPatterns, rest } = splitBranchTokens(query.search)
 
   // Unborn branch / empty repo: no commits yet
-  if (!headSha && !query.branch) {
+  if (!headSha && !query.branch && branchPatterns.length === 0) {
     return { commits: [], graph: [], nextCursor: null, headSha: null }
   }
 
   if (query.branch) assertRevision(query.branch, 'branch')
-  const search = parseHistorySearch(query.search)
+  const search = parseHistorySearch(rest)
 
   // A commit id jumps straight to that commit (first page only).
-  if (search?.kind === 'sha' && skip === 0) {
+  if (search?.kind === 'sha' && skip === 0 && !reveal) {
     const resolved = await runGit({
       cwd: query.repoPath,
       args: ['rev-parse', '--verify', '--quiet', `${search.sha}^{commit}`]
@@ -127,14 +165,37 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
     }
   }
 
+  // `branch:` patterns take the place of the current-branch filter and of the all-branches walk.
+  let branchRefs: BranchRef[] | null = null
+  if (branchPatterns.length > 0) {
+    branchRefs = matchBranchPatterns(branchPatterns, await listBranchRefs(query.repoPath))
+    if (branchRefs.length === 0) {
+      return {
+        commits: [],
+        graph: [],
+        nextCursor: null,
+        headSha,
+        branches: [],
+        notice: noBranchMatches(branchPatterns)
+      }
+    }
+  }
+  const branches = branchRefs?.map((b) => b.name)
+
   // --date-order keeps children before parents, which the lane layout relies on. Pages are offsets
   // into that single walk, so commits reachable only from other branches are never skipped.
-  const args = ['log', '--date-order', '--decorate=full', `--format=${LIST_LOG_FORMAT}`, `--max-count=${limit}`]
+  const maxCount = reveal ? REVEAL_MAX_COMMITS + limit : limit
+  const args = ['log', '--date-order', '--decorate=full', `--format=${LIST_LOG_FORMAT}`, `--max-count=${maxCount}`]
   if (skip > 0) args.push(`--skip=${skip}`)
   if (query.mergesOnly) args.push('--merges')
   appendSearchArgs(args, search, query.author)
 
-  if (query.branch) {
+  let input: string | undefined
+  if (branchRefs) {
+    // On stdin: `branch:*` in a large repository can match more refs than a command line holds.
+    args.push('--stdin')
+    input = `${branchRefs.map((b) => b.refName).join('\n')}\n`
+  } else if (query.branch) {
     if (query.branch === 'HEAD' && !headSha) {
       return { commits: [], graph: [], nextCursor: null, headSha: null }
     }
@@ -145,20 +206,31 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
   }
   if (query.path) args.push('--', query.path)
 
+  // A jump stops one page past its commit, or gives up after REVEAL_MAX_COMMITS.
+  let revealIndex = -1
   const logResult = await runGitDelimited({
     cwd: query.repoPath,
     args,
+    input,
     delimiter: '\x1e',
-    maxRecords: limit + 2
+    maxRecords: reveal ? undefined : limit + 2,
+    stopWhen: reveal
+      ? (records) => {
+          if (revealIndex < 0 && recordSha(records[records.length - 1]) === reveal) {
+            revealIndex = records.length - 1
+          }
+          return revealIndex >= 0 ? records.length > revealIndex + limit : records.length >= REVEAL_MAX_COMMITS
+        }
+      : undefined
   })
   if (logResult.code !== 0) {
     if (/does not have any commits yet|bad revision|unknown revision|ambiguous argument/i.test(logResult.stderr)) {
-      return { commits: [], graph: [], nextCursor: null, headSha }
+      return { commits: [], graph: [], nextCursor: null, headSha, branches }
     }
     throw new Error(logResult.stderr || 'git log failed')
   }
 
-  const commits: Commit[] = []
+  let commits: Commit[] = []
   for (const record of logResult.records) {
     const trimmed = record.trim()
     if (!trimmed) continue
@@ -166,15 +238,27 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
     if (commit) commits.push(commit)
   }
 
+  let pageSize = limit
+  let revealed: boolean | undefined
+  if (reveal) {
+    const index = commits.findIndex((c) => c.sha === reveal)
+    revealed = index >= 0
+    // Found: every commit down to it and one page more. Not found: an ordinary first page.
+    if (revealed) pageSize = index + 1 + limit
+    commits = commits.slice(0, pageSize)
+  }
+
   const decorated = decorateCommitsWithColors(commits)
   const graph = layoutCommitGraph(decorated)
-  const nextCursor = decorated.length >= limit ? decorated[decorated.length - 1]?.sha ?? null : null
+  const nextCursor = decorated.length >= pageSize ? decorated[decorated.length - 1]?.sha ?? null : null
 
   return {
     commits: decorated,
     graph,
     nextCursor,
-    headSha
+    headSha,
+    branches,
+    revealed
   }
 }
 

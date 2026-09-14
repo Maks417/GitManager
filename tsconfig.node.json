@@ -26,6 +26,7 @@
     "src/shared/**/*",
     "src/history-core/**/*",
     "src/merge-core/**/*",
+    "src/renderer/src/logic/**/*",
     "services/**/*",
     "tests/**/*"
   ]

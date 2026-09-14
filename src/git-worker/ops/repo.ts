@@ -1,6 +1,6 @@
 import { existsSync } from 'fs'
 import { rm } from 'fs/promises'
-import { basename, normalize } from 'path'
+import { basename, normalize, resolve } from 'path'
 import type { Repository } from '@shared/ipc'
 import { isGitRepo, runGit } from '../git-runner'
 import { currentBranchName, gitOk } from './shared'
@@ -12,6 +12,19 @@ async function workTreeRoot(path: string): Promise<string> {
   const top = result?.code === 0 ? result.stdout.trim() : ''
   if (!top) throw new Error(`Not a git repository: ${path}`)
   return normalize(top)
+}
+
+/**
+ * Absolute git directories of a work tree. `gitDir` holds HEAD, the index and merge/rebase state;
+ * `commonDir` holds refs. Both lie outside the work tree for linked worktrees and submodules.
+ */
+export async function getGitDirs(repoPath: string): Promise<{ gitDir: string; commonDir: string }> {
+  // Plain output (no --path-format, which needs Git 2.31): paths may be relative to the work tree.
+  const [gitDir, commonDir] = (await gitOk(repoPath, ['rev-parse', '--git-dir', '--git-common-dir']))
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+  if (!gitDir || !commonDir) throw new Error(`Could not locate the Git directory of ${repoPath}`)
+  return { gitDir: resolve(repoPath, gitDir), commonDir: resolve(repoPath, commonDir) }
 }
 
 export async function inspectRepository(requestedPath: string): Promise<Repository> {

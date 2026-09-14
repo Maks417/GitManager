@@ -40,6 +40,33 @@ export async function initRepo(dir: string, opts: { initialCommit?: boolean } = 
 }
 
 /**
+ * Create many commits at once with `git fast-import`: `count` commits on `ref`, one second apart from
+ * `startEpoch`. The first commit's parent is `from` (a commit id), or none. Returns the last commit's id.
+ */
+export async function importCommits(
+  dir: string,
+  opts: { ref: string; count: number; startEpoch: number; from?: string; subject?: (index: number) => string }
+): Promise<string> {
+  const lines: string[] = []
+  for (let i = 0; i < opts.count; i++) {
+    const message = opts.subject?.(i) ?? `${opts.ref.replace(/^refs\/heads\//, '')} ${i + 1}`
+    lines.push(
+      `commit ${opts.ref}`,
+      `mark :${i + 1}`,
+      `committer Test User <test@example.com> ${opts.startEpoch + i} +0000`,
+      `data ${Buffer.byteLength(message)}`,
+      message
+    )
+    if (i > 0) lines.push(`from :${i}`)
+    else if (opts.from) lines.push(`from ${opts.from}`)
+    lines.push('')
+  }
+  const result = await runGit({ cwd: dir, args: ['fast-import', '--quiet'], input: `${lines.join('\n')}\n` })
+  if (result.code !== 0) throw new Error(`git fast-import failed (${result.code}): ${result.stderr}`)
+  return (await git(dir, 'rev-parse', opts.ref)).trim()
+}
+
+/**
  * Commit `base`, then change files on a `theirs` branch and on `main`, and merge `theirs`
  * into `main`. Pass `null` to delete a file on that side. Returns once the merge has stopped.
  */

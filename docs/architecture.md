@@ -15,9 +15,10 @@ Git Manager is an Electron desktop app (`electron-vite`) with a React renderer. 
 | Git worker | Spawn Git CLI; ops for status/history/branches/merge/stash/identity | [`src/git-worker/git-runner.ts`](../src/git-worker/git-runner.ts), [`src/git-worker/ops/`](../src/git-worker/ops/), [`src/git-worker/operations.ts`](../src/git-worker/operations.ts) (barrel) |
 | History core | Commit-graph lane layout and search helpers | [`src/history-core/layout.ts`](../src/history-core/layout.ts) |
 | Merge core | Conflict-marker parse / region resolution | [`src/merge-core/conflict.ts`](../src/merge-core/conflict.ts) |
-| Renderer shell | Welcome, toolbar, sidebar, workspace layout | [`src/renderer/src/shell/`](../src/renderer/src/shell/), [`src/renderer/src/App.tsx`](../src/renderer/src/App.tsx) |
+| Renderer shell | Welcome, toolbar, sidebar, workspace layout, every app dialog (`AppDialogs`) | [`src/renderer/src/shell/`](../src/renderer/src/shell/), [`src/renderer/src/App.tsx`](../src/renderer/src/App.tsx) |
 | Renderer features | History, changes, merge editor, clone, accounts, identity, updates, about | [`src/renderer/src/features/`](../src/renderer/src/features/) |
-| Renderer hooks | Repo session, history paging, working tree, layout prefs | [`src/renderer/src/hooks/`](../src/renderer/src/hooks/) |
+| Renderer state | React Context providers, outermost first: app status, layout, dialogs, selection, repo session (status in its own context), history, working tree, Git actions. Components read these instead of receiving props; each provider keeps actions in a separate, stable context | [`src/renderer/src/state/`](../src/renderer/src/state/) |
+| Renderer hooks | Repo session, history paging, working tree, layout prefs (wrapped by the providers), menu commands | [`src/renderer/src/hooks/`](../src/renderer/src/hooks/) |
 | Local state | Preferences, repo list, encrypted provider tokens | [`src/main/storage.ts`](../src/main/storage.ts) |
 | Host providers | GitHub / GitLab / Bitbucket REST with PAT | [`src/main/providers/index.ts`](../src/main/providers/index.ts) |
 | OAuth broker (optional) | Confidential-client code exchange | [`services/oauth-broker/server.ts`](../services/oauth-broker/server.ts) |
@@ -59,8 +60,8 @@ flowchart LR
 ### Open repo → History
 
 1. User opens or selects a repository; main validates the path via [`inspectRepository`](../src/git-worker/ops/repo.ts) and persists it in `repositories.json`.
-2. Renderer calls `history.load` with path, optional search, and optional current-branch filter from preferences ([`useHistory`](../src/renderer/src/hooks/useHistory.ts)).
-3. Worker runs `git log` (custom format), builds `Commit[]`, then [`layoutCommitGraph`](../src/history-core/layout.ts) produces `GraphNode[]`.
+2. Renderer calls `history.load` with path, optional search (message text, `author:`, `branch:` patterns), and optional current-branch filter from preferences ([`useHistory`](../src/renderer/src/hooks/useHistory.ts)).
+3. Worker runs `git log` (custom format) over all refs, the current branch, or the branches a `branch:` search matches ([`branch-search.ts`](../src/shared/branch-search.ts), ref names on stdin), builds `Commit[]`, then [`layoutCommitGraph`](../src/history-core/layout.ts) produces `GraphNode[]`.
 4. Selecting a commit loads `commitDetail` + `fileDiff` for the Monaco side-by-side viewer.
 
 ### Stage → commit → refresh
@@ -89,5 +90,11 @@ flowchart LR
 | Updates | `electron-updater` against GitHub Releases when packaged; no-op check in dev |
 | About | [`AboutModal`](../src/renderer/src/features/about/AboutModal.tsx) shows `AppInfo` (`app:get-info`) and links to releases/license |
 | Git binary | `GIT_MANAGER_GIT_PATH` override, else `git` / `git.exe`; startup `git.probe` / `probeGit` surfaces missing CLI (incl. macOS CLT stub) |
-| Live status | Recursive `fs.watch` on the active repo ([`repo-watcher.ts`](../src/main/repo-watcher.ts)); preference `liveStatusWatch` (default on) |
+| Live status | Recursive `fs.watch` on the active repo ([`repo-watcher.ts`](../src/main/repo-watcher.ts)); preference `liveStatusWatch` (default on). Linked worktrees and submodules keep HEAD, the index and refs outside the work tree, so those git directories (`git rev-parse --git-dir --git-common-dir`) are watched as well |
+| Lint | `npm run lint` (also in CI): ESLint with only `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps`, as errors ([`eslint.config.mjs`](../eslint.config.mjs)). Types stay with `npm run typecheck` |
+| Diff viewer | Monaco diff editors are created directly, one per file version ([`FileDiffViewer`](../src/renderer/src/features/diff/FileDiffViewer.tsx)). Monaco's diff worker handles one diff at a time and never cancels a closed editor's computation, so teardown waits until the editor's diff has arrived before disposing the editor and then its models ([`monaco-lifecycle.ts`](../src/renderer/src/logic/monaco-lifecycle.ts)). The revert/stage gutter menu is off |
+| Session refreshes | Overlapping refreshes of the active repository (watcher events, Git actions) may finish in any order; only the newest applies its branches and status ([`latest-gate.ts`](../src/renderer/src/logic/latest-gate.ts)) |
+| Network operations | Fetch, pull and push stream Git's `--progress` from the git worker to the window that started them (`git:on-progress`) and stop on `git:cancel-operation` ([`remote-ops.ts`](../src/main/remote-ops.ts)). The runner starts them in their own process group (`taskkill /T` on Windows), so cancelling also stops Git's helpers, and fails them after 5 minutes without output ([`git-runner.ts`](../src/git-worker/git-runner.ts), [`progress.ts`](../src/git-worker/progress.ts)) |
+| Dialogs | Confirmations are in-app dialogs from `useConfirm()` ([`ConfirmProvider`](../src/renderer/src/state/ConfirmProvider.tsx)), shown one at a time. Every dialog registers on a stack ([`Modal`](../src/renderer/src/components/ui/Modal.tsx)): Escape and the Tab focus trap apply to the top dialog, focus returns to the element that opened it, and only a press that starts and ends on the backdrop closes it. The merge editor closes only through its own buttons |
+| Keyboard | Lists keep focus on the list and move the active row (`aria-activedescendant`: commits, commit files, changes) or share one Tab stop between rows (sidebar, [`useRovingList`](../src/renderer/src/hooks/useRovingList.ts)); key handling is pure ([`list-nav.ts`](../src/renderer/src/logic/list-nav.ts), [`resize-keys.ts`](../src/renderer/src/logic/resize-keys.ts)). F6 cycles the panes marked `data-pane` ([`usePaneCycling`](../src/renderer/src/hooks/usePaneCycling.ts)). Tab leaves read-only Monaco editors ([`monaco-keys.ts`](../src/renderer/src/lib/monaco-keys.ts)) |
 | Packaging | Windows NSIS + macOS DMG primary; Linux AppImage also defined in [`electron-builder.yml`](../electron-builder.yml) |
