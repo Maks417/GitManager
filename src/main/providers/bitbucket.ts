@@ -1,5 +1,5 @@
 import type { ProviderAccount, RemoteRepo } from '@shared/ipc'
-import { fetchJson, MAX_PAGES } from './http'
+import { fetchJson, MAX_PAGES, sameOrigin } from './http'
 
 const API = 'https://api.bitbucket.org/2.0'
 
@@ -57,7 +57,8 @@ export async function listBitbucketRepos(authUser: string, token: string): Promi
     const { data } = await fetchJson(url, basicAuth(authUser, token), 'Bitbucket repos failed')
     const body = data as { values: BitbucketRepo[]; next?: string }
     repos.push(...body.values)
-    url = body.next ?? null
+    // The credentials go with every page: follow `next` only on Bitbucket's own API.
+    url = body.next && sameOrigin(body.next, API) ? body.next : null
   }
   return repos.map((r) => ({
     id: r.uuid,

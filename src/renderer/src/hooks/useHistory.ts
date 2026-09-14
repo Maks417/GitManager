@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import type {
   Commit,
   CommitDetail,
@@ -17,6 +17,7 @@ import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
 import type { Selection, ViewMode } from './selection'
+import { useLatestRef } from './useLatestRef'
 
 /** Build a history IPC payload; branch filter expression is centralized here. */
 export function buildHistoryQuery(opts: {
@@ -41,10 +42,36 @@ export function buildHistoryQuery(opts: {
   }
 }
 
+/**
+ * The list a repository shows: all branches, or with the "Current branch" filter the branch checked out.
+ * History loaded under another key is never shown, so switching repository or branch needs no reset.
+ */
+export function historyListKey(
+  repo: Pick<Repository, 'path' | 'currentBranch'> | null,
+  historyFilter: 'all' | 'current' | undefined
+): string | null {
+  if (!repo) return null
+  const path = repo.path.replace(/\\/g, '/').toLowerCase()
+  return historyFilter === 'current' ? `${path}\0branch\0${repo.currentBranch ?? ''}` : `${path}\0all`
+}
+
 export interface LoadHistoryOptions {
   /** Load down to this commit. When it is not found, the list stays as it was. */
   revealSha?: string
 }
+
+interface HistoryList {
+  key: string
+  commits: Commit[]
+  graph: GraphNode[]
+  headSha: string | null
+  nextCursor: string | null
+  branchFilter: string[] | null
+  notice: string | null
+}
+
+const NO_COMMITS: Commit[] = []
+const NO_GRAPH: GraphNode[] = []
 
 type UseHistoryArgs = {
   activeRepo: Repository | null
@@ -87,7 +114,7 @@ export function useHistory({
   branchFilter: string[] | null
   /** Why the list is empty or narrower than asked, when that needs saying. */
   notice: string | null
-  setNotice: React.Dispatch<React.SetStateAction<string | null>>
+  setNotice: (notice: string | null) => void
   /** Whether the list shown for the active repository contains this commit. */
   hasCommit: (sha: string) => boolean
   loadHistory: (
@@ -98,35 +125,50 @@ export function useHistory({
   loadMoreHistory: () => Promise<void>
   refreshHistoryTip: (repo: Repository) => Promise<void>
 } {
-  const [commits, setCommits] = useState<Commit[]>([])
-  const [graph, setGraph] = useState<GraphNode[]>([])
-  const [headSha, setHeadSha] = useState<string | null>(null)
-  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [list, setList] = useState<HistoryList | null>(null)
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false)
-  const [branchFilter, setBranchFilter] = useState<string[] | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
 
-  /** Path that currently owns `commits` / selection history state. */
-  const commitsRepoPathRef = useRef<string | null>(null)
-  /** Latest active repo path — used to drop stale async history responses. */
-  const activePathRef = useRef<string | null>(null)
-  activePathRef.current = activeRepo?.path ?? null
-  const commitsRef = useRef<Commit[]>(commits)
-  commitsRef.current = commits
+  const listKey = historyListKey(activeRepo, historyFilter)
+  const shown = list && list.key === listKey ? list : null
+
+  /** The list as last written, for callbacks that page or splice into it after an await. */
+  const listRef = useRef<HistoryList | null>(null)
+  const listKeyRef = useLatestRef(listKey)
+  /** Latest active repo path — used to drop responses for a repository that is no longer open. */
+  const activePathRef = useLatestRef(activeRepo?.path ?? null)
   /** Search that produced the visible list. Paging and refreshes reuse it, not unsubmitted text. */
   const appliedSearchRef = useRef(search)
-  /** Repository whose branches/status were last requested by the load effect. */
+  /** Grows with every load that replaces the list: an older load, or a tip refresh started before it, must not apply. */
+  const loadSeqRef = useRef(0)
+  /** Lists with a load running, so a key change does not start a second, identical load. */
+  const loadingKeysRef = useRef(new Map<string, number>())
+  /** Repository whose branches the key-change effect last requested. */
   const metaPathRef = useRef<string | null>(null)
 
-  const isCurrentRepo = useCallback((repoPath: string): boolean => {
-    return sameRepoPath(activePathRef.current, repoPath)
+  const writeList = useCallback((next: HistoryList): void => {
+    listRef.current = next
+    setList(next)
   }, [])
 
+  const isCurrentRepo = useCallback(
+    (repoPath: string): boolean => sameRepoPath(activePathRef.current, repoPath),
+    [activePathRef]
+  )
+
   const hasCommit = useCallback(
-    (sha: string): boolean =>
-      sameRepoPath(commitsRepoPathRef.current, activePathRef.current) &&
-      commitsRef.current.some((c) => c.sha === sha),
-    []
+    (sha: string): boolean => {
+      const current = listRef.current
+      return Boolean(current && current.key === listKeyRef.current && current.commits.some((c) => c.sha === sha))
+    },
+    [listKeyRef]
+  )
+
+  const setNotice = useCallback(
+    (notice: string | null): void => {
+      const current = listRef.current
+      if (current) writeList({ ...current, notice })
+    },
+    [writeList]
   )
 
   const loadHistory = useCallback(
@@ -135,159 +177,177 @@ export function useHistory({
       searchText: string = appliedSearchRef.current,
       options: LoadHistoryOptions = {}
     ): Promise<HistoryPage | undefined> => {
-      const repoPath = repo.path
-      return runWithBusy(
-        async () => {
-          const page = await window.gitManager.history.load(
-            buildHistoryQuery({
-              repoPath,
-              search: searchText,
-              currentBranch: repo.currentBranch,
-              historyFilter,
-              revealSha: options.revealSha
+      const key = historyListKey(repo, historyFilter)
+      if (!key) return undefined
+      const reveal = Boolean(options.revealSha)
+      // A jump may find nothing and change nothing, so only its success replaces other loads.
+      const seq = reveal ? loadSeqRef.current : ++loadSeqRef.current
+      const loading = loadingKeysRef.current
+      loading.set(key, (loading.get(key) ?? 0) + 1)
+      try {
+        return await runWithBusy(
+          async () => {
+            const page = await window.gitManager.history.load(
+              buildHistoryQuery({
+                repoPath: repo.path,
+                search: searchText,
+                currentBranch: repo.currentBranch,
+                historyFilter,
+                revealSha: options.revealSha
+              })
+            )
+            if (!isCurrentRepo(repo.path)) return undefined
+            // A jump that did not find its commit changes nothing; the caller decides what to show.
+            if (reveal && !page.revealed) return page
+            // A newer search or reload started meanwhile; its result replaces this one.
+            if (seq !== loadSeqRef.current) return undefined
+            if (reveal) loadSeqRef.current++
+            appliedSearchRef.current = searchText
+            writeList({
+              key,
+              commits: page.commits,
+              graph: page.graph,
+              headSha: page.headSha,
+              nextCursor: page.nextCursor,
+              branchFilter: page.branches ?? null,
+              notice: page.notice ?? null
             })
-          )
-          if (!isCurrentRepo(repoPath)) return undefined
-          // A jump that did not find its commit changes nothing; the caller decides what to show.
-          if (options.revealSha && !page.revealed) return page
-          appliedSearchRef.current = searchText
-          commitsRepoPathRef.current = repoPath
-          commitsRef.current = page.commits
-          setCommits(page.commits)
-          setGraph(page.graph)
-          setHeadSha(page.headSha)
-          setNextCursor(page.nextCursor)
-          setBranchFilter(page.branches ?? null)
-          setNotice(page.notice ?? null)
-          setSelection((prev) => {
-            if (prev?.kind === 'working-copy') return prev
-            const keep =
-              prev?.kind === 'commit' ? page.commits.find((c) => c.sha === prev.sha)?.sha : null
-            const nextSha = keep || page.commits[0]?.sha || null
-            if (nextSha) return { kind: 'commit', sha: nextSha }
-            return { kind: 'working-copy' }
-          })
-          if (!page.headSha && page.commits.length === 0) setViewMode('changes')
-          setError(null)
-          return page
-        },
-        { setBusy, setError }
-      )
+            setSelection((prev) => {
+              if (prev?.kind === 'working-copy') return prev
+              if (prev?.kind === 'commit' && page.commits.some((c) => c.sha === prev.sha)) return prev
+              const first = page.commits[0]?.sha
+              return first ? { kind: 'commit', sha: first } : { kind: 'working-copy' }
+            })
+            if (!page.headSha && page.commits.length === 0) setViewMode('changes')
+            setError(null)
+            return page
+          },
+          { setBusy, setError }
+        )
+      } finally {
+        const left = (loading.get(key) ?? 1) - 1
+        if (left > 0) loading.set(key, left)
+        else loading.delete(key)
+      }
     },
-    [historyFilter, setBusy, setError, setSelection, setViewMode, isCurrentRepo]
+    [historyFilter, isCurrentRepo, setBusy, setError, setSelection, setViewMode, writeList]
   )
 
   const loadMoreHistory = useCallback(async (): Promise<void> => {
-    if (!activeRepo || !nextCursor || historyLoadingMore || busy) return
+    const loaded = listRef.current
+    if (!activeRepo || !loaded || loaded.key !== listKey || !loaded.nextCursor || historyLoadingMore || busy) {
+      return
+    }
     const repoPath = activeRepo.path
     await runWithBusy(
       async () => {
-        const loaded = commitsRef.current
         const page = await window.gitManager.history.load(
           buildHistoryQuery({
             repoPath,
             search: appliedSearchRef.current,
             currentBranch: activeRepo.currentBranch,
             historyFilter,
-            skip: loaded.length
+            skip: loaded.commits.length
           })
         )
         // A refresh replaced the list meanwhile: this page's offset no longer applies.
-        if (!isCurrentRepo(repoPath) || commitsRef.current !== loaded) return
-        const seen = new Set(loaded.map((c) => c.sha))
-        const merged = decorateCommitsWithColors([
-          ...loaded,
+        if (!isCurrentRepo(repoPath) || listRef.current !== loaded) return
+        const seen = new Set(loaded.commits.map((c) => c.sha))
+        const commits = decorateCommitsWithColors([
+          ...loaded.commits,
           ...page.commits.filter((c) => !seen.has(c.sha))
         ])
-        commitsRef.current = merged
-        setCommits(merged)
-        setGraph(layoutCommitGraph(merged))
-        setHeadSha(page.headSha)
-        setNextCursor(page.nextCursor)
+        writeList({
+          ...loaded,
+          commits,
+          graph: layoutCommitGraph(commits),
+          headSha: page.headSha,
+          nextCursor: page.nextCursor
+        })
       },
       { setBusy: setHistoryLoadingMore, setError }
     )
-  }, [activeRepo, nextCursor, historyLoadingMore, busy, historyFilter, setError, isCurrentRepo])
+  }, [activeRepo, listKey, historyLoadingMore, busy, historyFilter, isCurrentRepo, setError, writeList])
 
   const refreshHistoryTip = useCallback(
     async (repo: Repository): Promise<void> => {
-      const repoPath = repo.path
+      const key = historyListKey(repo, historyFilter)
+      // Another branch or repository is being shown (a checkout with "Current branch", say): the full
+      // load of its list replaces this one, so there is nothing to splice into.
+      if (!key || listRef.current?.key !== key) return
+      const seq = loadSeqRef.current
       try {
         const page = await window.gitManager.history.load(
           buildHistoryQuery({
-            repoPath,
+            repoPath: repo.path,
             search: appliedSearchRef.current,
             currentBranch: repo.currentBranch,
             historyFilter
           })
         )
-        if (!isCurrentRepo(repoPath)) return
+        // A load that started meanwhile replaces the list with fresher results.
+        if (!isCurrentRepo(repo.path) || seq !== loadSeqRef.current) return
 
-        // Never merge tips from another repository into the visible history.
-        const loaded = sameRepoPath(commitsRepoPathRef.current, repoPath) ? commitsRef.current : []
+        // Never splice another repository's or branch's tips into the visible history.
+        const current = listRef.current
+        const loaded = current?.key === key ? current.commits : []
         // null when history was rewritten (amend, rebase, reset, pruned branches): replace, don't splice.
         const spliced = mergeTipPage(loaded, page.commits, page.nextCursor !== null)
-        const next = decorateCommitsWithColors(spliced ?? page.commits)
-        commitsRepoPathRef.current = repoPath
-        commitsRef.current = next
-        setCommits(next)
-        setGraph(layoutCommitGraph(next))
+        const commits = decorateCommitsWithColors(spliced ?? page.commits)
+        writeList({
+          key,
+          commits,
+          graph: layoutCommitGraph(commits),
+          headSha: page.headSha,
+          branchFilter: page.branches ?? null,
+          notice: page.notice ?? null,
+          // Splicing keeps the loaded depth; a replaced list pages on from the fresh first page.
+          nextCursor:
+            page.nextCursor === null
+              ? null
+              : spliced && loaded.length > 0
+                ? (current?.nextCursor ?? null)
+                : page.nextCursor
+        })
         setSelection((sel) => {
           if (sel?.kind === 'working-copy') return sel
-          if (sel?.kind === 'commit' && next.some((c) => c.sha === sel.sha)) return sel
-          const nextSha = page.commits[0]?.sha || null
-          if (nextSha) return { kind: 'commit', sha: nextSha }
-          return { kind: 'working-copy' }
-        })
-        setHeadSha(page.headSha)
-        setBranchFilter(page.branches ?? null)
-        setNotice(page.notice ?? null)
-        // Splicing keeps the loaded depth; a replaced list pages on from the fresh first page.
-        setNextCursor((prev) => {
-          if (page.nextCursor === null) return null
-          return spliced && loaded.length > 0 ? prev : page.nextCursor
+          if (sel?.kind === 'commit' && commits.some((c) => c.sha === sel.sha)) return sel
+          const first = page.commits[0]?.sha
+          return first ? { kind: 'commit', sha: first } : { kind: 'working-copy' }
         })
       } catch (err) {
-        if (!isCurrentRepo(repoPath)) return
+        if (!isCurrentRepo(repo.path)) return
         setError(toErrorMessage(err))
       }
     },
-    [historyFilter, setError, setSelection, isCurrentRepo]
+    [historyFilter, isCurrentRepo, setError, setSelection, writeList]
   )
 
-  // With the "Current branch" filter, switching branches (here or outside the app) reloads the list.
-  const branchKey = historyFilter === 'current' ? (activeRepo?.currentBranch ?? null) : null
-
-  useEffect(() => {
-    if (!activeRepo) {
-      commitsRepoPathRef.current = null
+  // Loads the list of a new key: another repository, another filter, or (filtered) another branch.
+  const onListKeyChange = useEffectEvent((key: string | null): void => {
+    if (!activeRepo || !key) {
       metaPathRef.current = null
       return
     }
-    // Drop prior-repo selection/history immediately so commit-detail cannot race
-    // against a SHA that does not exist in the newly selected repository.
-    commitsRepoPathRef.current = null
-    commitsRef.current = []
-    setCommits([])
-    setGraph([])
-    setHeadSha(null)
-    setNextCursor(null)
-    setBranchFilter(null)
-    setNotice(null)
-    setSelection(null)
-    setDetail(null)
-    setSelectedFile(null)
-    setDiff(null)
-    void loadHistory(activeRepo, search)
-    if (metaPathRef.current !== activeRepo.path) {
+    if (!sameRepoPath(metaPathRef.current, activeRepo.path)) {
+      // Nothing selected in the previous repository exists in this one.
       metaPathRef.current = activeRepo.path
+      setSelection(null)
+      setDetail(null)
+      setSelectedFile(null)
+      setDiff(null)
       setRemoteBranches([])
       void refreshRepoMeta(activeRepo)
     }
-    // Reload on repository, filter or (filtered) branch changes only — not on every keystroke.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-  }, [activeRepo?.path, historyFilter, branchKey])
+    // The Git action that changed the branch may be loading this list already.
+    if (!loadingKeysRef.current.has(key)) void loadHistory(activeRepo, search)
+  })
 
+  useEffect(() => {
+    onListKeyChange(listKey)
+  }, [listKey])
+
+  const graph = shown?.graph ?? NO_GRAPH
   const graphBySha = useMemo(() => {
     const map = new Map<string, GraphNode>()
     for (const g of graph) map.set(g.sha, g)
@@ -295,14 +355,14 @@ export function useHistory({
   }, [graph])
 
   return {
-    commits,
+    commits: shown?.commits ?? NO_COMMITS,
     graph,
     graphBySha,
-    headSha,
-    nextCursor,
+    headSha: shown?.headSha ?? null,
+    nextCursor: shown?.nextCursor ?? null,
     historyLoadingMore,
-    branchFilter,
-    notice,
+    branchFilter: shown?.branchFilter ?? null,
+    notice: shown?.notice ?? null,
     setNotice,
     hasCommit,
     loadHistory,

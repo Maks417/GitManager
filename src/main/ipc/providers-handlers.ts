@@ -6,6 +6,11 @@ import { getAccountToken, loadAccounts, saveAccounts, storeAccountToken } from '
 import { assertSender } from './assert-sender'
 import { NonEmptyStringSchema, parseAccountId } from './parse'
 
+/** An optional text argument: missing or empty means not given. */
+function optionalText(raw: unknown): string | undefined {
+  return raw === undefined || raw === null || raw === '' ? undefined : NonEmptyStringSchema.parse(raw)
+}
+
 export function registerProvidersHandlers(): void {
   ipcMain.handle(IpcChannels.providers.listAccounts, async (event) => {
     assertSender(event)
@@ -17,15 +22,13 @@ export function registerProvidersHandlers(): void {
 
   ipcMain.handle(
     IpcChannels.providers.saveToken,
-    async (event, providerRaw: unknown, tokenRaw: unknown, username?: unknown) => {
+    async (event, providerRaw: unknown, tokenRaw: unknown, username?: unknown, baseUrl?: unknown) => {
       assertSender(event)
       const provider = ProviderIdSchema.parse(providerRaw) as ProviderId
       const token = NonEmptyStringSchema.parse(tokenRaw)
-      const user =
-        username === undefined || username === null || username === ''
-          ? undefined
-          : NonEmptyStringSchema.parse(username)
-      const { account, authUser } = await connectWithToken(provider, token, user)
+      const { account, authUser } = await connectWithToken(provider, token, optionalText(username), {
+        baseUrl: optionalText(baseUrl)
+      })
       return storeAccountToken(account, token, authUser)
     }
   )

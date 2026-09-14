@@ -65,7 +65,9 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const canAmend = Boolean(headSha)
 
   const [message, setMessage] = useState('')
-  const [amend, setAmend] = useState(false)
+  const [amendChecked, setAmend] = useState(false)
+  // Nothing can be amended before the first commit.
+  const amend = amendChecked && canAmend
   const [pushAfterCommit, setPushAfterCommit] = useState(false)
   const [checked, setChecked] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
@@ -108,12 +110,19 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
 
   // Stashing, popping and committing change the file count; reload the stash list when it changes.
   useEffect(() => {
-    void loadStashes()
-  }, [loadStashes, status.length])
-
-  useEffect(() => {
-    if (!canAmend) setAmend(false)
-  }, [canAmend])
+    let cancelled = false
+    window.gitManager.git.stashList(repoPath).then(
+      (list) => {
+        if (!cancelled) setStashes(list)
+      },
+      () => {
+        if (!cancelled) setStashes([])
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [repoPath, status.length])
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
     setBusy(true)

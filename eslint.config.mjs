@@ -1,6 +1,6 @@
-// Lints React hook usage only: stale closures and missing effect dependencies are bugs `tsc` cannot see.
-// Types stay with `npm run typecheck`. The plugin's React Compiler rules (e.g. `refs`) are not enabled:
-// this codebase deliberately mirrors fresh values into refs during render.
+// Lints React hook usage with the plugin's recommended rules, including the React Compiler checks: stale
+// closures, missing effect dependencies, refs read during render and state set synchronously in effects are
+// bugs `tsc` cannot see. Types stay with `npm run typecheck`.
 import reactHooks from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 
@@ -15,7 +15,8 @@ export default [
     linterOptions: { reportUnusedDisableDirectives: 'error' },
     plugins: { 'react-hooks': reactHooks },
     rules: {
-      'react-hooks/rules-of-hooks': 'error',
+      ...reactHooks.configs['recommended-latest'].rules,
+      // A missing dependency is a bug, not a style warning.
       'react-hooks/exhaustive-deps': 'error'
     }
   }

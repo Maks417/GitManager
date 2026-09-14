@@ -1,20 +1,35 @@
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
-import { join, normalize, resolve } from 'path'
-import { existsSync, mkdirSync } from 'fs'
-import { z } from 'zod'
-import { CloneRequestSchema, IpcChannels } from '@shared/ipc'
+import { isAbsolute, join, normalize, resolve } from 'path'
+import { existsSync } from 'fs'
+import {
+  CloneRequestSchema,
+  CreateRepoRequestSchema,
+  IpcChannels,
+  NewRepoTargetRequestSchema,
+  RepoRemoveOptionsSchema,
+  type NewRepoTarget,
+  type RepoRemoveResult,
+  type Repository
+} from '@shared/ipc'
 import * as git from '../../git-worker/client'
 import { cancelGitIn } from '../../git-worker/client'
 import { isPathInside } from '../../git-worker/path-utils'
 import { loadPreferences, loadRepositories, saveRepositories } from '../storage'
-import { getWatchedRepoPath, startRepoWatch, stopRepoWatch } from '../repo-watcher'
+import { getRepoWatchState, getWatchedRepoPath, startRepoWatch, stopRepoWatch } from '../repo-watcher'
 import { assertDeletableRepoDir } from '../repo-removal'
 import { repoNameFromUrl } from '../clone-target'
+import { describeNewRepoTarget } from '../new-repo'
+import { runCloneOperation } from '../remote-ops'
 import { assertSender } from './assert-sender'
 import { upsertRepository } from './repo-store'
 import { NonEmptyStringSchema, parseAccountId, parseRepoPath } from './parse'
 
-const RemoveOptionsSchema = z.object({ deleteFiles: z.boolean().optional() }).optional()
+function storedRepository(rawId: unknown): Repository {
+  const id = NonEmptyStringSchema.parse(rawId)
+  const repo = loadRepositories().find((r) => r.id === id)
+  if (!repo) throw new Error('Repository not found')
+  return repo
+}
 
 export function registerRepoHandlers(): void {
   ipcMain.handle(IpcChannels.repo.list, async (event) => {
@@ -41,22 +56,35 @@ export function registerRepoHandlers(): void {
 
   ipcMain.handle(IpcChannels.repo.removalInfo, async (event, rawId: unknown) => {
     assertSender(event)
-    const id = NonEmptyStringSchema.parse(rawId)
-    const repo = loadRepositories().find((r) => r.id === id)
-    if (!repo) throw new Error('Repository not found')
+    const repo = storedRepository(rawId)
     const info = await git.inspectRepoForRemoval(repo.path)
     return { path: resolve(repo.path), ...info }
   })
 
-  ipcMain.handle(IpcChannels.repo.remove, async (event, rawId: unknown, rawOptions?: unknown) => {
+  ipcMain.handle(IpcChannels.repo.worktreeInfo, async (event, rawId: unknown) => {
+    assertSender(event)
+    const repo = storedRepository(rawId)
+    return git.getWorktreeInfo(repo.path, repo.worktreeOf ?? null)
+  })
+
+  ipcMain.handle(IpcChannels.repo.remove, async (event, rawId: unknown, rawOptions?: unknown): Promise<RepoRemoveResult> => {
     assertSender(event)
     const id = NonEmptyStringSchema.parse(rawId)
-    const deleteFiles = Boolean(RemoveOptionsSchema.parse(rawOptions)?.deleteFiles)
+    const options = RepoRemoveOptionsSchema.optional().parse(rawOptions) ?? {}
     const repos = loadRepositories()
     const repo = repos.find((r) => r.id === id)
-    if (!repo) return
+    if (!repo) return { warning: null }
 
-    if (deleteFiles && existsSync(repo.path)) {
+    // Asked before the folder goes: afterwards Git can no longer tell which repository it belonged to.
+    const mainPath = options.pruneWorktree
+      ? (repo.worktreeOf ??
+        (await git
+          .getWorktreeInfo(repo.path, null)
+          .then((info) => info.linkedTo?.mainPath ?? null)
+          .catch(() => null)))
+      : null
+
+    if (options.deleteFiles && existsSync(repo.path)) {
       const target = assertDeletableRepoDir(repo.path, {
         home: app.getPath('home'),
         protectedPaths: [app.getPath('userData'), app.getAppPath(), process.resourcesPath]
@@ -80,6 +108,12 @@ export function registerRepoHandlers(): void {
     }
 
     saveRepositories(repos.filter((r) => r.id !== id))
+    if (!mainPath) return { warning: null }
+    // The repository is off the list either way; a worktree record Git keeps is worth a note, not a failure.
+    const warning = await git
+      .pruneWorktree(mainPath, repo.path)
+      .catch((err: unknown) => `Could not remove the worktree record: ${err instanceof Error ? err.message : String(err)}`)
+    return { warning }
   })
 
   ipcMain.handle(IpcChannels.repo.openDialog, async (event) => {
@@ -94,22 +128,44 @@ export function registerRepoHandlers(): void {
     return repo
   })
 
-  ipcMain.handle(IpcChannels.repo.create, async (event, path: unknown) => {
+  ipcMain.handle(IpcChannels.repo.inspectNewRepo, async (event, raw: unknown): Promise<NewRepoTarget> => {
     assertSender(event)
-    const dir = parseRepoPath(path)
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    const repo = await git.initRepository(dir)
-    upsertRepository(repo)
-    return repo
+    const request = NewRepoTargetRequestSchema.parse(raw)
+    const parentDir = request.parentDir.trim()
+    const { path, problem } = describeNewRepoTarget(parentDir, request.name)
+    const [defaultBranch, insideRepo] = await Promise.all([
+      git.getDefaultBranchName(),
+      path && !problem ? git.getEnclosingWorkTree(parentDir) : Promise.resolve(null)
+    ])
+    return { path, problem, insideRepo, defaultBranch, suggestedParent: app.getPath('documents') }
+  })
+
+  ipcMain.handle(IpcChannels.repo.create, async (event, raw: unknown) => {
+    assertSender(event)
+    const request = CreateRepoRequestSchema.parse(raw)
+    // Checked again here: the dialog's last check may be older than the folder's current state.
+    const { path, problem } = describeNewRepoTarget(request.parentDir.trim(), request.name)
+    if (problem || !path) throw new Error(problem ?? 'Choose where to create the repository.')
+    const result = await git.createRepository({
+      path,
+      name: request.name,
+      initialBranch: request.initialBranch,
+      readme: request.readme
+    })
+    upsertRepository(result.repo)
+    return result
   })
 
   ipcMain.handle(IpcChannels.repo.clone, async (event, raw: unknown) => {
     assertSender(event)
     const request = CloneRequestSchema.parse(raw)
+    if (!isAbsolute(request.targetDir)) {
+      throw new Error('Enter the full path of the parent folder, or choose it with Browse….')
+    }
     const target = join(request.targetDir, repoNameFromUrl(request.url))
-    const repo = await git.cloneRepository(request.url, target)
-    upsertRepository(repo)
-    return repo
+    const result = await runCloneOperation(event.sender, { opId: request.opId, url: request.url, target })
+    if (result.outcome === 'done') upsertRepository(result.repo)
+    return result
   })
 
   ipcMain.handle(IpcChannels.repo.pickDirectory, async (event) => {
@@ -132,12 +188,20 @@ export function registerRepoHandlers(): void {
     const prefs = loadPreferences()
     if (prefs.liveStatusWatch === false) {
       stopRepoWatch()
-      return
+      return null
     }
     // Linked worktrees and submodules keep HEAD, the index and refs outside the work tree.
     const gitDirs = await git.getGitDirs(path).catch(() => undefined)
-    if (request !== watchRequest) return
-    startRepoWatch(path, { ignoreFilter: (root, paths) => git.filterIgnoredPaths(root, paths), gitDirs })
+    if (request !== watchRequest) return getRepoWatchState()
+    startRepoWatch(path, {
+      ignoreFilter: (root, paths) => git.filterIgnoredPaths(root, paths),
+      gitDirs,
+      // When the system refuses more watches (Linux's inotify limit), changes are polled instead, and
+      // only while one of the app's windows is focused.
+      pollFingerprint: (root) => git.getWatchFingerprint(root),
+      shouldPoll: () => BrowserWindow.getAllWindows().some((win) => win.isFocused())
+    })
+    return getRepoWatchState()
   })
 
   ipcMain.handle(IpcChannels.repo.unwatch, async (event) => {

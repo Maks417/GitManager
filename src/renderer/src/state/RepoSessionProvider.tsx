@@ -22,9 +22,11 @@ export type SessionState = Pick<
   | 'gitMissing'
   | 'currentBranch'
   | 'localBranchNames'
+  | 'watchNotice'
   | 'repoPendingRemove'
   | 'repoRemoveBusy'
   | 'repoRemoveError'
+  | 'repoRemoveWarning'
 >
 
 /** Kept apart from the session: status changes on every file edit while live watch is on. */
@@ -41,6 +43,7 @@ export type SessionActions = Pick<
   | 'setIdentity'
   | 'setRepoPendingRemove'
   | 'setRepoRemoveError'
+  | 'setRepoRemoveWarning'
   | 'refreshRepos'
   | 'refreshRepoMeta'
   | 'afterGitMutation'
@@ -74,9 +77,11 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
     gitMissing,
     currentBranch,
     localBranchNames,
+    watchNotice,
     repoPendingRemove,
     repoRemoveBusy,
     repoRemoveError,
+    repoRemoveWarning,
     status,
     setActiveRepo,
     getActiveRepo,
@@ -84,6 +89,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
     setIdentity,
     setRepoPendingRemove,
     setRepoRemoveError,
+    setRepoRemoveWarning,
     refreshRepos,
     refreshRepoMeta,
     afterGitMutation,
@@ -112,9 +118,11 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
       gitMissing,
       currentBranch,
       localBranchNames,
+      watchNotice,
       repoPendingRemove,
       repoRemoveBusy,
-      repoRemoveError
+      repoRemoveError,
+      repoRemoveWarning
     }),
     [
       repos,
@@ -127,9 +135,11 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
       gitMissing,
       currentBranch,
       localBranchNames,
+      watchNotice,
       repoPendingRemove,
       repoRemoveBusy,
-      repoRemoveError
+      repoRemoveError,
+      repoRemoveWarning
     ]
   )
 
@@ -146,6 +156,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
       setIdentity,
       setRepoPendingRemove,
       setRepoRemoveError,
+      setRepoRemoveWarning,
       refreshRepos,
       refreshRepoMeta,
       afterGitMutation,
@@ -159,6 +170,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
       setIdentity,
       setRepoPendingRemove,
       setRepoRemoveError,
+      setRepoRemoveWarning,
       refreshRepos,
       refreshRepoMeta,
       afterGitMutation,

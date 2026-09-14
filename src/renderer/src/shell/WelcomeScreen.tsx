@@ -1,5 +1,5 @@
 import type React from 'react'
-import { Download, ExternalLink, FolderPlus, Link } from 'lucide-react'
+import { Download, ExternalLink, FolderPlus, Link, Plus } from 'lucide-react'
 import { GIT_DOWNLOAD_URL } from '../lib/git-install'
 import { Banner, Button } from '../components/ui'
 import { useAppStatus } from '../state/AppStatusProvider'
@@ -10,7 +10,7 @@ import { useSession } from '../state/RepoSessionProvider'
 export function WelcomeScreen(): React.JSX.Element {
   const { error } = useAppStatus()
   const { gitMissing } = useSession()
-  const { addRepo, openClone } = useGitActions()
+  const { addRepo, openClone, openNewRepo } = useGitActions()
   const { openDialog } = useDialogActions()
 
   const openGitDownload = (): void => {
@@ -30,8 +30,9 @@ export function WelcomeScreen(): React.JSX.Element {
           </p>
         ) : (
           <p className="muted welcome-hint">
-            Use <strong>File → Add Local Repository</strong> or <strong>Clone Repository</strong>, or
-            the buttons below. History graph is the main view once a repo is open.
+            Use <strong>File → New Repository</strong>, <strong>Add Local Repository</strong> or{' '}
+            <strong>Clone Repository</strong>, or the buttons below. History graph is the main view once a
+            repo is open.
           </p>
         )}
         <div className="welcome-actions">
@@ -57,6 +58,15 @@ export function WelcomeScreen(): React.JSX.Element {
             Add local repository
           </Button>
           <Button
+            icon={<Plus size={16} strokeWidth={1.75} />}
+            hint={gitMissing ? 'Install Git first' : 'Create a new, empty repository'}
+            title={gitMissing ? 'Install Git first' : 'Create a new, empty repository'}
+            disabled={gitMissing}
+            onClick={openNewRepo}
+          >
+            New repository
+          </Button>
+          <Button
             icon={<Download size={16} strokeWidth={1.75} />}
             hint={gitMissing ? 'Install Git first' : 'Clone a repository from a URL'}
             title={gitMissing ? 'Install Git first' : 'Clone a repository from a URL'}
@@ -75,7 +85,7 @@ export function WelcomeScreen(): React.JSX.Element {
           </Button>
         </div>
         <ul className="welcome-steps muted">
-          <li>Add or clone a Git repo from disk or a remote host</li>
+          <li>Create a repository, or add or clone one from disk or a remote host</li>
           <li>Browse the commit graph, search history, inspect diffs</li>
           <li>Stage, commit, fetch, pull, push, and resolve merges</li>
         </ul>

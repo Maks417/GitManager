@@ -1,7 +1,8 @@
-import { createContext, useCallback, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import type { Commit, GraphNode, Repository } from '@shared/ipc'
 import { useHistory } from '../hooks/useHistory'
+import { useLatestRef } from '../hooks/useLatestRef'
 import { branchNotOnCurrentBranch, branchTipTooDeep, COMMIT_TOO_DEEP } from '../lib/copy'
 import { useAppStatus, useAppStatusActions } from './AppStatusProvider'
 import { useRequiredContext } from './context'
@@ -68,8 +69,7 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
   const searchInputRef = useRef<HTMLInputElement>(null)
   const revealSeqRef = useRef(0)
   // Actions read the selection without being re-created whenever it changes.
-  const selectionRef = useRef(selection)
-  selectionRef.current = selection
+  const selectionRef = useLatestRef(selection)
   const historyFilter = prefs?.historyFilter
 
   const {
@@ -102,7 +102,9 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
   })
 
   // Session refreshes (after Git actions and watcher events) reload history through this bridge.
-  historyFnsRef.current = { loadHistory, refreshHistoryTip }
+  useLayoutEffect(() => {
+    historyFnsRef.current = { loadHistory, refreshHistoryTip }
+  }, [historyFnsRef, loadHistory, refreshHistoryTip])
 
   const submitSearch = useCallback(
     (text?: string): void => {
@@ -125,7 +127,7 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
       revealSeqRef.current += 1
       setRevealRequest({ sha, seq: revealSeqRef.current })
     },
-    [setViewMode, setSelection, setFocusedStatusPath, setDiff]
+    [selectionRef, setViewMode, setSelection, setFocusedStatusPath, setDiff]
   )
 
   const revealCommit = useCallback(

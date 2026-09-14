@@ -1,4 +1,5 @@
 export const MenuChannels = {
+  newRepo: 'menu:new-repo',
   addRepo: 'menu:add-repo',
   cloneRepo: 'menu:clone-repo',
   accounts: 'menu:accounts',
@@ -27,6 +28,7 @@ export const IpcChannels = {
     remove: 'repo:remove',
     openDialog: 'repo:open-dialog',
     create: 'repo:create',
+    inspectNewRepo: 'repo:inspect-new-repo',
     clone: 'repo:clone',
     get: 'repo:get',
     status: 'repo:status',
@@ -36,7 +38,9 @@ export const IpcChannels = {
     watch: 'repo:watch',
     unwatch: 'repo:unwatch',
     onChanged: 'repo:on-changed',
-    removalInfo: 'repo:removal-info'
+    onWatchState: 'repo:on-watch-state',
+    removalInfo: 'repo:removal-info',
+    worktreeInfo: 'repo:worktree-info'
   },
   history: {
     load: 'history:load',

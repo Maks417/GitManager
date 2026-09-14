@@ -2,7 +2,7 @@ import { BrowserWindow, app, ipcMain, shell } from 'electron'
 import { IpcChannels, type UpdateStatus } from '@shared/ipc'
 import { z } from 'zod'
 import { checkForUpdates, getUpdateStatus, installUpdate, subscribeUpdateStatus } from '../updater'
-import { subscribeRepoWatch } from '../repo-watcher'
+import { subscribeRepoWatch, subscribeRepoWatchState } from '../repo-watcher'
 import { assertSender } from './assert-sender'
 
 export function registerAppHandlers(): void {
@@ -47,6 +47,12 @@ export function registerAppHandlers(): void {
   subscribeRepoWatch((payload) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(IpcChannels.repo.onChanged, payload)
+    }
+  })
+
+  subscribeRepoWatchState((state) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(IpcChannels.repo.onWatchState, state)
     }
   })
 }

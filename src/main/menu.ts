@@ -35,6 +35,11 @@ export function buildAppMenu(): void {
       label: 'File',
       submenu: [
         {
+          label: 'New Repository…',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => sendMenu(MenuChannels.newRepo)
+        },
+        {
           label: 'Add Local Repository…',
           accelerator: 'CmdOrCtrl+O',
           click: () => sendMenu(MenuChannels.addRepo)

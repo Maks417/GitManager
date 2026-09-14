@@ -7,12 +7,15 @@ import { CommitDetailPane } from '../features/commit-detail/CommitDetailPane'
 import { HistoryGraph } from '../features/history-graph/HistoryGraph'
 import { useAppStatus } from '../state/AppStatusProvider'
 import { useLayout } from '../state/LayoutProvider'
+import { useActiveRepo } from '../state/RepoSessionProvider'
 import { useSelection } from '../state/SelectionProvider'
 import { RepoSidebar } from './RepoSidebar'
+import { WatchNotice } from './WatchNotice'
 
 /** Sidebar, history or changes, and the commit inspector of the active repository. */
 export function WorkspaceShell(): React.JSX.Element {
   const { error } = useAppStatus()
+  const activeRepo = useActiveRepo()
   const { viewMode, selection } = useSelection()
   const {
     detailDock,
@@ -69,6 +72,7 @@ export function WorkspaceShell(): React.JSX.Element {
         <>
           <section className="history-pane" data-pane="main">
             {error && <Banner>{error}</Banner>}
+            <WatchNotice />
             <HistoryGraph />
           </section>
           {showInspector && (
@@ -120,7 +124,9 @@ export function WorkspaceShell(): React.JSX.Element {
       ) : (
         <section className="changes-pane" data-pane="main">
           {error && <Banner>{error}</Banner>}
-          <WorkingTreeDetailPane />
+          <WatchNotice />
+          {/* Keyed by repository: a commit message or checked files never carry over to another one. */}
+          <WorkingTreeDetailPane key={activeRepo.path} />
         </section>
       )}
     </div>

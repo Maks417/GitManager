@@ -3,9 +3,12 @@ import type {
   AppPreferences,
   BranchInfo,
   CloneRequest,
+  CloneResult,
   CommitDetail,
   ConflictFile,
   ConflictSide,
+  CreateRepoRequest,
+  CreateRepoResult,
   DiffRequest,
   DiffResult,
   GitIdentity,
@@ -14,19 +17,25 @@ import type {
   HistoryPage,
   HistoryQuery,
   MergeSides,
+  NewRepoTarget,
+  NewRepoTargetRequest,
   ProviderAccount,
   RemoteBranchInfo,
   RemoteOpRequest,
   RemoteOpResult,
   RemoteRepo,
   RepoRemovalInfo,
+  RepoRemoveOptions,
+  RepoRemoveResult,
   Repository,
   RepoWatchEvent,
+  RepoWatchState,
   SetGitIdentityRequest,
   StashEntry,
   StatusEntry,
   UpdateStatus,
-  WorkingTreeDiffRequest
+  WorkingTreeDiffRequest,
+  WorktreeInfo
 } from './schemas'
 import type { ProviderId } from '../providers'
 
@@ -34,21 +43,30 @@ export interface GitManagerApi {
   repo: {
     list: () => Promise<Repository[]>
     add: (path: string) => Promise<Repository>
-    remove: (id: string, options?: { deleteFiles?: boolean }) => Promise<void>
+    /** Drop from the list; optionally move the folder to the Trash and prune a linked worktree's record. */
+    remove: (id: string, options?: RepoRemoveOptions) => Promise<RepoRemoveResult>
     openDialog: () => Promise<Repository | null>
-    create: (path: string) => Promise<Repository>
-    clone: (request: CloneRequest) => Promise<Repository>
+    /** Create a repository folder, initialize it and add it to the list. */
+    create: (request: CreateRepoRequest) => Promise<CreateRepoResult>
+    /** Check where a new repository would go, without writing anything. */
+    inspectNewRepo: (request: NewRepoTargetRequest) => Promise<NewRepoTarget>
+    /** Progress arrives through `git.onProgress`; `git.cancelOperation(opId)` stops it and removes the folder. */
+    clone: (request: CloneRequest) => Promise<CloneResult>
     get: (id: string) => Promise<Repository | null>
     status: (repoPath: string) => Promise<StatusEntry[]>
     branches: (repoPath: string) => Promise<BranchInfo[]>
     remoteBranches: (repoPath: string) => Promise<RemoteBranchInfo[]>
     pickDirectory: () => Promise<string | null>
-    /** Start recursive FS watch for live status (Windows + macOS). */
-    watch: (repoPath: string) => Promise<void>
+    /** Watch the repository for changes; resolves how it is watched (null when live status is off). */
+    watch: (repoPath: string) => Promise<RepoWatchState | null>
     unwatch: () => Promise<void>
     onChanged: (callback: (event: RepoWatchEvent) => void) => () => void
+    /** A watch changed mode, e.g. to polling when the system refused more watches; null when stopped. */
+    onWatchState: (callback: (state: RepoWatchState | null) => void) => () => void
     /** Uncommitted / stashed / unpushed work that deleting the folder would lose. */
     removalInfo: (id: string) => Promise<RepoRemovalInfo & { path: string }>
+    /** Whether the folder exists and how it relates to other worktrees; quick, unlike removalInfo. */
+    worktreeInfo: (id: string) => Promise<WorktreeInfo>
   }
   history: {
     load: (query: HistoryQuery) => Promise<HistoryPage>
@@ -99,10 +117,12 @@ export interface GitManagerApi {
     listAccounts: () => Promise<ProviderAccount[]>
     disconnect: (accountId: string) => Promise<void>
     listRepos: (accountId: string) => Promise<RemoteRepo[]>
+    /** `baseUrl`: address of a self-managed GitLab instance; omit for GitLab.com and the other hosts. */
     saveToken: (
       provider: ProviderId,
       token: string,
-      username?: string
+      username?: string,
+      baseUrl?: string
     ) => Promise<ProviderAccount>
   }
   prefs: {

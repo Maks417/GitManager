@@ -1,0 +1,7 @@
+# Line endings: LF in the repository and in every checkout, whatever core.autocrlf says.
+* text=auto eol=lf
+
+# Binary assets are never converted.
+*.png binary
+*.ico binary
+*.icns binary

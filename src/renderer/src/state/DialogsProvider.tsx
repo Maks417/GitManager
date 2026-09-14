@@ -5,6 +5,7 @@ import { useRequiredContext } from './context'
 /** Modals opened from the toolbar, sidebar, panes and menu. Repository removal is session state. */
 export type DialogName =
   | 'accounts'
+  | 'createRepo'
   | 'clone'
   | 'updates'
   | 'about'
@@ -23,6 +24,7 @@ export interface DialogActions {
 
 const ALL_CLOSED: DialogState = {
   accounts: false,
+  createRepo: false,
   clone: false,
   updates: false,
   about: false,

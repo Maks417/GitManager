@@ -1,8 +1,10 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import type { RemoteOpKind, RemoteOpResult, Repository } from '@shared/ipc'
+import { useLatestRef } from '../hooks/useLatestRef'
 import { confirmForceDeleteBranch, GIT_MISSING_MESSAGE } from '../lib/copy'
 import { toErrorMessage } from '../lib/errors'
+import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
 import { useAppStatus, useAppStatusActions } from './AppStatusProvider'
 import { useConfirm } from './ConfirmProvider'
@@ -29,6 +31,7 @@ export interface GitActions {
   requireGit: () => boolean
   addRepo: () => Promise<void>
   openClone: () => void
+  openNewRepo: () => void
   selectRepo: (repo: Repository) => void
   requestRemoveRepo: (repo: Repository) => void
   /** Fetch, pull or push, then refresh; errors go to the banner, a cancel shows none. */
@@ -54,6 +57,14 @@ const GitActionsContext = createContext<GitActions | null>(null)
 const RemoteOpContext = createContext<{ remoteOp: RemoteOpState | null } | null>(null)
 
 /**
+ * One fetch, pull or push at a time: the menu and the commit pane can start one while another runs, and a
+ * push that starts before a pull has moved the branch pushes the wrong commits.
+ */
+function remoteOpRunningMessage(op: RemoteOpState): string {
+  return `A ${op.kind} of ${op.repoName} is still running. Wait for it to finish or cancel it, then try again.`
+}
+
+/**
  * Repository and Git actions shared by the toolbar, sidebar, panes, dialogs and menu. Each acts on the
  * repository that is active when it starts and refreshes whichever repository is active when it ends.
  */
@@ -73,22 +84,24 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
   const { openDialog, closeDialog } = useDialogActions()
   const confirm = useConfirm()
   // Guards read the latest value without re-creating every action whenever `busy` toggles.
-  const busyRef = useRef(busy)
-  busyRef.current = busy
+  const busyRef = useLatestRef(busy)
   const [remoteOp, setRemoteOp] = useState<RemoteOpState | null>(null)
-  const remoteOpRef = useRef(remoteOp)
-  remoteOpRef.current = remoteOp
+  // Set the moment an operation starts, before any render, so a second one cannot start alongside it.
+  const remoteOpRef = useRef<RemoteOpState | null>(null)
+
+  const publishRemoteOp = useCallback((next: RemoteOpState | null): void => {
+    remoteOpRef.current = next
+    setRemoteOp(next)
+  }, [])
 
   useEffect(() => {
     if (!window.gitManager?.git?.onProgress) return
     return window.gitManager.git.onProgress((progress) => {
-      setRemoteOp((current) =>
-        current && current.opId === progress.opId
-          ? { ...current, phase: progress.phase, percent: progress.percent, cancellable: progress.cancellable }
-          : current
-      )
+      const current = remoteOpRef.current
+      if (current?.opId !== progress.opId) return
+      publishRemoteOp({ ...current, phase: progress.phase, percent: progress.percent, cancellable: progress.cancellable })
     })
-  }, [])
+  }, [publishRemoteOp])
 
   const requireGit = useCallback((): boolean => {
     if (!gitMissing) return true
@@ -98,11 +111,13 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
 
   const selectRepo = useCallback(
     (repo: Repository): void => {
+      setViewMode('history')
+      // Choosing the open repository again keeps its selected commit.
+      if (sameRepoPath(getActiveRepo()?.path, repo.path)) return
       setActiveRepo(repo)
       setSelection(null)
-      setViewMode('history')
     },
-    [setActiveRepo, setSelection, setViewMode]
+    [getActiveRepo, setActiveRepo, setSelection, setViewMode]
   )
 
   const addRepo = useCallback(async (): Promise<void> => {
@@ -122,6 +137,10 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
     if (requireGit()) openDialog('clone')
   }, [requireGit, openDialog])
 
+  const openNewRepo = useCallback((): void => {
+    if (requireGit()) openDialog('createRepo')
+  }, [requireGit, openDialog])
+
   const requestRemoveRepo = useCallback(
     (repo: Repository): void => {
       setRepoRemoveError(null)
@@ -134,27 +153,34 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
     async (kind: RemoteOpKind): Promise<RemoteOpResult> => {
       const repo = getActiveRepo()
       if (!repo) throw new Error('No repository is open.')
+      const running = remoteOpRef.current
+      if (running) throw new Error(remoteOpRunningMessage(running))
       const opId = crypto.randomUUID()
-      setRemoteOp({ opId, kind, repoName: repo.name, phase: null, percent: null, cancellable: true, cancelling: false })
+      publishRemoteOp({ opId, kind, repoName: repo.name, phase: null, percent: null, cancellable: true, cancelling: false })
       try {
         return await window.gitManager.git[kind]({ repoPath: repo.path, opId })
       } finally {
-        setRemoteOp((current) => (current?.opId === opId ? null : current))
+        if (remoteOpRef.current?.opId === opId) publishRemoteOp(null)
       }
     },
-    [getActiveRepo]
+    [getActiveRepo, publishRemoteOp]
   )
 
   const cancelRemote = useCallback((): void => {
     const current = remoteOpRef.current
     if (!current || !current.cancellable || current.cancelling) return
-    setRemoteOp({ ...current, cancelling: true })
+    publishRemoteOp({ ...current, cancelling: true })
     void window.gitManager.git.cancelOperation(current.opId)
-  }, [])
+  }, [publishRemoteOp])
 
   const runSync = useCallback(
     async (kind: RemoteOpKind): Promise<void> => {
       if (!getActiveRepo()) return
+      const running = remoteOpRef.current
+      if (running) {
+        setError(remoteOpRunningMessage(running))
+        return
+      }
       await runWithBusy(
         async () => {
           try {
@@ -207,7 +233,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
         { setBusy, setError }
       )
     },
-    [getActiveRepo, afterGitMutation, setBusy, setError]
+    [getActiveRepo, busyRef, afterGitMutation, setBusy, setError]
   )
 
   const checkoutRemote = useCallback(
@@ -222,7 +248,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
         { setBusy, setError }
       )
     },
-    [getActiveRepo, afterGitMutation, setBusy, setError]
+    [getActiveRepo, busyRef, afterGitMutation, setBusy, setError]
   )
 
   const deleteBranch = useCallback(
@@ -284,6 +310,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       requireGit,
       addRepo,
       openClone,
+      openNewRepo,
       selectRepo,
       requestRemoveRepo,
       runSync,
@@ -303,6 +330,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       requireGit,
       addRepo,
       openClone,
+      openNewRepo,
       selectRepo,
       requestRemoveRepo,
       runSync,

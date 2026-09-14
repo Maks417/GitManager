@@ -562,6 +562,23 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   animation: progress-sweep 1.2s ease-in-out infinite;
 }
 
+/* A clone running in the clone dialog: Git's step and the same progress bar. */
+.clone-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.clone-progress-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.clone-progress .sync-progress-bar {
+  width: 160px;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -1443,6 +1460,25 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   flex-shrink: 0;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.new-repo-problem {
+  margin: 0;
+  color: var(--danger);
+}
+
+/* Changes are polled instead of watched: the reason, with a way to dismiss it. */
+.watch-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.watch-notice-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 
 .about-modal {

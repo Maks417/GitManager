@@ -19,8 +19,13 @@ import {
   getMergeSides,
   getRemoteBranches,
   getStatus,
+  getWatchFingerprint,
+  getWorktreeInfo,
+  pruneWorktree,
   getWorkingTreeDiff,
-  initRepository,
+  createRepository,
+  getDefaultBranchName,
+  getEnclosingWorkTree,
   inspectRepoForRemoval,
   inspectRepository,
   isMergeInProgress,
@@ -51,12 +56,17 @@ import {
 
 export const GIT_METHODS = {
   inspectRepository,
-  initRepository,
+  createRepository,
+  getDefaultBranchName,
+  getEnclosingWorkTree,
   cloneRepository,
   getGitDirs,
   loadHistory,
   getCommitDetail,
   getFileDiff,
+  getWatchFingerprint,
+  getWorktreeInfo,
+  pruneWorktree,
   getWorkingTreeDiff,
   getStatus,
   filterIgnoredPaths,
@@ -97,6 +107,10 @@ export const GIT_METHODS = {
 } as const
 
 export type GitMethodName = keyof typeof GIT_METHODS
+
+/** Operations that take `{ signal, onProgress }` as their last argument: they report progress and can be cancelled. */
+export const CANCELLABLE_GIT_METHODS = ['fetchRemote', 'pullRemote', 'pushRemote', 'cloneRepository'] as const
+export type CancellableGitMethod = (typeof CANCELLABLE_GIT_METHODS)[number]
 
 export function getGitMethod(method: string): ((...args: never[]) => unknown) | undefined {
   return GIT_METHODS[method as GitMethodName] as ((...args: never[]) => unknown) | undefined

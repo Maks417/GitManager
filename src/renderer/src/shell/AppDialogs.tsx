@@ -6,6 +6,7 @@ import { CreateBranchModal } from '../features/branches/CreateBranchModal'
 import { CloneModal } from '../features/clone/CloneModal'
 import { IdentityModal } from '../features/identity/IdentityModal'
 import { MergeEditorModal } from '../features/merge-editor/MergeEditorModal'
+import { NewRepoModal } from '../features/repositories/NewRepoModal'
 import { RemoveRepoDialog } from '../features/repositories/RemoveRepoDialog'
 import { UpdatesModal } from '../features/updates/UpdatesModal'
 import { CLONE_URL_SESSION_KEY } from '../lib/copy'
@@ -20,10 +21,23 @@ export function AppDialogs(): React.JSX.Element {
   const { openDialog, closeDialog } = useDialogActions()
   const { accounts, updateStatus } = useAppStatus()
   const { setAccounts, setUpdateStatus } = useAppStatusActions()
-  const { activeRepo, branches, currentBranch, repoPendingRemove, repoRemoveBusy, repoRemoveError } =
-    useSession()
-  const { setRepoPendingRemove, setRepoRemoveError, removeRepoFromList, refreshRepos, setIdentity } =
-    useSessionActions()
+  const {
+    activeRepo,
+    branches,
+    currentBranch,
+    repoPendingRemove,
+    repoRemoveBusy,
+    repoRemoveError,
+    repoRemoveWarning
+  } = useSession()
+  const {
+    setRepoPendingRemove,
+    setRepoRemoveError,
+    setRepoRemoveWarning,
+    removeRepoFromList,
+    refreshRepos,
+    setIdentity
+  } = useSessionActions()
   const { requireGit, selectRepo, runMergeOrRebase, createBranch } = useGitActions()
 
   const branchLabel = currentBranch?.name || activeRepo?.currentBranch || 'HEAD'
@@ -35,12 +49,14 @@ export function AppDialogs(): React.JSX.Element {
           repo={repoPendingRemove}
           busy={repoRemoveBusy}
           error={repoRemoveError}
+          warning={repoRemoveWarning}
           onCancel={() => {
             if (repoRemoveBusy) return
             setRepoPendingRemove(null)
             setRepoRemoveError(null)
+            setRepoRemoveWarning(null)
           }}
-          onConfirm={(deleteFiles) => void removeRepoFromList(repoPendingRemove, deleteFiles)}
+          onConfirm={(options) => void removeRepoFromList(repoPendingRemove, options)}
         />
       )}
       {open.accounts && (
@@ -53,6 +69,19 @@ export function AppDialogs(): React.JSX.Element {
             closeDialog('accounts')
             openDialog('clone')
             sessionStorage.setItem(CLONE_URL_SESSION_KEY, url)
+          }}
+        />
+      )}
+      {open.createRepo && (
+        <NewRepoModal
+          onClose={() => closeDialog('createRepo')}
+          onCreated={async (repo) => {
+            await refreshRepos()
+            selectRepo(repo)
+          }}
+          onSetIdentity={() => {
+            closeDialog('createRepo')
+            openDialog('identity')
           }}
         />
       )}

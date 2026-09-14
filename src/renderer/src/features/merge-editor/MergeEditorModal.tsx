@@ -32,6 +32,12 @@ function takeSideLabel(file: ConflictFile | undefined, side: ConflictSide): stri
   return present ? `Take ${side} (whole file)` : `Take ${side} (delete file)`
 }
 
+/** A value that belongs to one load of one file: another file, or loading the file again, makes it stale. */
+interface ForFile<T> {
+  key: string
+  value: T
+}
+
 export function MergeEditorModal(): React.JSX.Element {
   const repoPath = useActiveRepo().path
   const { rebaseInProgress, mergeInProgress } = useSession()
@@ -45,50 +51,71 @@ export function MergeEditorModal(): React.JSX.Element {
   const monacoTheme = monacoThemeFor(theme)
   const [files, setFiles] = useState<ConflictFile[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
-  const [sides, setSides] = useState<MergeSides | null>(null)
-  const [sidesLoading, setSidesLoading] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
-  const [result, setResult] = useState('')
-  const [activeRegionId, setActiveRegionId] = useState<string | null>(null)
+  const fileKey = activePath === null ? null : `${reloadKey}\0${activePath}`
+  // Kept with the load they belong to, so a new file starts clean without resetting state in an effect.
+  const [loaded, setLoaded] = useState<ForFile<MergeSides | null> | null>(null)
+  const [edited, setEdited] = useState<ForFile<string> | null>(null)
+  const [chosenRegion, setChosenRegion] = useState<ForFile<string> | null>(null)
   const { busy, error, setError, run } = useAsyncAction()
 
-  const loadFiles = useCallback(async (): Promise<ConflictFile[]> => {
-    const list = await window.gitManager.merge.listConflicts(repoPath)
+  const sides = loaded?.key === fileKey ? loaded.value : null
+  const sidesLoading = fileKey !== null && loaded?.key !== fileKey
+  const result = edited?.key === fileKey ? edited.value : (sides?.result ?? '')
+  const activeRegionId = chosenRegion?.key === fileKey ? chosenRegion.value : null
+  const setResult = (text: string): void => {
+    if (fileKey !== null) setEdited({ key: fileKey, value: text })
+  }
+  const setActiveRegionId = (id: string | null): void => {
+    setChosenRegion(fileKey !== null && id ? { key: fileKey, value: id } : null)
+  }
+
+  const showFiles = useCallback((list: ConflictFile[]): void => {
     setFiles(list)
     setActivePath((prev) => (prev && list.some((f) => f.path === prev) ? prev : (list[0]?.path ?? null)))
     setReloadKey((k) => k + 1)
+  }, [])
+
+  const loadFiles = useCallback(async (): Promise<ConflictFile[]> => {
+    const list = await window.gitManager.merge.listConflicts(repoPath)
+    showFiles(list)
     return list
-  }, [repoPath])
+  }, [repoPath, showFiles])
 
   useEffect(() => {
-    void loadFiles().catch((err) => setError(toErrorMessage(err)))
-  }, [loadFiles, setError])
-
-  useEffect(() => {
-    setSides(null)
-    setResult('')
-    setActiveRegionId(null)
-    if (!activePath) return
-    // Ignore responses for a file the user already navigated away from.
     let cancelled = false
-    setSidesLoading(true)
-    window.gitManager.merge
-      .getSides(repoPath, activePath)
-      .then((s) => {
-        if (cancelled) return
-        setSides(s)
-        setResult(s.result)
-      })
-      .catch((err) => {
+    window.gitManager.merge.listConflicts(repoPath).then(
+      (list) => {
+        if (!cancelled) showFiles(list)
+      },
+      (err) => {
         if (!cancelled) setError(toErrorMessage(err))
-      })
-      .finally(() => {
-        if (!cancelled) setSidesLoading(false)
-      })
+      }
+    )
     return () => {
       cancelled = true
     }
-  }, [activePath, repoPath, reloadKey, setError])
+  }, [repoPath, showFiles, setError])
+
+  useEffect(() => {
+    if (activePath === null || fileKey === null) return
+    // Ignore responses for a file the user already navigated away from.
+    let cancelled = false
+    window.gitManager.merge.getSides(repoPath, activePath).then(
+      (s) => {
+        if (!cancelled) setLoaded({ key: fileKey, value: s })
+      },
+      (err) => {
+        if (cancelled) return
+        // This load has nothing to show; it is no longer loading either.
+        setLoaded({ key: fileKey, value: null })
+        setError(toErrorMessage(err))
+      }
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [activePath, fileKey, repoPath, setError])
 
   // Regions always come from the current text, so manual edits never leave stale line ranges.
   const regions = useMemo(() => parseConflictMarkers(result), [result])

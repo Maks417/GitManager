@@ -1,14 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import * as monaco from 'monaco-editor'
 import type { DiffResult } from '@shared/ipc'
 import { MONACO_FONT_FAMILY } from '../../lib/copy'
 import { monacoThemeFor, useResolvedTheme } from '../../lib/theme'
-import {
-  disposeWhenDiffSettled,
-  nextContentVersion,
-  type ContentVersion
-} from '../../logic/monaco-lifecycle'
+import { disposeWhenDiffSettled, nextContentVersion } from '../../logic/monaco-lifecycle'
 
 interface Props {
   diff: DiffResult
@@ -40,8 +36,10 @@ const DIFF_OPTIONS: monaco.editor.IStandaloneDiffEditorConstructionOptions = {
 export function FileDiffViewer({ diff, editorKey, sideBySide = true }: Props): React.JSX.Element {
   // New text mounts a new editor instead of editing its models: each editor then computes exactly one
   // diff, which is what lets teardown wait for it (see disposeWhenDiffSettled).
-  const versionRef = useRef<ContentVersion | null>(null)
-  versionRef.current = nextContentVersion(versionRef.current, diff.oldText, diff.newText)
+  const [shown, setShown] = useState(() => nextContentVersion(null, diff.oldText, diff.newText))
+  const content = nextContentVersion(shown, diff.oldText, diff.newText)
+  // Numbers the next text; React re-renders with it before anything is painted.
+  if (content !== shown) setShown(content)
 
   if (diff.binary) {
     return <div className="empty-state">Binary file — cannot display diff</div>
@@ -49,7 +47,7 @@ export function FileDiffViewer({ diff, editorKey, sideBySide = true }: Props): R
 
   return (
     <DiffEditorHost
-      key={`${editorKey ?? diff.path}:${versionRef.current.version}`}
+      key={`${editorKey ?? diff.path}:${content.version}`}
       original={diff.oldText}
       modified={diff.newText}
       language={diff.language || 'plaintext'}
@@ -74,12 +72,11 @@ function DiffEditorHost({
   const theme = monacoThemeFor(useResolvedTheme())
   // Text and language are fixed for a mounted host (the parent re-keys it); layout and theme are
   // applied to the live editor by the effects below.
-  const initialRef = useRef({ original, modified, language, sideBySide, theme })
+  const [initial] = useState(() => ({ original, modified, language, sideBySide, theme }))
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const initial = initialRef.current
     // Monaco renders into an element of its own, so the page can drop a torn-down editor at once while
     // it waits for its diff to arrive.
     const host = document.createElement('div')
@@ -101,7 +98,7 @@ function DiffEditorHost({
       host.remove()
       disposeWhenDiffSettled(editor, [originalModel, modifiedModel])
     }
-  }, [])
+  }, [initial])
 
   useEffect(() => {
     editorRef.current?.updateOptions({ renderSideBySide: sideBySide })

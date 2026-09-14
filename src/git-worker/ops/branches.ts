@@ -184,11 +184,32 @@ export async function pushRemote(repoPath: string, ctx: RemoteOpContext = {}): P
   try {
     const result = await runNetwork(repoPath, args, ctx)
     if (result.code !== 0) throw new Error(friendlyPushError(result.stderr || result.stdout))
-    return { outcome: 'done' }
   } catch (err) {
     if (err instanceof GitCancelledError) return { outcome: 'cancelled' }
     throw err
   }
+  await assertPushLanded(repoPath, branch)
+  return { outcome: 'done' }
+}
+
+/**
+ * `git push` also exits 0 when it sent nothing ("Everything up-to-date"), e.g. when push.default sends the
+ * branch to a ref other than its upstream. Commits the upstream still lacks afterwards did not land.
+ */
+async function assertPushLanded(repoPath: string, branch: string): Promise<void> {
+  const remote = (await runGit({ cwd: repoPath, args: ['config', '--get', `branch.${branch}.remote`] })).stdout.trim()
+  // A push refspec sends commits elsewhere on purpose (refs/for/<branch> for code review, say).
+  const pushSpecs = remote
+    ? (await runGit({ cwd: repoPath, args: ['config', '--get-all', `remote.${remote}.push`] })).stdout.trim()
+    : ''
+  if (pushSpecs) return
+  const ahead = await runGit({ cwd: repoPath, args: ['rev-list', '--count', '@{upstream}..HEAD'] })
+  const count = Number(ahead.stdout.trim())
+  if (ahead.code !== 0 || !Number.isFinite(count) || count === 0) return
+  throw new Error(
+    `The push finished, but ${count} commit${count === 1 ? '' : 's'} on "${branch}" did not reach its upstream. ` +
+      `Check where this branch pushes (push.default and remote.${remote || '<name>'}.push), then push again.`
+  )
 }
 
 export async function checkoutRef(repoPath: string, ref: string): Promise<void> {

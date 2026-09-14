@@ -3,15 +3,14 @@
  * Receives `{ id, method, args }` and replies `{ id, ok, result | error }`. Network operations sent with
  * `cancellable` also stream `{ type: 'progress', id, progress }` and stop on `{ type: 'cancel', id }`.
  */
-import { GIT_METHODS } from './method-registry'
+import { CANCELLABLE_GIT_METHODS, GIT_METHODS } from './method-registry'
 import { cancelAllGit, cancelGitIn } from './git-runner'
 import type { RemoteOpContext } from './ops/branches'
 
 type RpcRequest = { id: number; method: string; args?: unknown[]; cancellable?: boolean }
 type RpcCancel = { type: 'cancel'; id: number }
 
-/** Operations that take `{ signal, onProgress }` as their last argument. */
-const CANCELLABLE_METHODS = new Set(['fetchRemote', 'pullRemote', 'pushRemote'])
+const CANCELLABLE_METHODS = new Set<string>(CANCELLABLE_GIT_METHODS)
 
 const handlers: Record<string, (...args: never[]) => unknown> = {
   ...GIT_METHODS,

@@ -25,3 +25,21 @@ export function nextLink(link: string | null): string | null {
   }
   return null
 }
+
+/** Whether `url` has the scheme, host and port of `base`. */
+export function sameOrigin(url: string, base: string): boolean {
+  try {
+    return new URL(url).origin === new URL(base).origin
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The next page, only while it stays on the origin of `base`: every request carries the account's token, so a
+ * paging link to any other host is not followed.
+ */
+export function nextLinkOnOrigin(link: string | null, base: string): string | null {
+  const next = nextLink(link)
+  return next && sameOrigin(next, base) ? next : null
+}

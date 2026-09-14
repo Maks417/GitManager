@@ -62,6 +62,9 @@ const GIT_NOT_FOUND_MESSAGE_DARWIN = `${GIT_NOT_FOUND_MESSAGE} On macOS you can 
 /** Error text keeps the end of stderr, where Git says what failed. */
 const MAX_RETAINED_STDERR = 64_000
 
+/** How long a stopped command may take to exit before its run settles anyway. */
+const STOP_WAIT_MS = 5000
+
 interface ActiveGit {
   cwd: string
   child: ChildProcessWithoutNullStreams
@@ -180,7 +183,17 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
       cleanup()
       if (tree) killProcessTree(child)
       else child.kill('SIGTERM')
-      reject(error)
+      // Settle once the process, and every helper holding its output pipes, has exited: until then Windows
+      // keeps its files and working folder locked, and a caller cleaning up after it would fail.
+      let done = false
+      const finish = (): void => {
+        if (done) return
+        done = true
+        clearTimeout(giveUp)
+        reject(error)
+      }
+      const giveUp = setTimeout(finish, STOP_WAIT_MS)
+      child.once('close', finish)
     }
 
     // Any output shows the command is alive; silence for idleTimeoutMs means a stalled network or a

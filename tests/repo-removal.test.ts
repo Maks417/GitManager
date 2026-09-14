@@ -55,4 +55,17 @@ describe('inspectRepoForRemoval', () => {
     writeFileSync(join(dir, 'README.md'), 'changed\n')
     expect(await inspectRepoForRemoval(dir)).toEqual({ uncommitted: 1, stashes: 1, unpushed: 1 })
   }, 30000)
+
+  it('counts only the changes of a linked worktree, whose commits and stashes stay in the main repository', async () => {
+    const main = await initRepo(tempDir('gm-remove-main-'))
+    const wt = join(tempDir('gm-remove-wt-'), 'feature')
+    await git(main, 'worktree', 'add', '-q', '-b', 'feature', wt)
+    writeFileSync(join(wt, 'wip.txt'), 'wip\n')
+    await git(wt, 'stash', 'push', '-u')
+    writeFileSync(join(wt, 'README.md'), 'changed\n')
+
+    expect(await inspectRepoForRemoval(wt)).toEqual({ uncommitted: 1, stashes: 0, unpushed: 0 })
+    // The stash made in the worktree is the main repository's.
+    expect(await inspectRepoForRemoval(main)).toEqual({ uncommitted: 0, stashes: 1, unpushed: 1 })
+  }, 30000)
 })

@@ -1,4 +1,4 @@
-import { createContext, useMemo, useState } from 'react'
+import { createContext, useCallback, useMemo, useState } from 'react'
 import type React from 'react'
 import type { ProviderAccount, UpdateStatus } from '@shared/ipc'
 import { useRequiredContext } from './context'
@@ -13,7 +13,8 @@ export interface AppStatus {
 }
 
 export interface AppStatusActions {
-  setBusy: React.Dispatch<React.SetStateAction<boolean>>
+  /** Marks one action as started (true) or finished (false); `busy` holds while any of them runs. */
+  setBusy: (busy: boolean) => void
   setError: React.Dispatch<React.SetStateAction<string | null>>
   setAccounts: React.Dispatch<React.SetStateAction<ProviderAccount[]>>
   setUpdateStatus: React.Dispatch<React.SetStateAction<UpdateStatus | null>>
@@ -24,10 +25,17 @@ const AppStatusActionsContext = createContext<AppStatusActions | null>(null)
 
 /** App-wide state that no single repository owns. */
 export function AppStatusProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const [busy, setBusy] = useState(false)
+  // A count, not a flag: when actions overlap (a refresh during a fetch), the first to finish must not
+  // re-enable controls while the other is still running.
+  const [busyCount, setBusyCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<ProviderAccount[]>([])
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+  const busy = busyCount > 0
+
+  const setBusy = useCallback((started: boolean): void => {
+    setBusyCount((count) => Math.max(0, count + (started ? 1 : -1)))
+  }, [])
 
   const state = useMemo<AppStatus>(
     () => ({ busy, error, accounts, updateStatus }),
@@ -35,7 +43,7 @@ export function AppStatusProvider({ children }: { children: React.ReactNode }): 
   )
   const actions = useMemo<AppStatusActions>(
     () => ({ setBusy, setError, setAccounts, setUpdateStatus }),
-    []
+    [setBusy]
   )
 
   return (

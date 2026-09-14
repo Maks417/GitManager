@@ -23,6 +23,7 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
   const [provider, setProvider] = useState<ProviderId>('github')
   const [token, setToken] = useState('')
   const [username, setUsername] = useState('')
+  const [gitlabUrl, setGitlabUrl] = useState('')
   const [repos, setRepos] = useState<RemoteRepo[]>([])
   const [activeAccount, setActiveAccount] = useState<string | null>(accounts[0]?.id ?? null)
   const { busy, error, run } = useAsyncAction()
@@ -32,7 +33,8 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
       const account = await window.gitManager.providers.saveToken(
         provider,
         token.trim(),
-        username.trim() || undefined
+        username.trim() || undefined,
+        provider === 'gitlab' ? gitlabUrl.trim() || undefined : undefined
       )
       setToken('')
       setActiveAccount(account.id)
@@ -61,9 +63,9 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
       }
     >
       <p className="muted" style={{ margin: 0 }}>
-        Connect GitHub or GitLab with a personal access token, or Bitbucket with an Atlassian API token and
-        your account email. Clone, fetch and push still use your Git credentials: HTTPS through your credential
-        helper, SSH through your agent and keys.
+        Connect GitHub or GitLab — GitLab.com or your own GitLab instance — with a personal access token, or
+        Bitbucket with an Atlassian API token and your account email. Clone, fetch and push still use your Git
+        credentials: HTTPS through your credential helper, SSH through your agent and keys.
       </p>
       {error && <Banner>{error}</Banner>}
 
@@ -79,6 +81,16 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
             <option value="bitbucket">Bitbucket</option>
           </Select>
         </Field>
+        {provider === 'gitlab' && (
+          <Field label="GitLab address (leave empty for GitLab.com)">
+            <Input
+              className="w-full"
+              value={gitlabUrl}
+              onChange={(e) => setGitlabUrl(e.target.value)}
+              placeholder="https://gitlab.example.com"
+            />
+          </Field>
+        )}
         {provider === 'bitbucket' && (
           <Field label="Atlassian account email">
             <Input
@@ -112,6 +124,7 @@ export function AccountsModal({ accounts, onClose, onChanged, onCloneRemote }: P
         {accounts.map((a) => (
           <li key={a.id} className={a.id === activeAccount ? 'active' : ''} onClick={() => loadRepos(a.id)}>
             <strong>{a.provider}</strong> {a.displayName} (@{a.username})
+            {a.baseUrl && <span className="muted"> · {a.host}</span>}
             {a.secureStorage === false && (
               <span className="muted text-xs"> · token stored without OS encryption</span>
             )}

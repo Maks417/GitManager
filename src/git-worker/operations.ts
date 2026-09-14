@@ -1,8 +1,10 @@
 /** Barrel re-export — keep existing `from './operations'` imports working. */
 export {
   inspectRepository,
-  initRepository,
+  createRepository,
   cloneRepository,
+  getDefaultBranchName,
+  getEnclosingWorkTree,
   getGitDirs
 } from './ops/repo'
 
@@ -63,3 +65,7 @@ export {
 export { getGitIdentity, setGitIdentity } from './ops/identity'
 
 export { inspectRepoForRemoval } from './ops/removal'
+
+export { getWatchFingerprint } from './ops/watch'
+
+export { getWorktreeInfo, pruneWorktree } from './ops/worktrees'

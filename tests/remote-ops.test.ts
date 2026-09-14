@@ -1,5 +1,4 @@
 import { writeFileSync } from 'fs'
-import { createServer, type AddressInfo, type Socket } from 'net'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -11,6 +10,7 @@ import {
   throttleProgress
 } from '../src/git-worker/progress'
 import { git, initRepo, trackTempDirs } from './helpers/git-fixture'
+import { bypassProxyForLocalhost, stallingServer } from './helpers/stalling-server'
 
 const tempDir = trackTempDirs()
 
@@ -162,43 +162,27 @@ describe('pushRemote', () => {
     const [remoteTip] = (await git(clone, 'ls-remote', 'origin', 'refs/heads/main')).trim().split(/\s+/)
     expect(remoteTip).toBe((await git(clone, 'rev-parse', 'HEAD')).trim())
   }, 60000)
+
+  it('reports a push that exits cleanly without reaching the upstream', async () => {
+    const { clone } = await remoteWithClones()
+    // A local branch tracking another name: push.default=current publishes it under its own name instead.
+    await git(clone, 'checkout', '-q', '-b', 'feature', '--track', 'origin/main')
+    await git(clone, 'config', 'push.default', 'current')
+    await git(clone, 'commit', '-q', '--allow-empty', '-m', 'feature work')
+    await expect(pushRemote(clone)).rejects.toThrow(/did not reach its upstream/)
+  }, 60000)
+
+  it('trusts a configured push refspec, which sends commits elsewhere on purpose', async () => {
+    const { clone } = await remoteWithClones()
+    await git(clone, 'config', 'remote.origin.push', 'refs/heads/main:refs/heads/review/main')
+    await git(clone, 'commit', '-q', '--allow-empty', '-m', 'for review')
+    expect(await pushRemote(clone)).toEqual({ outcome: 'done' })
+    expect((await git(clone, 'ls-remote', 'origin', 'refs/heads/review/main')).trim()).not.toBe('')
+  }, 60000)
 })
 
-/** A server that accepts connections and never answers, like a stalled network. */
-async function stallingServer(): Promise<{ url: string; connections: () => number; closed: () => number; stop: () => Promise<void> }> {
-  const sockets: Socket[] = []
-  let closed = 0
-  const server = createServer((socket) => {
-    sockets.push(socket)
-    socket.on('close', () => closed++)
-    socket.on('error', () => undefined)
-  })
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
-  const { port } = server.address() as AddressInfo
-  return {
-    url: `http://127.0.0.1:${port}/stalled.git`,
-    connections: () => sockets.length,
-    closed: () => closed,
-    stop: () =>
-      new Promise((resolve) => {
-        for (const socket of sockets) socket.destroy()
-        server.close(() => resolve())
-      })
-  }
-}
-
 describe('stalled network', () => {
-  const proxyEnv = { NO_PROXY: process.env.NO_PROXY, no_proxy: process.env.no_proxy }
-  beforeAll(() => {
-    process.env.NO_PROXY = '127.0.0.1,localhost'
-    process.env.no_proxy = '127.0.0.1,localhost'
-  })
-  afterAll(() => {
-    process.env.NO_PROXY = proxyEnv.NO_PROXY
-    process.env.no_proxy = proxyEnv.no_proxy
-    if (proxyEnv.NO_PROXY === undefined) delete process.env.NO_PROXY
-    if (proxyEnv.no_proxy === undefined) delete process.env.no_proxy
-  })
+  bypassProxyForLocalhost({ beforeAll, afterAll })
 
   it('stops a fetch that gets no response within the idle timeout', async () => {
     const server = await stallingServer()

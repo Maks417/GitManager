@@ -13,7 +13,12 @@ export const RepositorySchema = z.object({
       name: z.string(),
       url: z.string()
     })
-  )
+  ),
+  /**
+   * For a linked worktree, the main work tree of the repository it belongs to. Remembered so the worktree's
+   * record can still be removed from that repository after the worktree folder is gone.
+   */
+  worktreeOf: z.string().nullable().optional()
 })
 export type Repository = z.infer<typeof RepositorySchema>
 
@@ -25,6 +30,37 @@ export const RepoRemovalInfoSchema = z.object({
   unpushed: z.number().int().nonnegative()
 })
 export type RepoRemovalInfo = z.infer<typeof RepoRemovalInfoSchema>
+
+/** How a repository in the list relates to Git worktrees, for removing it. */
+export const WorktreeInfoSchema = z.object({
+  /** Whether the repository folder still exists. */
+  exists: z.boolean(),
+  /** For a linked worktree: its main work tree, whether that still exists, and whether Git keeps it locked. */
+  linkedTo: z
+    .object({
+      mainPath: z.string(),
+      mainExists: z.boolean(),
+      locked: z.boolean()
+    })
+    .nullable(),
+  /** Linked worktrees that use this repository's history; they stop working once its folder is deleted. */
+  otherWorktrees: z.number().int().nonnegative()
+})
+export type WorktreeInfo = z.infer<typeof WorktreeInfoSchema>
+
+export const RepoRemoveOptionsSchema = z.object({
+  /** Move the repository folder to the Trash. */
+  deleteFiles: z.boolean().optional(),
+  /** For a linked worktree whose folder is gone: remove its record from the main repository too. */
+  pruneWorktree: z.boolean().optional()
+})
+export type RepoRemoveOptions = z.infer<typeof RepoRemoveOptionsSchema>
+
+export const RepoRemoveResultSchema = z.object({
+  /** Set when the repository left the list but Git kept its worktree record. */
+  warning: z.string().nullable()
+})
+export type RepoRemoveResult = z.infer<typeof RepoRemoveResultSchema>
 
 export const CommitRefSchema = z.object({
   name: z.string(),
@@ -186,7 +222,10 @@ export const ProviderAccountSchema = z.object({
   username: z.string(),
   displayName: z.string(),
   avatarUrl: z.string().optional(),
+  /** Where the account lives, as shown: `github.com`, or a self-managed GitLab like `git.example.org/gitlab`. */
   host: z.string(),
+  /** HTTPS address of a self-managed GitLab instance; absent for GitLab.com and the other hosts. */
+  baseUrl: z.string().optional(),
   /** False when the token could only be stored without OS encryption. */
   secureStorage: z.boolean().optional()
 })
@@ -270,6 +309,15 @@ export const RepoWatchEventSchema = z.object({
 })
 export type RepoWatchEvent = z.infer<typeof RepoWatchEventSchema>
 
+/** How the watched repository is kept up to date: watched, or polled when the system refuses more watches. */
+export const RepoWatchStateSchema = z.object({
+  repoPath: z.string(),
+  mode: z.enum(['live', 'polling']),
+  /** Why changes are polled instead of watched; null while live. */
+  reason: z.string().nullable()
+})
+export type RepoWatchState = z.infer<typeof RepoWatchStateSchema>
+
 export const HistoryQuerySchema = z.object({
   repoPath: z.string(),
   search: z.string().optional(),
@@ -295,10 +343,12 @@ export type HistoryQuery = z.infer<typeof HistoryQuerySchema>
 export const RemoteOpKindSchema = z.enum(['fetch', 'pull', 'push'])
 export type RemoteOpKind = z.infer<typeof RemoteOpKindSchema>
 
+/** Chosen by the renderer, which uses it to match progress events and to cancel. */
+export const OperationIdSchema = z.string().regex(/^[\w-]{8,64}$/, 'Invalid operation id')
+
 export const RemoteOpRequestSchema = z.object({
   repoPath: z.string().min(1),
-  /** Chosen by the renderer, which uses it to match progress events and to cancel. */
-  opId: z.string().regex(/^[\w-]{8,64}$/, 'Invalid operation id')
+  opId: OperationIdSchema
 })
 export type RemoteOpRequest = z.infer<typeof RemoteOpRequestSchema>
 
@@ -313,8 +363,9 @@ export type RemoteProgress = z.infer<typeof RemoteProgressSchema>
 
 export const GitProgressSchema = RemoteProgressSchema.extend({
   opId: z.string(),
+  /** The repository, or for a clone the folder it clones into. */
   repoPath: z.string(),
-  kind: RemoteOpKindSchema
+  kind: z.enum(['fetch', 'pull', 'push', 'clone'])
 })
 export type GitProgress = z.infer<typeof GitProgressSchema>
 
@@ -326,9 +377,55 @@ export type RemoteOpResult = z.infer<typeof RemoteOpResultSchema>
 export const CloneRequestSchema = z.object({
   url: z.string().min(1),
   /** Parent folder; the clone goes into a sub-folder named after the repository. */
-  targetDir: z.string().min(1)
+  targetDir: z.string().min(1),
+  opId: OperationIdSchema
 })
 export type CloneRequest = z.infer<typeof CloneRequestSchema>
+
+/** A cancelled clone leaves nothing behind: the partly cloned folder is removed. */
+export const CloneResultSchema = z.discriminatedUnion('outcome', [
+  z.object({ outcome: z.literal('done'), repo: RepositorySchema }),
+  z.object({ outcome: z.literal('cancelled') })
+])
+export type CloneResult = z.infer<typeof CloneResultSchema>
+
+export const CreateRepoRequestSchema = z.object({
+  /** Existing folder that gets the repository folder. */
+  parentDir: z.string().min(1),
+  /** Name of the repository folder. */
+  name: z.string().min(1),
+  initialBranch: z.string().trim().min(1),
+  /** Commit a README.md, so the repository starts with a first commit. */
+  readme: z.boolean()
+})
+export type CreateRepoRequest = z.infer<typeof CreateRepoRequestSchema>
+
+export const CreateRepoResultSchema = z.object({
+  repo: RepositorySchema,
+  /** Set when the repository exists but its first commit failed (usually no Git identity yet). */
+  warning: z.string().nullable()
+})
+export type CreateRepoResult = z.infer<typeof CreateRepoResultSchema>
+
+export const NewRepoTargetRequestSchema = z.object({
+  parentDir: z.string(),
+  name: z.string()
+})
+export type NewRepoTargetRequest = z.infer<typeof NewRepoTargetRequestSchema>
+
+/** Where a new repository would be created, checked before anything is written. */
+export const NewRepoTargetSchema = z.object({
+  path: z.string().nullable(),
+  /** Why it cannot be created there; null when it can. */
+  problem: z.string().nullable(),
+  /** Work tree of an existing repository that would contain the new one. */
+  insideRepo: z.string().nullable(),
+  /** Git's `init.defaultBranch`, else `main`. */
+  defaultBranch: z.string(),
+  /** Offered as the location until one is chosen. */
+  suggestedParent: z.string()
+})
+export type NewRepoTarget = z.infer<typeof NewRepoTargetSchema>
 
 export const GitIdentitySchema = z.object({
   name: z.string(),

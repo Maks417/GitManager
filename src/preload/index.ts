@@ -5,12 +5,10 @@ const api = {
   repo: {
     list: () => ipcRenderer.invoke(IpcChannels.repo.list),
     add: (path: string) => ipcRenderer.invoke(IpcChannels.repo.add, path),
-    remove: (id: string, options?: { deleteFiles?: boolean }) =>
-      ipcRenderer.invoke(IpcChannels.repo.remove, id, {
-        deleteFiles: Boolean(options?.deleteFiles)
-      }),
+    remove: (id: string, options?: unknown) => ipcRenderer.invoke(IpcChannels.repo.remove, id, options),
     openDialog: () => ipcRenderer.invoke(IpcChannels.repo.openDialog),
-    create: (path: string) => ipcRenderer.invoke(IpcChannels.repo.create, path),
+    create: (request: unknown) => ipcRenderer.invoke(IpcChannels.repo.create, request),
+    inspectNewRepo: (request: unknown) => ipcRenderer.invoke(IpcChannels.repo.inspectNewRepo, request),
     clone: (request: unknown) => ipcRenderer.invoke(IpcChannels.repo.clone, request),
     get: (id: string) => ipcRenderer.invoke(IpcChannels.repo.get, id),
     status: (repoPath: string) => ipcRenderer.invoke(IpcChannels.repo.status, repoPath),
@@ -25,7 +23,13 @@ const api = {
       ipcRenderer.on(IpcChannels.repo.onChanged, listener)
       return () => ipcRenderer.removeListener(IpcChannels.repo.onChanged, listener)
     },
-    removalInfo: (id: string) => ipcRenderer.invoke(IpcChannels.repo.removalInfo, id)
+    onWatchState: (callback: (state: unknown) => void) => {
+      const listener = (_: Electron.IpcRendererEvent, state: unknown): void => callback(state)
+      ipcRenderer.on(IpcChannels.repo.onWatchState, listener)
+      return () => ipcRenderer.removeListener(IpcChannels.repo.onWatchState, listener)
+    },
+    removalInfo: (id: string) => ipcRenderer.invoke(IpcChannels.repo.removalInfo, id),
+    worktreeInfo: (id: string) => ipcRenderer.invoke(IpcChannels.repo.worktreeInfo, id)
   },
   history: {
     load: (query: unknown) => ipcRenderer.invoke(IpcChannels.history.load, query),
@@ -89,8 +93,8 @@ const api = {
     listAccounts: () => ipcRenderer.invoke(IpcChannels.providers.listAccounts),
     disconnect: (accountId: string) => ipcRenderer.invoke(IpcChannels.providers.disconnect, accountId),
     listRepos: (accountId: string) => ipcRenderer.invoke(IpcChannels.providers.listRepos, accountId),
-    saveToken: (provider: string, token: string, username?: string) =>
-      ipcRenderer.invoke(IpcChannels.providers.saveToken, provider, token, username)
+    saveToken: (provider: string, token: string, username?: string, baseUrl?: string) =>
+      ipcRenderer.invoke(IpcChannels.providers.saveToken, provider, token, username, baseUrl)
   },
   prefs: {
     get: () => ipcRenderer.invoke(IpcChannels.prefs.get),

@@ -10,6 +10,7 @@ import type {
 import { isSha } from '@shared/sha'
 import { toErrorMessage } from '../lib/errors'
 import { defaultSideFor, type DiffSide, type Selection, type ViewMode } from './selection'
+import { useLatestRef } from './useLatestRef'
 
 /**
  * Commit detail loads this long after the selection stops changing, so holding an arrow key in the
@@ -111,13 +112,11 @@ export function useWorkingTree({
   // Loaders depend on these values, not on object identity: a refreshed repository or file entry
   // with the same path must not reload.
   const repoPath = activeRepo?.path
+  const selectionKind = selection?.kind ?? null
   const selectedPath = selectedFile?.path
   const selectedOldPath = selectedFile?.oldPath
   // Until the selected commit's detail arrives, `selectedFile` still belongs to the previous commit.
   const detailSha = detail?.commit.sha ?? null
-  // Read when a detail load finishes, to tell a reload of the shown commit from a newly selected one.
-  const shownDetailShaRef = useRef(detailSha)
-  shownDetailShaRef.current = detailSha
 
   const selectedInHistory = useMemo(
     () => Boolean(selectedSha && commits.some((c) => c.sha === selectedSha)),
@@ -133,13 +132,17 @@ export function useWorkingTree({
   }, [status, workingCopySelected, focusedStatusPath, setFocusedStatusPath, setDiffSide])
 
   useEffect(() => {
-    if (!repoPath || selection?.kind !== 'commit' || !selectedSha || !isSha(selectedSha)) {
-      if (selection?.kind !== 'commit') {
+    if (!repoPath || selectionKind !== 'commit' || !selectedSha || !isSha(selectedSha)) {
+      // The working copy keeps the last commit's detail, so going back to History shows it without Git.
+      if (selectionKind === null) {
         setDetail(null)
         setSelectedFile(null)
       }
       return
     }
+    // A commit's files never change: the detail already shown for this commit needs no reload. Without
+    // this, a refresh that briefly empties the list (a checkout with "Current branch") reloaded it.
+    if (detailSha === selectedSha) return
     if (!selectedInHistory) {
       setDetail(null)
       setSelectedFile(null)
@@ -152,15 +155,8 @@ export function useWorkingTree({
         try {
           const d = await window.gitManager.history.commitDetail(repoPath, sha)
           if (cancelled) return
-          const reloadOfShownCommit = shownDetailShaRef.current === d.commit.sha
           setDetail(d)
-          // A reload of the commit already shown keeps the file the user picked (and so its diff editor);
-          // a newly selected commit starts at its first file.
-          setSelectedFile((current) =>
-            reloadOfShownCommit && current && d.files.some((f) => f.path === current.path)
-              ? current
-              : d.files[0] || null
-          )
+          setSelectedFile(d.files[0] || null)
         } catch (err) {
           if (cancelled) return
           const message = toErrorMessage(err)
@@ -181,9 +177,10 @@ export function useWorkingTree({
     }
   }, [
     repoPath,
-    selection?.kind,
+    selectionKind,
     selectedSha,
     selectedInHistory,
+    detailSha,
     setError,
     setDetail,
     setSelectedFile,
@@ -193,12 +190,12 @@ export function useWorkingTree({
   useEffect(() => {
     if (
       !repoPath ||
-      selection?.kind !== 'commit' ||
+      selectionKind !== 'commit' ||
       !selectedSha ||
       !selectedPath ||
       detailSha !== selectedSha
     ) {
-      if (selection?.kind === 'commit') {
+      if (selectionKind === 'commit') {
         setDiff(null)
         setDiffLoading(false)
       }
@@ -228,7 +225,7 @@ export function useWorkingTree({
     }
   }, [
     repoPath,
-    selection?.kind,
+    selectionKind,
     selectedSha,
     selectedPath,
     selectedOldPath,
@@ -242,8 +239,8 @@ export function useWorkingTree({
   const shownDiffKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!repoPath || selection?.kind !== 'working-copy' || !focusedStatusPath) {
-      if (selection?.kind === 'working-copy') {
+    if (!repoPath || selectionKind !== 'working-copy' || !focusedStatusPath) {
+      if (selectionKind === 'working-copy') {
         shownDiffKeyRef.current = null
         setDiff(null)
         setDiffLoading(false)
@@ -278,7 +275,7 @@ export function useWorkingTree({
     // `status` is a dependency on purpose: every status refresh reloads the focused file's diff.
   }, [
     repoPath,
-    selection?.kind,
+    selectionKind,
     focusedStatusPath,
     diffSide,
     status,
@@ -290,26 +287,15 @@ export function useWorkingTree({
   const selectWorkingCopy = useCallback((): void => {
     setViewMode('changes')
     setSelection({ kind: 'working-copy' })
-    setDetail(null)
-    setSelectedFile(null)
+    // The commit detail and file stay: going back to History shows them again without reloading.
     setDiff(null)
     const first = status[0]
     setFocusedStatusPath(first?.path ?? null)
     if (first) setDiffSide(defaultSideFor(first))
-  }, [
-    status,
-    setViewMode,
-    setSelection,
-    setDetail,
-    setSelectedFile,
-    setDiff,
-    setFocusedStatusPath,
-    setDiffSide
-  ])
+  }, [status, setViewMode, setSelection, setDiff, setFocusedStatusPath, setDiffSide])
 
   // Read by selectCommit without re-creating it whenever the selection changes.
-  const selectionRef = useRef(selection)
-  selectionRef.current = selection
+  const selectionRef = useLatestRef(selection)
 
   const selectCommit = useCallback(
     (sha: string): void => {
@@ -321,12 +307,16 @@ export function useWorkingTree({
       setFocusedStatusPath(null)
       setDiff(null)
     },
-    [setViewMode, setSelection, setFocusedStatusPath, setDiff]
+    [selectionRef, setViewMode, setSelection, setFocusedStatusPath, setDiff]
   )
 
   const goHistory = useCallback((): void => {
     setViewMode('history')
-    if (commits[0]) selectCommit(commits[0].sha)
+    // Back from the working copy, the commit shown before stays selected while the list still has it.
+    const current = selectionRef.current
+    const remembered = current?.kind === 'commit' ? current.sha : detail?.commit.sha
+    const target = remembered && commits.some((c) => c.sha === remembered) ? remembered : commits[0]?.sha
+    if (target) selectCommit(target)
     else if (headSha && isSha(headSha)) selectCommit(headSha)
     else {
       setSelection(null)
@@ -334,7 +324,18 @@ export function useWorkingTree({
       setSelectedFile(null)
       setDiff(null)
     }
-  }, [commits, headSha, selectCommit, setViewMode, setSelection, setDetail, setSelectedFile, setDiff])
+  }, [
+    commits,
+    detail,
+    headSha,
+    selectionRef,
+    selectCommit,
+    setViewMode,
+    setSelection,
+    setDetail,
+    setSelectedFile,
+    setDiff
+  ])
 
   return { selectWorkingCopy, selectCommit, goHistory }
 }

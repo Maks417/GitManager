@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import type React from 'react'
 import { nextFocusIndex } from '../../logic/focus-trap'
 import { createModalStack } from '../../logic/modal-stack'
@@ -47,11 +47,15 @@ export function Modal({
   const [returnFocusTo] = useState(() =>
     document.activeElement instanceof HTMLElement ? document.activeElement : null
   )
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
-  const dismissibleRef = useRef(dismissible)
-  dismissibleRef.current = dismissible
   const pressStartedOnBackdrop = useRef(false)
+
+  // Escape uses the latest `onClose` and `dismissible` without registering the dialog again.
+  const onWindowKeyDown = useEffectEvent((e: KeyboardEvent): void => {
+    // An editor widget inside the dialog (e.g. Monaco's find box) may have used Escape already.
+    if (e.key !== 'Escape' || e.defaultPrevented || !modalStack.isTop(id) || !dismissible) return
+    e.preventDefault()
+    onClose()
+  })
 
   useEffect(() => {
     modalStack.push(id)
@@ -59,12 +63,7 @@ export function Modal({
     if (dialog && !dialog.contains(document.activeElement)) {
       ;(focusableIn(dialog)[0] ?? dialog).focus()
     }
-    const onKeyDown = (e: KeyboardEvent): void => {
-      // An editor widget inside the dialog (e.g. Monaco's find box) may have used Escape already.
-      if (e.key !== 'Escape' || e.defaultPrevented || !modalStack.isTop(id) || !dismissibleRef.current) return
-      e.preventDefault()
-      onCloseRef.current()
-    }
+    const onKeyDown = (e: KeyboardEvent): void => onWindowKeyDown(e)
     window.addEventListener('keydown', onKeyDown)
     return () => {
       window.removeEventListener('keydown', onKeyDown)

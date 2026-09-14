@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import type {
   AppPreferences,
   BranchInfo,
   GitIdentity,
+  GitProbeResult,
   ProviderAccount,
   RemoteBranchInfo,
+  RepoRemoveOptions,
   Repository,
   RepoWatchEvent,
+  RepoWatchState,
   StatusEntry,
   UpdateStatus
 } from '@shared/ipc'
@@ -15,6 +18,7 @@ import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
 import { createLatestGate } from '../logic/latest-gate'
 import type { HistoryRefreshMode, Selection, ViewMode } from './selection'
+import { useLatestRef } from './useLatestRef'
 
 export type HistoryFns = {
   loadHistory: (repo: Repository, searchText?: string) => Promise<unknown>
@@ -60,15 +64,20 @@ export function useRepoSession({
   gitMissing: boolean
   currentBranch: BranchInfo | null
   localBranchNames: Set<string>
+  /** Why the active repository's changes are polled instead of watched; null while watched live. */
+  watchNotice: string | null
   repoPendingRemove: Repository | null
   setRepoPendingRemove: React.Dispatch<React.SetStateAction<Repository | null>>
   repoRemoveBusy: boolean
   repoRemoveError: string | null
   setRepoRemoveError: React.Dispatch<React.SetStateAction<string | null>>
+  /** What the removal dialog still has to say once the repository is off the list. */
+  repoRemoveWarning: string | null
+  setRepoRemoveWarning: React.Dispatch<React.SetStateAction<string | null>>
   refreshRepos: (opts?: { activateFirst?: boolean }) => Promise<void>
   refreshRepoMeta: (repo: Repository) => Promise<Repository>
   afterGitMutation: (opts?: { history?: HistoryRefreshMode }) => Promise<void>
-  removeRepoFromList: (repo: Repository, deleteFiles?: boolean) => Promise<void>
+  removeRepoFromList: (repo: Repository, options?: RepoRemoveOptions) => Promise<void>
 } {
   const [repos, setRepos] = useState<Repository[]>([])
   const [activeRepo, setActiveRepo] = useState<Repository | null>(null)
@@ -79,13 +88,14 @@ export function useRepoSession({
   const [rebaseInProgress, setRebaseInProgress] = useState(false)
   const [mergeInProgress, setMergeInProgress] = useState(false)
   const [gitMissing, setGitMissing] = useState(false)
+  const [watchState, setWatchState] = useState<RepoWatchState | null>(null)
   const [repoPendingRemove, setRepoPendingRemove] = useState<Repository | null>(null)
   const [repoRemoveBusy, setRepoRemoveBusy] = useState(false)
   const [repoRemoveError, setRepoRemoveError] = useState<string | null>(null)
-  const activeRepoRef = useRef<Repository | null>(null)
-  activeRepoRef.current = activeRepo
-  const onConflictsDetectedRef = useRef(onConflictsDetected)
-  onConflictsDetectedRef.current = onConflictsDetected
+  const [repoRemoveWarning, setRepoRemoveWarning] = useState<string | null>(null)
+  const activeRepoRef = useLatestRef(activeRepo)
+  const reposRef = useLatestRef(repos)
+  const onConflictsDetectedRef = useLatestRef(onConflictsDetected)
   const conflictStateRef = useRef<{ path: string; conflicted: boolean } | null>(null)
   // Refreshes overlap (watcher events, Git actions) and finish in any order. Only the newest may apply:
   // an older response would put back branches or status from before the latest change.
@@ -94,27 +104,35 @@ export function useRepoSession({
 
   const currentBranch = useMemo(() => branches.find((b) => b.current) ?? null, [branches])
   const localBranchNames = useMemo(() => new Set(branches.map((b) => b.name)), [branches])
+  const watchNotice =
+    watchState?.mode === 'polling' && sameRepoPath(watchState.repoPath, activeRepo?.path) ? watchState.reason : null
 
-  const getActiveRepo = useCallback((): Repository | null => activeRepoRef.current, [])
+  const getActiveRepo = useCallback((): Repository | null => activeRepoRef.current, [activeRepoRef])
 
-  const refreshRepos = useCallback(async (opts?: { activateFirst?: boolean }) => {
-    const list = await window.gitManager.repo.list()
-    setRepos(list)
-    const activateFirst = opts?.activateFirst !== false
-    // Use ref so this callback stays stable — depending on `activeRepo` recreated the
-    // boot effect and re-listed repos forever (inspect → watch → setActiveRepo → …).
-    if (activateFirst && !activeRepoRef.current && list[0]) setActiveRepo(list[0])
-  }, [])
+  const refreshRepos = useCallback(
+    async (opts?: { activateFirst?: boolean }) => {
+      const list = await window.gitManager.repo.list()
+      setRepos(list)
+      const activateFirst = opts?.activateFirst !== false
+      // Use ref so this callback stays stable — depending on `activeRepo` recreated the
+      // boot effect and re-listed repos forever (inspect → watch → setActiveRepo → …).
+      if (activateFirst && !activeRepoRef.current && list[0]) setActiveRepo(list[0])
+    },
+    [activeRepoRef]
+  )
 
   // Open the merge editor when the repository enters a conflicted state, not on every refresh,
   // so it can stay closed while conflicts are resolved elsewhere.
-  const noteConflicts = useCallback((repoPath: string, entries: StatusEntry[]): void => {
-    const conflicted = entries.some((e) => e.conflicted)
-    const previous = conflictStateRef.current
-    const wasConflicted = Boolean(previous?.conflicted && sameRepoPath(previous.path, repoPath))
-    conflictStateRef.current = { path: repoPath, conflicted }
-    if (conflicted && !wasConflicted) onConflictsDetectedRef.current()
-  }, [])
+  const noteConflicts = useCallback(
+    (repoPath: string, entries: StatusEntry[]): void => {
+      const conflicted = entries.some((e) => e.conflicted)
+      const previous = conflictStateRef.current
+      const wasConflicted = Boolean(previous?.conflicted && sameRepoPath(previous.path, repoPath))
+      conflictStateRef.current = { path: repoPath, conflicted }
+      if (conflicted && !wasConflicted) onConflictsDetectedRef.current()
+    },
+    [onConflictsDetectedRef]
+  )
 
   /** Work-tree edits only change status; branches, identity and history stay as they are. */
   const refreshStatus = useCallback(
@@ -125,7 +143,7 @@ export function useRepoSession({
       setStatus(entries)
       noteConflicts(repo.path, entries)
     },
-    [noteConflicts, statusGate]
+    [activeRepoRef, noteConflicts, statusGate]
   )
 
   const refreshRepoMeta = useCallback(
@@ -194,7 +212,7 @@ export function useRepoSession({
       }
       return fresh ?? repo
     },
-    [noteConflicts, metaGate, statusGate]
+    [activeRepoRef, noteConflicts, metaGate, statusGate]
   )
 
   const afterGitMutation = useCallback(
@@ -209,23 +227,23 @@ export function useRepoSession({
       if (mode === 'full') await fns.loadHistory(fresh)
       else if (mode === 'tip') await fns.refreshHistoryTip(fresh)
     },
-    [refreshRepoMeta, historyFnsRef]
+    [activeRepoRef, refreshRepoMeta, historyFnsRef]
   )
 
   const removeRepoFromList = useCallback(
-    async (repo: Repository, deleteFiles = false): Promise<void> => {
+    async (repo: Repository, options: RepoRemoveOptions = {}): Promise<void> => {
       await runWithBusy(
         async () => {
           const removingActive = activeRepoRef.current?.id === repo.id
-          await window.gitManager.repo.remove(repo.id, { deleteFiles: Boolean(deleteFiles) })
+          const { warning } = await window.gitManager.repo.remove(repo.id, options)
           // Update local list without re-inspecting every repo (avoids fs.watch storms).
-          setRepos((prev) => {
-            const next = prev.filter((r) => r.id !== repo.id)
-            if (removingActive) setActiveRepo(next[0] ?? null)
-            return next
-          })
-          setRepoPendingRemove(null)
+          const remaining = reposRef.current.filter((r) => r.id !== repo.id)
+          setRepos(remaining)
+          if (removingActive) setActiveRepo(remaining[0] ?? null)
           setRepoRemoveError(null)
+          // A note about the worktree record keeps the dialog open to show it; the dialog closes from there.
+          if (warning) setRepoRemoveWarning(warning)
+          else setRepoPendingRemove(null)
           if (removingActive) {
             setSelection(null)
             setViewMode('history')
@@ -240,7 +258,25 @@ export function useRepoSession({
         }
       )
     },
-    [setError, setSelection, setViewMode]
+    [activeRepoRef, reposRef, setError, setSelection, setViewMode]
+  )
+
+  // Applies what the app loads once when it starts, then lists the repositories.
+  const finishBoot = useEffectEvent(
+    async ([p, a, u, probe]: [AppPreferences, ProviderAccount[], UpdateStatus, GitProbeResult]): Promise<void> => {
+      hydrateFromPrefs(p)
+      setAccounts(a)
+      setUpdateStatus(u)
+      if (!probe.available) {
+        setGitMissing(true)
+        setError(probe.message ?? 'Git was not found on this computer.')
+        setActiveRepo(null)
+        await refreshRepos({ activateFirst: false })
+        return
+      }
+      setGitMissing(false)
+      await refreshRepos()
+    }
   )
 
   useEffect(() => {
@@ -249,38 +285,27 @@ export function useRepoSession({
       return
     }
     let cancelled = false
-    void (async () => {
-      try {
-        const [p, a, u, probe] = await Promise.all([
-          window.gitManager.prefs.get(),
-          window.gitManager.providers.listAccounts(),
-          window.gitManager.updater.status(),
-          window.gitManager.git.probe()
-        ])
-        if (cancelled) return
-        hydrateFromPrefs(p)
-        setAccounts(a)
-        setUpdateStatus(u)
-        if (!probe.available) {
-          setGitMissing(true)
-          setError(probe.message ?? 'Git was not found on this computer.')
-          setActiveRepo(null)
-          await refreshRepos({ activateFirst: false })
-          return
-        }
-        setGitMissing(false)
-        await refreshRepos()
-      } catch (err) {
+    Promise.all([
+      window.gitManager.prefs.get(),
+      window.gitManager.providers.listAccounts(),
+      window.gitManager.updater.status(),
+      window.gitManager.git.probe()
+    ])
+      .then((loaded) => (cancelled ? undefined : finishBoot(loaded)))
+      .catch((err) => {
         if (!cancelled) setError(toErrorMessage(err))
-      }
-    })()
+      })
     const off = window.gitManager.updater.onStatus(setUpdateStatus)
     return () => {
       cancelled = true
       off()
     }
-    // Boot once on mount. refreshRepos is stable (empty deps).
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot boot
+  }, [setError, setUpdateStatus])
+
+  // The main process says when watching falls back to polling, e.g. at Linux's inotify limit.
+  useEffect(() => {
+    if (!window.gitManager?.repo?.onWatchState) return
+    return window.gitManager.repo.onWatchState(setWatchState)
   }, [])
 
   useEffect(() => {
@@ -291,7 +316,8 @@ export function useRepoSession({
       return
     }
 
-    void window.gitManager.repo.watch(repoPath)
+    // The state also arrives as an event, but a reloaded window whose watch kept running gets none.
+    window.gitManager.repo.watch(repoPath).then(setWatchState, () => undefined)
     const off = window.gitManager.repo.onChanged((raw) => {
       const event = raw as RepoWatchEvent
       if (!event?.repoPath) return
@@ -316,7 +342,7 @@ export function useRepoSession({
       off()
       void window.gitManager.repo.unwatch()
     }
-  }, [activeRepo?.path, liveStatusWatch, refreshRepoMeta, refreshStatus, historyFnsRef, setError])
+  }, [activeRepo?.path, activeRepoRef, liveStatusWatch, refreshRepoMeta, refreshStatus, historyFnsRef, setError])
 
   return {
     repos,
@@ -334,11 +360,14 @@ export function useRepoSession({
     gitMissing,
     currentBranch,
     localBranchNames,
+    watchNotice,
     repoPendingRemove,
     setRepoPendingRemove,
     repoRemoveBusy,
     repoRemoveError,
     setRepoRemoveError,
+    repoRemoveWarning,
+    setRepoRemoveWarning,
     refreshRepos,
     refreshRepoMeta,
     afterGitMutation,

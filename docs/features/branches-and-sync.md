@@ -36,9 +36,11 @@ Operate on branches and remotes: checkout (local and remote-tracking), create/de
 - Merge/rebase return `{ conflicts: string[] }`; non-empty list opens merge UI.
 - Push/pull/fetch require configured remotes and credentials outside the app (SSH agent / credential helper).
 - While a fetch, pull or push runs, the toolbar shows Git's current step and percentage with a Cancel button. Cancelling stops Git together with the helpers it started (`git-remote-https`, ssh, the credential manager), so the connection closes; a cancel is not reported as an error.
+- One fetch, pull or push runs at a time. Starting another meanwhile (from the menu, say) names the one still running instead.
 - A fetch, pull or push that produces no output for 5 minutes (a stalled network, or a sign-in or passphrase prompt nobody can answer) is stopped with a message saying so.
 - Pull fetches the branch's remote, then fast-forwards to its upstream. Only the fetch can be cancelled: updating files cannot be interrupted safely. A branch without an upstream, and a branch that has diverged from it, get their own messages.
 - Push publishes a branch that has no upstream to `origin` (or the only remote) and sets the upstream. A rejected (non-fast-forward) push explains that the remote has newer commits; the app never force-pushes.
+- After Git reports a successful push, the app checks that the upstream now has the branch's commits (`git rev-list --count @{upstream}..HEAD`). When some are missing, the push is reported as failed, and the message points to `push.default` and `remote.<name>.push`. A remote with its own `push` refspec (Gerrit's `refs/for/*`, say) sends commits elsewhere on purpose, so it is not checked.
 - Checkout runs `git checkout <ref> --`, so a name that is not a ref fails instead of restoring same-named files.
 - Refs and branch names that look like options (`--exec=…`) are rejected before reaching Git.
 

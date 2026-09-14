@@ -13,7 +13,7 @@ History-first view of commits: a multi-lane topology graph, searchable log, and 
 5. Each branch in the sidebar has **Show only this branch** and **Jump to tip**. A jump selects the tip commit and scrolls it into view, loading older pages when needed; the search is cleared first, since it may hide the tip. **Jump to HEAD** in the header does the same for HEAD.
 6. Preference `historyFilter` can limit to the current branch (branch pages use portable `git log --skip`). An applied `branch:` search replaces that filter.
 7. Click a commit → detail pane lists files and loads the commit body; pick a file → side-by-side diff (blob size probed, text capped for Monaco).
-8. Working-copy row / Changes mode switches away from commit selection.
+8. Working-copy row / Changes mode shows the working tree. Going back to History selects the commit that was selected before when it is still listed (otherwise the newest), without loading its details again.
 
 ## Keyboard
 
@@ -33,6 +33,7 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 
 - List `git log` omits commit bodies; body is loaded only in commit detail.
 - Commit detail loads 120 ms after the selection stops changing, and a file diff only once that commit's detail has arrived, so holding an arrow key does not run Git for every commit it passes.
+- A commit's details never change, so they load once per selection: coming back to the commit or refreshing the list does not run `git show` again.
 - History paging uses portable argv (`shell: false`, `LC_ALL=C`) so Apple Xcode CLT Git and Homebrew Git behave like Git for Windows.
 - Minimum practical Git: **2.20+** (common on current Apple CLT and Homebrew). Features used: `log --date-order --decorate=full --skip --exclude --stdin`, `--fixed-strings --regexp-ignore-case`, `for-each-ref`, `diff-tree -z -M --root`, `cat-file -s`, `status --porcelain=v2 -z`.
 - Status defaults to `--untracked-files=normal` (preference `statusUntracked`: `normal` | `all`).
@@ -68,7 +69,7 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 - Stash entries are not shown under All branches (`--exclude=refs/stash`).
 - The first commit lists its files; renames show their old path and are diffed against it.
 - When history was rewritten (amend, rebase, reset, pruned branches), a tip refresh replaces the list instead of splicing new commits above stale ones.
-- With **Current branch**, switching branches reloads the list.
+- With **Current branch**, switching branches reloads the list once. Each list belongs to its repository and filter: results that arrive after a switch are dropped, and a list that is already loading is not requested again.
 - The branches a `branch:` search matches are passed to `git log --stdin` by full ref name, so a pattern that matches thousands of branches stays within command-line limits, and a local branch named like a remote one (`origin/x`) is not confused with it. A remote's `HEAD` pointer is never matched.
 - A jump reads at most 10,000 commits looking for its commit, then returns everything down to it plus one more page (`HistoryQuery.revealSha`, `HistoryPage.revealed`). A branch tip further down, or outside the **Current branch** filter, is shown by switching to that branch's history (`branch:name`) with a note in the header.
 - Parent index selects which parent to diff against for merges (`DiffRequest.parentIndex`).

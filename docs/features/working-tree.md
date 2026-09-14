@@ -21,11 +21,15 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 
 When preference `liveStatusWatch` is enabled (default), the main process recursively watches the active repository with Node `fs.watch({ recursive: true })`. Debounced work-tree edits (and index changes) refresh status only; changes to HEAD, refs or merge/rebase state also refresh branches and tip-refresh history. Linked worktrees and submodules keep that metadata outside the work tree (their `.git` is a file), so it is watched where Git keeps it: a linked worktree's own folder under the main repository's `.git/worktrees/` plus the shared `refs/` and `packed-refs`, or a submodule's repository under the superproject's `.git/modules/`. Another worktree's metadata never refreshes this one, and a submodule's commits refresh the superproject's status. Git's ignore rules decide which work-tree changes matter (`git check-ignore`, so tracked `build/` or `dist/` files still count); dependency folders such as `node_modules`, `.git/objects`, lock files and editor temps are skipped outright. Background reads never take the index lock (`GIT_OPTIONAL_LOCKS=0`).
 
+When the operating system refuses to watch more files — Linux's inotify limit (`fs.inotify.max_user_watches`), or too many open files — the repository is polled instead. Every 5 seconds while one of the app's windows is focused, the app compares a fingerprint of `git status --porcelain=v2 --branch` and the refs, and refreshes branches, status and history when it changes. A banner above the list says so (on Linux, with the command that raises the limit) and can be dismissed.
+
 | Piece | File |
 |---|---|
 | Watcher | [`src/main/repo-watcher.ts`](../../src/main/repo-watcher.ts) |
-| IPC | `repo:watch` / `repo:unwatch` / `repo:on-changed` |
+| Polling fingerprint | [`src/git-worker/ops/watch.ts`](../../src/git-worker/ops/watch.ts) |
+| IPC | `repo:watch` / `repo:unwatch` / `repo:on-changed` / `repo:on-watch-state` |
 | UI subscription | [`src/renderer/src/hooks/useRepoSession.ts`](../../src/renderer/src/hooks/useRepoSession.ts) |
+| Polling notice | [`src/renderer/src/shell/WatchNotice.tsx`](../../src/renderer/src/shell/WatchNotice.tsx) |
 
 ## Key modules & files
 

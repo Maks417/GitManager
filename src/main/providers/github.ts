@@ -1,5 +1,5 @@
 import type { ProviderAccount, RemoteRepo } from '@shared/ipc'
-import { fetchJson, MAX_PAGES, nextLink } from './http'
+import { fetchJson, MAX_PAGES, nextLinkOnOrigin } from './http'
 
 const API = 'https://api.github.com'
 
@@ -38,7 +38,7 @@ export async function listGitHubRepos(token: string): Promise<RemoteRepo[]> {
   for (let page = 0; url && page < MAX_PAGES; page++) {
     const { data, headers } = await fetchJson(url, authHeaders(token), 'GitHub repos failed')
     repos.push(...(data as GitHubRepo[]))
-    url = nextLink(headers.get('link'))
+    url = nextLinkOnOrigin(headers.get('link'), API)
   }
   return repos.map((r) => ({
     id: String(r.id),

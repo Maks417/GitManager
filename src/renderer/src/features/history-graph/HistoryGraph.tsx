@@ -43,12 +43,13 @@ export function HistoryGraph(): React.JSX.Element {
   const { currentBranch } = useSession()
   const { selectedSha } = useSelection()
   const { selectCommit } = useWorkingTreeActions()
+  // Column widths live in the layout state, which a drag updates live and saves when it ends.
   const {
     prefs,
     setHistoryFilter,
-    historyGraphColWidth,
-    historyDateColWidth,
-    historyAuthorColWidth,
+    historyGraphColWidth: graphW,
+    historyDateColWidth: dateW,
+    historyAuthorColWidth: authorW,
     setHistoryGraphColWidth,
     setHistoryDateColWidth,
     setHistoryAuthorColWidth,
@@ -58,15 +59,8 @@ export function HistoryGraph(): React.JSX.Element {
   const hasMore = Boolean(nextCursor)
 
   const listRef = useRef<HTMLDivElement>(null)
-  const [graphW, setGraphW] = useState(historyGraphColWidth)
-  const [dateW, setDateW] = useState(historyDateColWidth)
-  const [authorW, setAuthorW] = useState(historyAuthorColWidth)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportH, setViewportH] = useState(400)
-
-  useEffect(() => setGraphW(historyGraphColWidth), [historyGraphColWidth])
-  useEffect(() => setDateW(historyDateColWidth), [historyDateColWidth])
-  useEffect(() => setAuthorW(historyAuthorColWidth), [historyAuthorColWidth])
 
   useEffect(() => {
     const el = listRef.current
@@ -227,10 +221,7 @@ export function HistoryGraph(): React.JSX.Element {
               value={graphWidth}
               min={autoGraphMin}
               max={560}
-              onChange={(w) => {
-                setGraphW(w)
-                setHistoryGraphColWidth(w)
-              }}
+              onChange={setHistoryGraphColWidth}
               onChangeEnd={(w) => commitWidths({ historyGraphColWidth: w })}
               title="Resize graph column"
             />
@@ -242,10 +233,7 @@ export function HistoryGraph(): React.JSX.Element {
               min={72}
               max={220}
               reverse
-              onChange={(w) => {
-                setDateW(w)
-                setHistoryDateColWidth(w)
-              }}
+              onChange={setHistoryDateColWidth}
               onChangeEnd={(w) => commitWidths({ historyDateColWidth: w })}
               title="Resize date column"
             />
@@ -256,10 +244,7 @@ export function HistoryGraph(): React.JSX.Element {
               value={dateW}
               min={72}
               max={220}
-              onChange={(w) => {
-                setDateW(w)
-                setHistoryDateColWidth(w)
-              }}
+              onChange={setHistoryDateColWidth}
               onChangeEnd={(w) => commitWidths({ historyDateColWidth: w })}
               title="Resize date column"
             />
@@ -270,10 +255,7 @@ export function HistoryGraph(): React.JSX.Element {
               value={authorW}
               min={100}
               max={360}
-              onChange={(w) => {
-                setAuthorW(w)
-                setHistoryAuthorColWidth(w)
-              }}
+              onChange={setHistoryAuthorColWidth}
               onChangeEnd={(w) => commitWidths({ historyAuthorColWidth: w })}
               title="Resize author column"
             />
