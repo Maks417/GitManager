@@ -27,14 +27,17 @@ export function useLayoutPrefs(): {
   branchesExpanded: boolean
   remoteBranchesExpanded: boolean
   detailDock: 'right' | 'bottom'
+  diffView: AppPreferences['diffView']
   persistLayout: (partial: Partial<AppPreferences>) => void
   hydrateFromPrefs: (p: AppPreferences) => void
   toggleDock: () => void
+  toggleDiffView: () => void
   toggleSidebar: () => void
   toggleBranches: () => void
   toggleRemoteBranches: () => void
   setThemePref: (theme: ThemePreference) => void
   setHistoryFilter: (historyFilter: AppPreferences['historyFilter']) => void
+  setDiffView: (diffView: AppPreferences['diffView']) => void
 } {
   const [prefs, setPrefs] = useState<AppPreferences | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState<number>(LAYOUT_DEFAULTS.sidebarWidth)
@@ -60,6 +63,7 @@ export function useLayoutPrefs(): {
   const branchesExpanded = Boolean(prefs?.branchesExpanded)
   const remoteBranchesExpanded = Boolean(prefs?.remoteBranchesExpanded)
   const detailDock = prefs?.detailDock === 'right' ? 'right' : 'bottom'
+  const diffView = prefs?.diffView === 'side-by-side' ? 'side-by-side' : 'inline'
 
   const persistLayout = useCallback((partial: Partial<AppPreferences>): void => {
     void window.gitManager.prefs.set(partial).then(setPrefs)
@@ -97,6 +101,12 @@ export function useLayoutPrefs(): {
       .then(setPrefs)
   }, [detailDock])
 
+  const toggleDiffView = useCallback((): void => {
+    void window.gitManager.prefs
+      .set({ diffView: diffView === 'side-by-side' ? 'inline' : 'side-by-side' })
+      .then(setPrefs)
+  }, [diffView])
+
   const toggleSidebar = useCallback((): void => {
     void window.gitManager.prefs.set({ sidebarCollapsed: !sidebarCollapsed }).then(setPrefs)
   }, [sidebarCollapsed])
@@ -122,6 +132,10 @@ export function useLayoutPrefs(): {
     void window.gitManager.prefs.set({ historyFilter }).then(setPrefs)
   }, [])
 
+  const setDiffView = useCallback((view: AppPreferences['diffView']): void => {
+    void window.gitManager.prefs.set({ diffView: view }).then(setPrefs)
+  }, [])
+
   return {
     prefs,
     setPrefs,
@@ -145,13 +159,16 @@ export function useLayoutPrefs(): {
     branchesExpanded,
     remoteBranchesExpanded,
     detailDock,
+    diffView,
     persistLayout,
     hydrateFromPrefs,
     toggleDock,
+    toggleDiffView,
     toggleSidebar,
     toggleBranches,
     toggleRemoteBranches,
     setThemePref,
-    setHistoryFilter
+    setHistoryFilter,
+    setDiffView
   }
 }

@@ -12,7 +12,7 @@ export function useMenuCommands(): void {
   const { addRepo, openClone, openNewRepo, runSync } = useGitActions()
   const { searchInputRef } = useHistoryActions()
   const { goHistory, selectWorkingCopy } = useWorkingTreeActions()
-  const { toggleDock, toggleSidebar } = useLayout()
+  const { toggleDiffView, toggleDock, toggleSidebar } = useLayout()
 
   // The menu is subscribed once; each command runs with the state of the latest render.
   const runCommand = useEffectEvent((channel: MenuChannel): void => {
@@ -34,6 +34,7 @@ export function useMenuCommands(): void {
       [MenuChannels.viewHistory]: goHistory,
       [MenuChannels.viewChanges]: selectWorkingCopy,
       [MenuChannels.toggleDock]: toggleDock,
+      [MenuChannels.toggleDiffView]: toggleDiffView,
       [MenuChannels.toggleSidebar]: toggleSidebar
     }
     commands[channel]()

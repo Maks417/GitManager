@@ -85,6 +85,10 @@ export function buildAppMenu(): void {
           click: () => sendMenu(MenuChannels.toggleDock)
         },
         {
+          label: 'Toggle Side-by-Side Diff',
+          click: () => sendMenu(MenuChannels.toggleDiffView)
+        },
+        {
           label: 'Toggle Sidebar',
           accelerator: 'CmdOrCtrl+B',
           click: () => sendMenu(MenuChannels.toggleSidebar)

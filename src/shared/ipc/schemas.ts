@@ -283,6 +283,8 @@ function sizePref(min: number, max: number, fallback: number) {
 export const AppPreferencesSchema = z.object({
   theme: z.enum(['system', 'light', 'dark']).default('system').catch('system'),
   detailDock: z.enum(['right', 'bottom']).default('bottom').catch('bottom'),
+  /** File diffs: the changes inline in one file, or the old and the new file side by side. */
+  diffView: z.enum(['inline', 'side-by-side']).default('inline').catch('inline'),
   historyFilter: z.enum(['all', 'current']).default('all').catch('all'),
   sidebarCollapsed: z.boolean().default(false).catch(false),
   branchesExpanded: z.boolean().default(false).catch(false),

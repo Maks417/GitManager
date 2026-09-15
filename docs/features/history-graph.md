@@ -12,7 +12,7 @@ History-first view of commits: a multi-lane topology graph, searchable log, and 
 4. While typing, the last word of the search suggests matching local and remote branches: ↑/↓ highlight one, Enter shows that branch (`branch:name`), Alt+Enter (Option+Enter on macOS) jumps to its tip, and Escape closes the list. Enter without a highlight searches for the text as typed.
 5. Each branch in the sidebar has **Show only this branch** and **Jump to tip**. A jump selects the tip commit and scrolls it into view, loading older pages when needed; the search is cleared first, since it may hide the tip. **Jump to HEAD** in the header does the same for HEAD.
 6. Preference `historyFilter` can limit to the current branch (branch pages use portable `git log --skip`). An applied `branch:` search replaces that filter.
-7. Click a commit → detail pane lists files and loads the commit body; pick a file → side-by-side diff (blob size probed, text capped for Monaco).
+7. Click a commit → detail pane lists files and loads the commit body; pick a file → its diff, inline or side by side as in Changes ([Diff view](working-tree.md#diff-view); blob size probed, text capped for Monaco).
 8. Working-copy row / Changes mode shows the working tree. Going back to History selects the commit that was selected before when it is still listed (otherwise the newest), without loading its details again.
 
 ## Keyboard
@@ -48,7 +48,7 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 | Search box and branch suggestions | [`src/renderer/src/shell/HistorySearchBox.tsx`](../../src/renderer/src/shell/HistorySearchBox.tsx), [`src/renderer/src/logic/branch-suggest.ts`](../../src/renderer/src/logic/branch-suggest.ts) |
 | `branch:` parsing and matching | [`src/shared/branch-search.ts`](../../src/shared/branch-search.ts) |
 | Commit detail | [`src/renderer/src/features/commit-detail/CommitDetailPane.tsx`](../../src/renderer/src/features/commit-detail/CommitDetailPane.tsx) |
-| Diff viewer | [`src/renderer/src/features/diff/FileDiffViewer.tsx`](../../src/renderer/src/features/diff/FileDiffViewer.tsx) |
+| Diff viewer and Inline / Side by side switch | [`src/renderer/src/features/diff/FileDiffViewer.tsx`](../../src/renderer/src/features/diff/FileDiffViewer.tsx), [`src/renderer/src/features/diff/DiffViewSwitch.tsx`](../../src/renderer/src/features/diff/DiffViewSwitch.tsx) |
 | Lane layout | [`src/history-core/layout.ts`](../../src/history-core/layout.ts) |
 | History state, jumps | [`src/renderer/src/hooks/useHistory.ts`](../../src/renderer/src/hooks/useHistory.ts), [`src/renderer/src/state/HistoryProvider.tsx`](../../src/renderer/src/state/HistoryProvider.tsx) |
 | Load / detail / diff | [`src/git-worker/ops/history.ts`](../../src/git-worker/ops/history.ts) |
@@ -75,6 +75,8 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 - Parent index selects which parent to diff against for merges (`DiffRequest.parentIndex`).
 - Column widths for graph/date/author are preference-backed and resizable.
 - Detail dock is `bottom` or `right` via `AppPreferences.detailDock`.
+- Diffs follow `AppPreferences.diffView`, shared with Changes, in either dock.
+- The inspector never gets wider than its dock. A narrow header wraps: the commit's buttons move to a row of their own. Docked right, the file list narrows before the diff, which keeps room for its Inline / Side by side switch.
 - After routine mutations (commit, sync), history does a tip merge refresh; topology-changing ops (rebase, merge, checkout, delete branch) reload history fully.
 
 ## Diagram

@@ -7,7 +7,7 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 ## User flow
 
 1. Switch to **Changes** (or select the working-copy row).
-2. Browse staged / unstaged / untracked lists; open a file for staged or unstaged Monaco diff.
+2. Browse staged / unstaged / untracked lists; open a file for its staged or unstaged Monaco diff, inline or side by side ([Diff view](#diff-view)).
 3. Stage paths, write a message, Commit (optional Amend).
 4. Stash panel: stash (includes untracked), apply / pop / drop entries.
 5. Identity modal: set `user.name` / `user.email` at local or global scope.
@@ -16,6 +16,10 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 
 - The file list is one Tab stop. ↑ / ↓, PageUp / PageDown, Home and End move through the staged files and then the other changes (as far as their sections are expanded) and show each diff. Space checks or unchecks the active file for Stage, Unstage and Discard.
 - Tab leaves the read-only diff. F6 / Shift+F6 move between the sidebar, the changes and the rest of the window ([History graph](history-graph.md#keyboard)).
+
+## Diff view
+
+A file's diff shows its changes inline, in one file. **Side by side** in the bar above the diff shows the old and the new file next to each other instead, and **Inline** switches back; View → Toggle Side-by-Side Diff does the same. The choice applies to every diff, here and in the History inspector, and is saved as `AppPreferences.diffView` (`inline` by default). Side by side keeps both panes however narrow the diff is. A file with both staged and unstaged changes also has **Unstaged** / **Staged** in that bar.
 
 ## Live status
 
@@ -36,6 +40,7 @@ When the operating system refuses to watch more files — Linux's inotify limit 
 | Piece | File |
 |---|---|
 | Changes pane | [`src/renderer/src/features/changes/WorkingTreeDetailPane.tsx`](../../src/renderer/src/features/changes/WorkingTreeDetailPane.tsx) |
+| Diff viewer and Inline / Side by side switch | [`src/renderer/src/features/diff/FileDiffViewer.tsx`](../../src/renderer/src/features/diff/FileDiffViewer.tsx), [`src/renderer/src/features/diff/DiffViewSwitch.tsx`](../../src/renderer/src/features/diff/DiffViewSwitch.tsx) |
 | Status dots | [`src/renderer/src/components/ui/FileStatusDot.tsx`](../../src/renderer/src/components/ui/FileStatusDot.tsx), [`src/renderer/src/logic/file-status.ts`](../../src/renderer/src/logic/file-status.ts) |
 | Working-tree hook | [`src/renderer/src/hooks/useWorkingTree.ts`](../../src/renderer/src/hooks/useWorkingTree.ts) |
 | Identity modal | [`src/renderer/src/features/identity/IdentityModal.tsx`](../../src/renderer/src/features/identity/IdentityModal.tsx) |

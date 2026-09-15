@@ -792,6 +792,8 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
 
 .detail-fill {
   display: grid;
+  /* Never wider than the pane: a long commit header wraps instead of widening the inspector. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   flex: 1;
   min-height: 0;
@@ -802,9 +804,10 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   min-height: 0;
 }
 
+/* Docked right, the file list narrows before the diff, which keeps room for its Inline / Side by side switch. */
 .inspector-body {
   display: grid;
-  grid-template-columns: var(--inspector-files-width) 6px minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--inspector-files-width)) 6px minmax(200px, 1fr);
   min-height: 0;
   height: 100%;
 }
@@ -1234,30 +1237,44 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   padding: 8px 12px;
 }
 
+/* Wraps when narrow: the subject keeps a readable width, and the buttons move to a row of their own. */
 .commit-meta-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
   min-width: 0;
 }
 
 .commit-meta-subject {
   font-weight: var(--weight-semibold);
-  flex: 1;
+  flex: 1 1 160px;
   min-width: 0;
 }
 
 .commit-meta-bits {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: var(--text-sm);
-  max-width: 45%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.commit-meta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.commit-meta-actions button {
+  white-space: nowrap;
+}
+
 .commit-body-compact {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   margin: 6px 0 0;
   font-size: var(--text-sm);
   max-height: 4.5em;
@@ -1274,13 +1291,27 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   overflow: hidden;
 }
 
-.diff-side-tabs {
+/* Above each file diff: which side of the file to show (Changes) and the Inline / Side by side switch. */
+.diff-toolbar {
   display: flex;
-  gap: var(--space-2);
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
   align-items: center;
+  gap: var(--space-2);
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+.diff-toolbar-end {
+  margin-left: auto;
+}
+
+/* The switch meets the pane's clipped right edge, so its hints open to the left. */
+.diff-toolbar-end .has-hint[data-hint]:hover:not(:disabled)::after,
+.diff-toolbar-end .has-hint[data-hint]:focus-visible:not(:disabled)::after {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 .diff-editor-slot {

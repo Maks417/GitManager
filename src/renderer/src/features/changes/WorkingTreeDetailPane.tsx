@@ -17,10 +17,11 @@ import {
 } from 'lucide-react'
 import type { GitIdentity, StashEntry, StatusEntry } from '@shared/ipc'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
+import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { OperationBar } from '../../components/OperationBar'
 import { Splitter } from '../../components/Splitter'
-import { Button, FileStatusDot, RefPill } from '../../components/ui'
+import { Button, FileStatusDot, RefPill, SegmentedControl } from '../../components/ui'
 import type { DiffSide } from '../../hooks/selection'
 import { CONFIRM_DISCARD, confirmDropStash } from '../../lib/copy'
 import { toErrorMessage } from '../../lib/errors'
@@ -61,7 +62,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const { goHistory } = useWorkingTreeActions()
   const { openDialog } = useDialogActions()
   const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, runRemote } = useGitActions()
-  const { changesFilesWidth: filesWidth, setChangesFilesWidth, persistLayout } = useLayout()
+  const { changesFilesWidth: filesWidth, setChangesFilesWidth, persistLayout, diffView } = useLayout()
   const confirm = useConfirm()
   const canAmend = Boolean(headSha)
 
@@ -620,22 +621,34 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
         title="Resize changes panel"
       />
       <div className="diff-host changes-diff">
-        {bothSides && (
-          <div className="diff-side-tabs">
-            <span className="muted">Show</span>
-            <button className={diffSide === 'unstaged' ? 'primary' : ''} onClick={() => setDiffSide('unstaged')}>
-              Unstaged
-            </button>
-            <button className={diffSide === 'staged' ? 'primary' : ''} onClick={() => setDiffSide('staged')}>
-              Staged
-            </button>
+        <div className="diff-toolbar">
+          {bothSides && (
+            <>
+              <span className="muted">Show</span>
+              <SegmentedControl
+                ariaLabel="Diff side"
+                value={diffSide}
+                onChange={setDiffSide}
+                options={[
+                  { value: 'unstaged', label: 'Unstaged', hint: 'Show the unstaged changes' },
+                  { value: 'staged', label: 'Staged', hint: 'Show the staged changes' }
+                ]}
+              />
+            </>
+          )}
+          <div className="diff-toolbar-end">
+            <DiffViewSwitch />
           </div>
-        )}
+        </div>
         <div className="diff-editor-slot">
           {diffLoading ? (
             <div className="empty-state muted">Loading diff…</div>
           ) : diff ? (
-            <FileDiffViewer diff={diff} editorKey={`${diff.path}:${diffSide}`} sideBySide />
+            <FileDiffViewer
+              diff={diff}
+              editorKey={`${diff.path}:${diffSide}`}
+              sideBySide={diffView === 'side-by-side'}
+            />
           ) : (
             <div className="empty-state muted">Select a file to view its changes</div>
           )}

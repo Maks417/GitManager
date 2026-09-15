@@ -54,6 +54,12 @@ describe('preferences schema', () => {
       liveStatusWatch: true
     })
   })
+
+  it('shows diffs inline unless side by side was chosen', () => {
+    expect(AppPreferencesSchema.parse({}).diffView).toBe('inline')
+    expect(AppPreferencesSchema.parse({ diffView: 'split' }).diffView).toBe('inline')
+    expect(AppPreferencesSchema.parse({ diffView: 'side-by-side' }).diffView).toBe('side-by-side')
+  })
 })
 
 describe('token storage', () => {

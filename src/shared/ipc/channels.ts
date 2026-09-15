@@ -16,6 +16,7 @@ export const MenuChannels = {
   viewHistory: 'menu:view-history',
   viewChanges: 'menu:view-changes',
   toggleDock: 'menu:toggle-dock',
+  toggleDiffView: 'menu:toggle-diff-view',
   toggleSidebar: 'menu:toggle-sidebar'
 } as const
 

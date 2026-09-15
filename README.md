@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>History-first Git for the desktop.</strong><br />
-  Search the commit graph, review side-by-side diffs, resolve conflicts,<br />
+  Search the commit graph, review inline or side-by-side diffs, resolve conflicts,<br />
   and clone from GitHub, GitLab or Bitbucket. For Windows and macOS.
 </p>
 
@@ -43,9 +43,9 @@
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/changes-dark.png" />
         <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/changes-light.png" />
-        <img src="docs/assets/screenshots/changes-dark.png" alt="Changes view with staged, changed and new files, a side-by-side diff, stashes and the commit form" />
+        <img src="docs/assets/screenshots/changes-dark.png" alt="Changes view with staged, changed and new files, an inline diff, stashes and the commit form" />
       </picture>
-      <p><strong>Working tree</strong><br />Stage, unstage, discard, stash and commit, with a side-by-side diff of each change.</p>
+      <p><strong>Working tree</strong><br />Stage, unstage, discard, stash and commit, with an inline or side-by-side diff of each change.</p>
     </td>
     <td width="50%" valign="top">
       <picture>
@@ -60,7 +60,7 @@
 
 | Feature | What it does |
 |---|---|
-| **History-first graph** | Large commit topology with search, branch filter, and side-by-side diffs |
+| **History-first graph** | Large commit topology with search, branch filter, and inline or side-by-side diffs |
 | **Working tree** | Stage, unstage, discard, and commit with a clear Changes view |
 | **Branches & sync** | Create/switch branches, fetch, pull, push against remotes |
 | **Merge editor** | VS Code–style conflict resolution with Monaco |
@@ -213,7 +213,7 @@ flowchart LR
   Upd -->|electron-updater| GHReleases[(GitHub Releases)]
 ```
 
-Opening a repository lands on **History**. The graph uses most of the workspace; selecting a commit shows files and a side-by-side Monaco diff.
+Opening a repository lands on **History**. The graph uses most of the workspace; selecting a commit shows files and a Monaco diff, inline or side by side.
 
 Full write-up: [`docs/architecture.md`](docs/architecture.md).
 

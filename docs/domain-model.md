@@ -34,7 +34,7 @@
 | GitIdentity | Effective `user.name` / `user.email` | values + `nameSource` / `emailSource` scopes |
 | GitProbeResult | Startup Git CLI availability | `available`, `version`, `message` |
 | AppInfo | About-dialog metadata | `name`, `version`, `architecture`, `homepage` |
-| AppPreferences | UI layout and behavior prefs | theme, dock, column widths, filters, live watch, etc. |
+| AppPreferences | UI layout and behavior prefs | theme, dock, diff view, column widths, filters, live watch, etc. |
 | RepoWatchEvent | Live FS watch notification | `repoPath`, `kind` (`worktree` \| `git-meta`) |
 | RepoWatchState | How the watched repository is kept up to date | `repoPath`, `mode` (`live` \| `polling`), `reason` (why it is polled) |
 | RemoteOpRequest | Start a fetch, pull or push | `repoPath`, `opId` (chosen by the renderer) |

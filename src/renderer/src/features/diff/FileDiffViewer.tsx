@@ -9,12 +9,15 @@ import { disposeWhenDiffSettled, nextContentVersion } from '../../logic/monaco-l
 interface Props {
   diff: DiffResult
   editorKey?: string
-  /** When false, show unified inline diff (better for narrow/bottom inspectors). */
-  sideBySide?: boolean
+  /** Old and new text in two panes instead of one inline diff. */
+  sideBySide: boolean
 }
 
 const DIFF_OPTIONS: monaco.editor.IStandaloneDiffEditorConstructionOptions = {
   readOnly: true,
+  // Side by side is the user's choice (inline is the default), so a narrow editor keeps both panes instead of
+  // Monaco switching to inline below its 900px breakpoint.
+  useInlineViewWhenSpaceIsLimited: false,
   // Revert / stage hunk actions cannot apply to a read-only diff. The gutter menu also re-reads its
   // context keys on a debounced change event that outlives the editor, throwing after disposal.
   renderGutterMenu: false,
@@ -33,7 +36,7 @@ const DIFF_OPTIONS: monaco.editor.IStandaloneDiffEditorConstructionOptions = {
 }
 
 /** Shared Monaco diff viewer — uses locally bundled Monaco (see setupMonaco). */
-export function FileDiffViewer({ diff, editorKey, sideBySide = true }: Props): React.JSX.Element {
+export function FileDiffViewer({ diff, editorKey, sideBySide }: Props): React.JSX.Element {
   // New text mounts a new editor instead of editing its models: each editor then computes exactly one
   // diff, which is what lets teardown wait for it (see disposeWhenDiffSettled).
   const [shown, setShown] = useState(() => nextContentVersion(null, diff.oldText, diff.newText))

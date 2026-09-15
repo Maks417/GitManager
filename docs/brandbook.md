@@ -123,8 +123,8 @@ Layout prefs remain: `--sidebar-width`, `--inspector-height`, `--detail-width`, 
 | Toolbar | History, Changes, Resolve conflicts, Search, Sync (+ Fetch/Pull/Push), theme |
 | Welcome | Add local, Clone, Connect accounts |
 | History | Jump to HEAD |
-| Changes | Stage / Unstage / Discard, Commit/Amend, Stash Apply/Pop/Drop, rebase Continue/Abort |
-| Inspector | Copy SHA, Merge, Rebase, dock position |
+| Changes | Stage / Unstage / Discard, Commit/Amend, Stash Apply/Pop/Drop, rebase Continue/Abort, Unstaged/Staged, diff view |
+| Inspector | Copy SHA, Merge, Rebase, dock position, diff view |
 | Sidebar | Collapse, New branch, branch Merge/Rebase/Delete |
 
 ## Theme
@@ -145,7 +145,7 @@ Primitives in [`src/renderer/src/components/ui/`](../src/renderer/src/components
 | `Banner` | Error / warning / info |
 | `Badge` / `RefPill` | Status and refs |
 | `FileStatusDot` | Git status of a file in a list ([File status](#file-status)) |
-| `SegmentedControl` | History/Changes, theme |
+| `SegmentedControl` | History/Changes, theme, Unstaged/Staged, diff view (Inline / Side by side) |
 
 ## Motion
 

@@ -1,5 +1,6 @@
 import type React from 'react'
 import { Copy, GitBranch, GitMerge } from 'lucide-react'
+import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { Splitter } from '../../components/Splitter'
 import { Button, FileStatusDot } from '../../components/ui'
@@ -18,11 +19,9 @@ export function CommitDetailPane(): React.JSX.Element {
   const { busy } = useAppStatus()
   const { detail, selectedFile, diff, diffLoading } = useSelection()
   const { setSelectedFile } = useSelectionActions()
-  const { detailDock, inspectorFilesWidth: filesWidth, setInspectorFilesWidth, persistLayout } = useLayout()
+  const { diffView, inspectorFilesWidth: filesWidth, setInspectorFilesWidth, persistLayout } = useLayout()
   const { runMergeOrRebase } = useGitActions()
   const confirm = useConfirm()
-  // Side-by-side needs the width of a right-docked inspector.
-  const sideBySide = detailDock === 'right'
 
   if (!detail) {
     return (
@@ -70,43 +69,45 @@ export function CommitDetailPane(): React.JSX.Element {
             {' · '}
             <span title={commit.authoredAt}>{formatRelativeDate(commit.authoredAt)}</span>
           </span>
-          <Button
-            variant="ghost"
-            icon={<Copy size={14} strokeWidth={1.75} />}
-            hint="Copy full SHA"
-            title="Copy full SHA"
-            onClick={() => void navigator.clipboard.writeText(commit.sha)}
-          >
-            Copy SHA
-          </Button>
-          <Button
-            variant="ghost"
-            icon={<GitMerge size={14} strokeWidth={1.75} />}
-            hint="Merge this commit into the current branch"
-            title="Merge this commit into the current branch"
-            disabled={busy}
-            onClick={() =>
-              void confirm(confirmMerge(commit.shortSha)).then((ok) => {
-                if (ok) void runMergeOrRebase('merge', commit.sha)
-              })
-            }
-          >
-            Merge into current…
-          </Button>
-          <Button
-            variant="ghost"
-            icon={<GitBranch size={14} strokeWidth={1.75} />}
-            hint="Rebase the current branch onto this commit"
-            title="Rebase the current branch onto this commit"
-            disabled={busy}
-            onClick={() =>
-              void confirm(confirmRebase(commit.shortSha)).then((ok) => {
-                if (ok) void runMergeOrRebase('rebase', commit.sha)
-              })
-            }
-          >
-            Rebase onto…
-          </Button>
+          <div className="commit-meta-actions">
+            <Button
+              variant="ghost"
+              icon={<Copy size={14} strokeWidth={1.75} />}
+              hint="Copy full SHA"
+              title="Copy full SHA"
+              onClick={() => void navigator.clipboard.writeText(commit.sha)}
+            >
+              Copy SHA
+            </Button>
+            <Button
+              variant="ghost"
+              icon={<GitMerge size={14} strokeWidth={1.75} />}
+              hint="Merge this commit into the current branch"
+              title="Merge this commit into the current branch"
+              disabled={busy}
+              onClick={() =>
+                void confirm(confirmMerge(commit.shortSha)).then((ok) => {
+                  if (ok) void runMergeOrRebase('merge', commit.sha)
+                })
+              }
+            >
+              Merge into current…
+            </Button>
+            <Button
+              variant="ghost"
+              icon={<GitBranch size={14} strokeWidth={1.75} />}
+              hint="Rebase the current branch onto this commit"
+              title="Rebase the current branch onto this commit"
+              disabled={busy}
+              onClick={() =>
+                void confirm(confirmRebase(commit.shortSha)).then((ok) => {
+                  if (ok) void runMergeOrRebase('rebase', commit.sha)
+                })
+              }
+            >
+              Rebase onto…
+            </Button>
+          </div>
         </div>
         {commit.body ? (
           <pre className="commit-body-compact muted">{commit.body}</pre>
@@ -155,6 +156,11 @@ export function CommitDetailPane(): React.JSX.Element {
           title="Resize file list"
         />
         <div className="diff-host">
+          <div className="diff-toolbar">
+            <div className="diff-toolbar-end">
+              <DiffViewSwitch />
+            </div>
+          </div>
           <div className="diff-editor-slot">
             {diffLoading ? (
               <div className="empty-state muted">Loading diff…</div>
@@ -162,7 +168,7 @@ export function CommitDetailPane(): React.JSX.Element {
               <FileDiffViewer
                 diff={diff}
                 editorKey={`${commit.sha}:${diff.path}`}
-                sideBySide={sideBySide}
+                sideBySide={diffView === 'side-by-side'}
               />
             ) : (
               <div className="empty-state muted">Select a file</div>
