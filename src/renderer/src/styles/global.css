@@ -66,6 +66,11 @@
   --danger: #e35d5d;
   --warning: #d4a017;
   --info: #5b8fa8;
+  --status-added: var(--success);
+  --status-modified: var(--warning);
+  --status-deleted: var(--danger);
+  --status-renamed: var(--info);
+  --status-conflicted: var(--danger);
   --row-hover: #24201c;
   --row-selected: rgba(232, 93, 4, 0.18);
   --focus-ring: #e85d04;
@@ -107,6 +112,12 @@
   --danger: #c94444;
   --warning: #b8860b;
   --info: #3d6f88;
+  --status-added: var(--success);
+  /* --warning is under 3:1 against panels and selected rows. */
+  --status-modified: #9a6700;
+  --status-deleted: var(--danger);
+  --status-renamed: var(--info);
+  --status-conflicted: var(--danger);
   --row-hover: #e4e8ee;
   --row-selected: rgba(232, 93, 4, 0.14);
   --focus-ring: #e85d04;
@@ -1839,10 +1850,37 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   font-weight: var(--weight-semibold);
 }
 
-.status-code {
+.file-status-dot {
   flex-shrink: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-modified);
+}
+
+.file-status-dot.added,
+.file-status-dot.untracked {
+  background: var(--status-added);
+}
+
+.file-status-dot.deleted {
+  background: var(--status-deleted);
+}
+
+.file-status-dot.renamed,
+.file-status-dot.copied {
+  background: var(--status-renamed);
+}
+
+.file-status-dot.unmerged {
+  background: var(--status-conflicted);
+}
+
+@media (forced-colors: active) {
+  /* Forced colours replace backgrounds, which would erase the dots. */
+  .file-status-dot {
+    forced-color-adjust: none;
+  }
 }
 
 .scope-fieldset {

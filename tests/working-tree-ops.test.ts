@@ -89,3 +89,14 @@ describe('status of new files', () => {
     ])
   }, 30000)
 })
+
+describe('status of renamed files', () => {
+  it('reports the path a staged rename came from', async () => {
+    const dir = await initRepo(tempDir('gm-renamed-'))
+    await git(dir, 'mv', 'README.md', 'GUIDE.md')
+
+    const status = await getStatus(dir)
+    expect(status).toHaveLength(1)
+    expect(status[0]).toMatchObject({ path: 'GUIDE.md', oldPath: 'README.md', indexStatus: 'R', staged: true })
+  }, 30000)
+})

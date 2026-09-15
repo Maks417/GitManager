@@ -65,6 +65,23 @@ Resolved via CSS variables on `[data-theme="dark"]` and `[data-theme="light"]` i
 
 `--lane-1` … `--lane-8`: ember, sage, amber, coral, plum, teal, rose, olive — used by the history graph and ref decoration.
 
+### File status
+
+File lists (Changes and a commit's files) mark each file with an 8px dot, `FileStatusDot`, instead of Git's status letters. The status in words is the dot's tooltip and its screen-reader name; conflicts also keep their `conflict` pill.
+
+| Token | Status | Dark | Light |
+|---|---|---|---|
+| `--status-added` | Added, untracked | `--success` | `--success` |
+| `--status-modified` | Modified, type changed | `--warning` | `#9A6700` |
+| `--status-deleted` | Deleted | `--danger` | `--danger` |
+| `--status-renamed` | Renamed, copied | `--info` | `--info` |
+| `--status-conflicted` | Conflicted | `--danger` | `--danger` |
+
+- Modified is amber, never ember: ember marks selected and checked rows, where an ember dot would disappear.
+- Each dot keeps at least 3:1 contrast against panel, hover, selected and checked rows in both themes. Light `--warning` does not, hence its own value.
+- In Changes a row shows the change of its own section: the index side under Staged, the work-tree side under Changes.
+- Windows contrast themes keep the dot colours (`forced-color-adjust: none`); forced colours would otherwise erase them.
+
 ## Typography
 
 Bundled **IBM Plex Sans** + **IBM Plex Mono** via `@fontsource`.
@@ -127,6 +144,7 @@ Primitives in [`src/renderer/src/components/ui/`](../src/renderer/src/components
 | `Modal` | Backdrop + chrome |
 | `Banner` | Error / warning / info |
 | `Badge` / `RefPill` | Status and refs |
+| `FileStatusDot` | Git status of a file in a list ([File status](#file-status)) |
 | `SegmentedControl` | History/Changes, theme |
 
 ## Motion

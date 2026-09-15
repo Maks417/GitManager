@@ -67,6 +67,7 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 - Lane layout frees every lane that ends at a commit, so the graph is only as wide as the number of branches open at a row. Each `GraphNode` lists the lines passing through, joining at, and leaving its row.
 - Stash entries are not shown under All branches (`--exclude=refs/stash`).
 - The first commit lists its files; renames show their old path and are diffed against it.
+- Each file has a status dot coloured as in Changes ([Brandbook](../brandbook.md#file-status)); hover it for the status and, for a rename or copy, the path it came from.
 - When history was rewritten (amend, rebase, reset, pruned branches), a tip refresh replaces the list instead of splicing new commits above stale ones.
 - With **Current branch**, switching branches reloads the list once. Each list belongs to its repository and filter: results that arrive after a switch are dropped, and a list that is already loading is not requested again.
 - The branches a `branch:` search matches are passed to `git log --stdin` by full ref name, so a pattern that matches thousands of branches stays within command-line limits, and a local branch named like a remote one (`origin/x`) is not confused with it. A remote's `HEAD` pointer is never matched.

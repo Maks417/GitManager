@@ -45,11 +45,13 @@ function parseStatus(out: string): StatusEntry[] {
       const parts = line.split(' ')
       const xy = parts[1]
       const path = parts.slice(line.startsWith('2 ') ? 9 : 8).join(' ')
-      if (line.startsWith('2 ')) i++ // skip the original-path record
+      // A rename or copy record is followed by the path it came from.
+      const oldPath = line.startsWith('2 ') ? records[++i] : undefined
       const indexStatus = xy[0]
       const workTreeStatus = xy[1]
       entries.push({
         path,
+        ...(oldPath === undefined ? {} : { oldPath }),
         indexStatus,
         workTreeStatus,
         staged: indexStatus !== '.',

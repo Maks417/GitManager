@@ -36,6 +36,7 @@ When the operating system refuses to watch more files — Linux's inotify limit 
 | Piece | File |
 |---|---|
 | Changes pane | [`src/renderer/src/features/changes/WorkingTreeDetailPane.tsx`](../../src/renderer/src/features/changes/WorkingTreeDetailPane.tsx) |
+| Status dots | [`src/renderer/src/components/ui/FileStatusDot.tsx`](../../src/renderer/src/components/ui/FileStatusDot.tsx), [`src/renderer/src/logic/file-status.ts`](../../src/renderer/src/logic/file-status.ts) |
 | Working-tree hook | [`src/renderer/src/hooks/useWorkingTree.ts`](../../src/renderer/src/hooks/useWorkingTree.ts) |
 | Identity modal | [`src/renderer/src/features/identity/IdentityModal.tsx`](../../src/renderer/src/features/identity/IdentityModal.tsx) |
 | Status / stage / commit | [`src/git-worker/ops/status.ts`](../../src/git-worker/ops/status.ts) |
@@ -54,6 +55,8 @@ When the operating system refuses to watch more files — Linux's inotify limit 
 ## Edge cases & rules
 
 - New files are listed one by one, also inside new folders (`git status --untracked-files=all`). With more than 5,000 new files — usually a dependency or build folder that is not ignored — each new folder is listed as one `folder/` entry instead (`--untracked-files=normal`).
+- Each file has a status dot for its section, coloured as in the [Brandbook](../brandbook.md#file-status): Staged shows the index change and Changes the work-tree change, so a file added and then edited again is green under Staged and amber under Changes. Hover a dot for the status; a rename or copy also names the path it came from.
+- A file moved outside Git is listed as a deleted file plus a new one until both are staged; only then does Git report a rename.
 - Discard restores tracked files from the index and moves untracked files and folders to the Trash; conflicted paths are refused. Discarding and dropping a stash ask first, in an in-app dialog.
 - Staging, unstaging and discarding many paths is split into batches that fit on one command line.
 - Commit + push: when the push fails, the commit is kept, the form is cleared, and the error says the push failed.

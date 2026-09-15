@@ -20,10 +20,11 @@ import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { OperationBar } from '../../components/OperationBar'
 import { Splitter } from '../../components/Splitter'
-import { Button, RefPill } from '../../components/ui'
+import { Button, FileStatusDot, RefPill } from '../../components/ui'
 import type { DiffSide } from '../../hooks/selection'
 import { CONFIRM_DISCARD, confirmDropStash } from '../../lib/copy'
 import { toErrorMessage } from '../../lib/errors'
+import { statusKindFor } from '../../logic/file-status'
 import { nextListIndex } from '../../logic/list-nav'
 import { useAppStatusActions } from '../../state/AppStatusProvider'
 import { useConfirm } from '../../state/ConfirmProvider'
@@ -209,10 +210,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
             onClick={(e) => e.stopPropagation()}
             title="Check to include in Stage / Unstage / Discard"
           />
-          <code className="status-code">
-            {s.indexStatus}
-            {s.workTreeStatus}
-          </code>
+          <FileStatusDot kind={statusKindFor(s, side)} oldPath={s.oldPath} />
           <span className="cell-ellipsis">{s.path}</span>
           {s.conflicted && <RefPill tone="danger">conflict</RefPill>}
         </div>

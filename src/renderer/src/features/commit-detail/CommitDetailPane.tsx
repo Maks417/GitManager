@@ -2,7 +2,7 @@ import type React from 'react'
 import { Copy, GitBranch, GitMerge } from 'lucide-react'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { Splitter } from '../../components/Splitter'
-import { Button } from '../../components/ui'
+import { Button, FileStatusDot } from '../../components/ui'
 import { confirmMerge, confirmRebase } from '../../lib/copy'
 import { formatRelativeDate } from '../../lib/format'
 import { nextListIndex } from '../../logic/list-nav'
@@ -132,10 +132,10 @@ export function CommitDetailPane(): React.JSX.Element {
               onClick={() => setSelectedFile(f)}
               title={f.path}
             >
-              <span className="muted" style={{ marginRight: 6 }}>
-                {f.status[0]?.toUpperCase()}
-              </span>
-              <span className="cell-ellipsis">{f.path}</span>
+              <div className="row-inline">
+                <FileStatusDot kind={f.status} oldPath={f.oldPath} />
+                <span className="cell-ellipsis">{f.path}</span>
+              </div>
             </li>
           ))}
           {files.length === 0 && (

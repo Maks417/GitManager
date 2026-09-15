@@ -13,7 +13,7 @@
 | FileChange | File touched by a commit | `path`, `status`, optional stats / `oldPath` |
 | CommitDetail | Commit + changed files | `commit`, `files` |
 | DiffResult | Text for Monaco (or binary flag) | `path`, `oldText`, `newText`, `binary`, `language?` |
-| StatusEntry | Working-tree / index status line | `path`, index/worktree letters, `staged`, `unstaged`, `untracked`, `conflicted` |
+| StatusEntry | Working-tree / index status line | `path`, index/worktree letters, `staged`, `unstaged`, `untracked`, `conflicted`, optional `oldPath` (rename source) |
 | BranchInfo | Local branch + upstream divergence | `name`, `current`, `upstream`, `ahead`, `behind`, `sha` (tip; null before the first commit) |
 | RemoteBranchInfo | Remote-tracking branch | `name`, `remote`, `shortName`, `sha` |
 | StashEntry | Stash reflog entry | `index`, `message`, `reflogSelector` |

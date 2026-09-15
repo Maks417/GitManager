@@ -167,7 +167,9 @@ export const StatusEntrySchema = z.object({
   staged: z.boolean(),
   unstaged: z.boolean(),
   untracked: z.boolean(),
-  conflicted: z.boolean()
+  conflicted: z.boolean(),
+  /** Where a renamed or copied path came from. */
+  oldPath: z.string().optional()
 })
 export type StatusEntry = z.infer<typeof StatusEntrySchema>
 
