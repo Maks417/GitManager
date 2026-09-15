@@ -2,16 +2,38 @@ import type { StatusEntry } from '@shared/ipc'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
 import { gitOk, resolveHeadSha, runGit } from './shared'
 
+/**
+ * More new files than this and each new folder is listed as one `folder/` entry instead, as `git status` shows
+ * them by default: usually a dependency or build folder that nobody ignored, too big to list file by file.
+ */
+export const UNTRACKED_FILES_LIMIT = 5000
+
+/** Status output this long is not read further: it can only be a flood of new files. */
+const MAX_LISTED_STATUS_CHARS = 20_000_000
+
+/**
+ * Staged, changed, conflicted and new paths. New files are listed one by one, also inside new folders, unless
+ * there are more than `untrackedLimit` of them. Stage and Discard accept a whole `folder/` entry too.
+ */
 export async function getStatus(
   repoPath: string,
-  untracked: 'normal' | 'all' = 'normal'
+  { untrackedLimit = UNTRACKED_FILES_LIMIT }: { untrackedLimit?: number } = {}
 ): Promise<StatusEntry[]> {
-  const out = await gitOk(repoPath, [
-    'status',
-    '--porcelain=v2',
-    '-z',
-    `--untracked-files=${untracked}`
-  ])
+  const args = ['status', '--porcelain=v2', '-z']
+  const listed = await runGit({
+    cwd: repoPath,
+    args: [...args, '--untracked-files=all'],
+    maxStdoutChars: MAX_LISTED_STATUS_CHARS
+  })
+  if (listed.code !== 0) throw new Error(listed.stderr.trim() || `git status failed (${listed.code})`)
+  if (listed.stdout.length < MAX_LISTED_STATUS_CHARS) {
+    const entries = parseStatus(listed.stdout)
+    if (entries.filter((entry) => entry.untracked).length <= untrackedLimit) return entries
+  }
+  return parseStatus(await gitOk(repoPath, [...args, '--untracked-files=normal']))
+}
+
+function parseStatus(out: string): StatusEntry[] {
   // -z: records are NUL-terminated with raw paths; a rename record is followed by its original path.
   const records = out.split('\0')
   const entries: StatusEntry[] = []

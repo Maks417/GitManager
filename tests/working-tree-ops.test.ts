@@ -47,10 +47,45 @@ describe('bulk staging', () => {
     expect(names.join(' ').length).toBeGreaterThan(40_000)
 
     await stagePaths(dir, names)
-    expect((await getStatus(dir, 'all')).filter((s) => s.staged)).toHaveLength(1200)
+    expect((await getStatus(dir)).filter((s) => s.staged)).toHaveLength(1200)
 
     await unstagePaths(dir, names)
-    expect((await getStatus(dir, 'all')).filter((s) => s.staged)).toHaveLength(0)
+    expect((await getStatus(dir)).filter((s) => s.staged)).toHaveLength(0)
     expect((await git(dir, 'status', '--porcelain')).length).toBeGreaterThan(0)
   }, 60000)
+})
+
+describe('status of new files', () => {
+  it('lists new files one by one, also inside new folders', async () => {
+    const dir = await initRepo(tempDir('gm-untracked-'))
+    writeFileSync(join(dir, 'README.md'), '# repo\nedited\n')
+    mkdirSync(join(dir, 'docs', 'shots'), { recursive: true })
+    writeFileSync(join(dir, 'docs', 'shots', 'dark.png'), 'dark')
+    writeFileSync(join(dir, 'docs', 'shots', 'light.png'), 'light')
+
+    const status = await getStatus(dir)
+    expect(status.map((s) => [s.path, s.untracked])).toEqual([
+      ['README.md', false],
+      ['docs/shots/dark.png', true],
+      ['docs/shots/light.png', true]
+    ])
+  }, 30000)
+
+  it('lists each new folder as one entry when there are too many new files', async () => {
+    const dir = await initRepo(tempDir('gm-untracked-limit-'))
+    writeFileSync(join(dir, 'README.md'), '# repo\nedited\n')
+    writeFileSync(join(dir, 'new.txt'), 'new\n')
+    mkdirSync(join(dir, 'vendor', 'lib'), { recursive: true })
+    for (const name of ['a.js', 'b.js', 'c.js']) writeFileSync(join(dir, 'vendor', 'lib', name), name)
+
+    expect((await getStatus(dir, { untrackedLimit: 3 })).map((s) => s.path)).toEqual(['README.md', 'new.txt', 'vendor/'])
+    // Only new files count towards the limit, not changed tracked ones.
+    expect((await getStatus(dir, { untrackedLimit: 4 })).map((s) => s.path)).toEqual([
+      'README.md',
+      'new.txt',
+      'vendor/lib/a.js',
+      'vendor/lib/b.js',
+      'vendor/lib/c.js'
+    ])
+  }, 30000)
 })

@@ -293,8 +293,6 @@ export const AppPreferencesSchema = z.object({
   historyGraphColWidth: sizePref(80, 560, LAYOUT_DEFAULTS.historyGraphColWidth),
   historyDateColWidth: sizePref(72, 220, LAYOUT_DEFAULTS.historyDateColWidth),
   historyAuthorColWidth: sizePref(100, 360, LAYOUT_DEFAULTS.historyAuthorColWidth),
-  /** Prefer `normal` for large trees; `all` lists every untracked path recursively. */
-  statusUntracked: z.enum(['normal', 'all']).default('normal').catch('normal'),
   /** Watch the working tree and refresh status when files change (Windows + macOS). */
   liveStatusWatch: z.boolean().default(true).catch(true),
   externalEditor: z.string().nullable().default(null).catch(null),

@@ -1,12 +1,13 @@
 <p align="center">
-  <img src="build/icon.svg" alt="Git Manager" width="96" height="96" />
+  <img src="build/icon.svg" alt="" width="96" height="96" />
 </p>
 
 <h1 align="center">Git Manager</h1>
 
 <p align="center">
-  Cross-platform Git desktop client with a history-first UI,<br />
-  host integrations, merge editor, and signed auto-updates.
+  <strong>History-first Git for the desktop.</strong><br />
+  Search the commit graph, review side-by-side diffs, resolve conflicts,<br />
+  and clone from GitHub, GitLab or Bitbucket. For Windows and macOS.
 </p>
 
 <p align="center">
@@ -16,11 +17,48 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-E85D04?labelColor=1C1A17" alt="License" /></a>
 </p>
 
----
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#connect-host-accounts">Host accounts</a> ·
+  <a href="#search-history">Search</a> ·
+  <a href="#keyboard">Keyboard</a> ·
+  <a href="#build-from-source">Build</a> ·
+  <a href="docs/index.md">Docs</a>
+</p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/history-dark.png" />
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/history-light.png" />
+  <img src="docs/assets/screenshots/history-dark.png" alt="Git Manager showing the commit graph of a repository, with the selected commit's changed files and diff in the inspector" />
+</picture>
+
+<p align="center"><sub>The commit graph across all branches. Selecting a commit shows its files and diff in the inspector.</sub></p>
 
 ## Features
 
-| | |
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/changes-dark.png" />
+        <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/changes-light.png" />
+        <img src="docs/assets/screenshots/changes-dark.png" alt="Changes view with staged, changed and new files, a side-by-side diff, stashes and the commit form" />
+      </picture>
+      <p><strong>Working tree</strong><br />Stage, unstage, discard, stash and commit, with a side-by-side diff of each change.</p>
+    </td>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/merge-editor-dark.png" />
+        <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/merge-editor-light.png" />
+        <img src="docs/assets/screenshots/merge-editor-dark.png" alt="Merge editor with ours, the result and theirs side by side for a conflicted file" />
+      </picture>
+      <p><strong>Merge editor</strong><br />Resolve conflicts region by region, with ours, the result and theirs side by side.</p>
+    </td>
+  </tr>
+</table>
+
+| Feature | What it does |
 |---|---|
 | **History-first graph** | Large commit topology with search, branch filter, and side-by-side diffs |
 | **Working tree** | Stage, unstage, discard, and commit with a clear Changes view |
@@ -31,16 +69,23 @@
 | **Clone** | HTTPS or SSH from URL or linked host listings, with progress and cancel |
 | **Auto-updates** | Signed updates from [GitHub Releases](https://github.com/Maks417/GitManager/releases) |
 
-## Requirements
+## Install
+
+Download the latest build from **[Releases](https://github.com/Maks417/GitManager/releases)**:
+
+| Platform | Download |
+|---|---|
+| **Windows** (x64, Arm64) | Installer (`.exe`) |
+| **macOS** (Intel, Apple silicon) | Disk image (`.dmg`) or `.zip` |
+
+Once installed, the app updates itself from the same releases.
+
+### Requirements
 
 - **Windows** or **macOS**
 - **System Git** on `PATH`, or set `GIT_MANAGER_GIT_PATH` to a Git binary
 
 The app probes for Git at startup and guides you to install it if missing.
-
-## Install
-
-Download the latest build from **[Releases](https://github.com/Maks417/GitManager/releases)**.
 
 ## Connect host accounts
 
@@ -75,7 +120,7 @@ Type in the search box above the history and press Enter. Search runs in Git acr
 | `branch:feature/*` | The history of every branch the pattern matches (`*` and `?` are wildcards) |
 | `branch:main fix` | A branch filter combined with a message search |
 
-While you type, matching branches are suggested: ↑/↓ to pick one, Enter to show that branch, Alt+Enter (Option+Enter on macOS) to jump to its tip. Each branch in the sidebar also has **Show only this branch** and **Jump to tip**.
+While you type, matching branches are suggested: <kbd>↑</kbd> / <kbd>↓</kbd> to pick one, <kbd>Enter</kbd> to show that branch, <kbd>Alt</kbd>+<kbd>Enter</kbd> (<kbd>Option</kbd>+<kbd>Enter</kbd> on macOS) to jump to its tip. Each branch in the sidebar also has **Show only this branch** and **Jump to tip**.
 
 More detail: [`docs/features/history-graph.md`](docs/features/history-graph.md).
 
@@ -83,15 +128,28 @@ More detail: [`docs/features/history-graph.md`](docs/features/history-graph.md).
 
 | Key | Does |
 |---|---|
-| F6 / Shift+F6 | Move between the sidebar, history or changes, the inspector, and the search box |
-| ↑ / ↓, PageUp / PageDown, Home / End | Move through commits, changed files, repositories and branches |
-| Enter | Commit list: go to the commit's files. Sidebar: open the repository or check out the branch |
-| Escape | Commit files: back to the commit list. Menus and suggestions: close them |
-| Space | Changes: check or uncheck the file |
-| Tab | Leave a read-only diff |
-| Arrow keys on a divider or column edge | Resize it (Shift: bigger steps; Home / End: smallest / largest) |
+| <kbd>F6</kbd> / <kbd>Shift</kbd>+<kbd>F6</kbd> | Move between the sidebar, history or changes, the inspector, and the search box |
+| <kbd>↑</kbd> / <kbd>↓</kbd>, <kbd>PageUp</kbd> / <kbd>PageDown</kbd>, <kbd>Home</kbd> / <kbd>End</kbd> | Move through commits, changed files, repositories and branches |
+| <kbd>Enter</kbd> | Commit list: go to the commit's files. Sidebar: open the repository or check out the branch |
+| <kbd>Esc</kbd> | Commit files: back to the commit list. Menus and suggestions: close them |
+| <kbd>Space</kbd> | Changes: check or uncheck the file |
+| <kbd>Tab</kbd> | Leave a read-only diff |
+| Arrow keys on a divider or column edge | Resize it (<kbd>Shift</kbd>: bigger steps; <kbd>Home</kbd> / <kbd>End</kbd>: smallest / largest) |
 
-## Develop
+Menu shortcuts use <kbd>Ctrl</kbd> on Windows and <kbd>⌘</kbd> on macOS:
+
+| Shortcut | Does |
+|---|---|
+| <kbd>Ctrl</kbd>+<kbd>1</kbd> / <kbd>Ctrl</kbd>+<kbd>2</kbd> | Show History / Changes |
+| <kbd>Ctrl</kbd>+<kbd>F</kbd> | Focus the history search |
+| <kbd>Ctrl</kbd>+<kbd>B</kbd> | Show or hide the sidebar |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | Dock the inspector at the bottom or on the right |
+| <kbd>Ctrl</kbd>+<kbd>N</kbd>, <kbd>Ctrl</kbd>+<kbd>O</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> | New, add local, or clone a repository |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> | Fetch / pull (push has no shortcut on purpose) |
+
+## Build from source
+
+Requires [Node.js](https://nodejs.org/) 22 and Git.
 
 ```bash
 npm install
@@ -104,7 +162,7 @@ npm run typecheck
 npm run lint
 ```
 
-## Package
+### Package
 
 ```bash
 npm run dist        # current platform
@@ -124,6 +182,36 @@ Publishing uses [`.github/workflows/release.yml`](.github/workflows/release.yml)
 | `src/history-core` | Commit-graph layout and search helpers |
 | `src/merge-core` | Conflict region model |
 | `src/renderer` | History-first React UI |
+
+```mermaid
+flowchart LR
+  subgraph renderer [Renderer]
+    UI[App + shell + features]
+  end
+  subgraph bridge [Preload]
+    API["window.gitManager"]
+  end
+  subgraph main [Main process]
+    IPC[ipc handlers]
+    Store[userData state]
+    Prov[providers]
+    Upd[updater]
+  end
+  subgraph git [Git worker]
+    Runner[runGit]
+    Ops[ops/*]
+  end
+  UI --> API
+  API -->|ipcRenderer.invoke| IPC
+  IPC --> Ops
+  Ops --> Runner
+  Runner -->|spawn| GitCLI[(system / GIT_MANAGER_GIT_PATH)]
+  IPC --> Store
+  IPC --> Prov
+  Prov -->|HTTPS| HostAPIs[(GitHub / GitLab / Bitbucket)]
+  IPC --> Upd
+  Upd -->|electron-updater| GHReleases[(GitHub Releases)]
+```
 
 Opening a repository lands on **History**. The graph uses most of the workspace; selecting a commit shows files and a side-by-side Monaco diff.
 

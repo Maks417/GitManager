@@ -36,7 +36,6 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 - A commit's details never change, so they load once per selection: coming back to the commit or refreshing the list does not run `git show` again.
 - History paging uses portable argv (`shell: false`, `LC_ALL=C`) so Apple Xcode CLT Git and Homebrew Git behave like Git for Windows.
 - Minimum practical Git: **2.20+** (common on current Apple CLT and Homebrew). Features used: `log --date-order --decorate=full --skip --exclude --stdin`, `--fixed-strings --regexp-ignore-case`, `for-each-ref`, `diff-tree -z -M --root`, `cat-file -s`, `status --porcelain=v2 -z`.
-- Status defaults to `--untracked-files=normal` (preference `statusUntracked`: `normal` | `all`).
 - Git ops run in an Electron `utilityProcess` worker, with in-process fallback if the worker cannot start.
 - The history list is window-virtualized (fixed 34px rows) so multi-page loads stay responsive on Retina displays.
 

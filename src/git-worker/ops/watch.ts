@@ -7,7 +7,8 @@ import { runGit } from './shared'
  */
 export async function getWatchFingerprint(repoPath: string): Promise<string> {
   const [status, refs] = await Promise.all([
-    runGit({ cwd: repoPath, args: ['status', '--porcelain=v2', '--branch', '--untracked-files=normal'] }),
+    // Every new file, as the Changes list shows them: a file added inside a new folder changes the fingerprint too.
+    runGit({ cwd: repoPath, args: ['status', '--porcelain=v2', '--branch', '--untracked-files=all'] }),
     runGit({ cwd: repoPath, args: ['for-each-ref', '--format=%(objectname) %(refname)'] })
   ])
   if (status.code !== 0) throw new Error(status.stderr.trim() || `git status failed (${status.code})`)

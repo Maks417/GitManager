@@ -7,7 +7,7 @@ import { linkedWorktreeMain } from './worktrees'
 /** What would be lost if the repository folder were deleted. */
 export async function inspectRepoForRemoval(repoPath: string): Promise<RepoRemovalInfo> {
   const [status, mainPath] = await Promise.all([
-    getStatus(repoPath, 'normal'),
+    getStatus(repoPath),
     linkedWorktreeMain(repoPath).catch(() => null)
   ])
   // A linked worktree's commits, branches and stashes live in its main repository: only its changes go with the folder.

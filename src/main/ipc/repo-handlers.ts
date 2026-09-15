@@ -224,8 +224,7 @@ export function registerRepoHandlers(): void {
 
   ipcMain.handle(IpcChannels.repo.status, async (event, repoPath: unknown) => {
     assertSender(event)
-    const prefs = loadPreferences()
-    return git.getStatus(parseRepoPath(repoPath), prefs.statusUntracked ?? 'normal')
+    return git.getStatus(parseRepoPath(repoPath))
   })
 
   ipcMain.handle(IpcChannels.repo.branches, async (event, repoPath: unknown) => {

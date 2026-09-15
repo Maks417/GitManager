@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { writeFileSync, type FSWatcher } from 'fs'
+import { mkdirSync, writeFileSync, type FSWatcher } from 'fs'
 import { join, resolve } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getWatchFingerprint } from '../src/git-worker/operations'
@@ -157,6 +157,15 @@ describe('getWatchFingerprint', () => {
     expect(committed).not.toBe(edited)
 
     await git(repo, 'branch', 'side')
-    expect(await getWatchFingerprint(repo)).not.toBe(committed)
+    const branched = await getWatchFingerprint(repo)
+    expect(branched).not.toBe(committed)
+
+    // New files count one by one, like the Changes list: a second file in a new folder is a change too.
+    mkdirSync(join(repo, 'shots'))
+    writeFileSync(join(repo, 'shots', 'dark.png'), 'dark')
+    const oneNewFile = await getWatchFingerprint(repo)
+    expect(oneNewFile).not.toBe(branched)
+    writeFileSync(join(repo, 'shots', 'light.png'), 'light')
+    expect(await getWatchFingerprint(repo)).not.toBe(oneNewFile)
   }, 30000)
 })

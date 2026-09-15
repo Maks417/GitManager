@@ -86,7 +86,6 @@ Git objects themselves live on disk under each repository’s `.git`; the app do
 | Pref | Behavior |
 |---|---|
 | `liveStatusWatch` | Default on; drives [`repo-watcher.ts`](../src/main/repo-watcher.ts) |
-| `statusUntracked` | `normal` (default) or `all` for `git status` |
 | `historyFilter` | `all` or `current` branch |
 | `externalEditor` / `externalTerminal` | Present in schema; **not wired in UI yet** (`_TBD_`: open file/folder in configured tools) |
 | `checkUpdatesOnStart` | Packaged builds may auto-check on launch |

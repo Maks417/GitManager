@@ -21,7 +21,7 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 
 When preference `liveStatusWatch` is enabled (default), the main process recursively watches the active repository with Node `fs.watch({ recursive: true })`. Debounced work-tree edits (and index changes) refresh status only; changes to HEAD, refs or merge/rebase state also refresh branches and tip-refresh history. Linked worktrees and submodules keep that metadata outside the work tree (their `.git` is a file), so it is watched where Git keeps it: a linked worktree's own folder under the main repository's `.git/worktrees/` plus the shared `refs/` and `packed-refs`, or a submodule's repository under the superproject's `.git/modules/`. Another worktree's metadata never refreshes this one, and a submodule's commits refresh the superproject's status. Git's ignore rules decide which work-tree changes matter (`git check-ignore`, so tracked `build/` or `dist/` files still count); dependency folders such as `node_modules`, `.git/objects`, lock files and editor temps are skipped outright. Background reads never take the index lock (`GIT_OPTIONAL_LOCKS=0`).
 
-When the operating system refuses to watch more files — Linux's inotify limit (`fs.inotify.max_user_watches`), or too many open files — the repository is polled instead. Every 5 seconds while one of the app's windows is focused, the app compares a fingerprint of `git status --porcelain=v2 --branch` and the refs, and refreshes branches, status and history when it changes. A banner above the list says so (on Linux, with the command that raises the limit) and can be dismissed.
+When the operating system refuses to watch more files — Linux's inotify limit (`fs.inotify.max_user_watches`), or too many open files — the repository is polled instead. Every 5 seconds while one of the app's windows is focused, the app compares a fingerprint of `git status --porcelain=v2 --branch --untracked-files=all` and the refs, and refreshes branches, status and history when it changes. A banner above the list says so (on Linux, with the command that raises the limit) and can be dismissed.
 
 | Piece | File |
 |---|---|
@@ -53,6 +53,7 @@ When the operating system refuses to watch more files — Linux's inotify limit 
 
 ## Edge cases & rules
 
+- New files are listed one by one, also inside new folders (`git status --untracked-files=all`). With more than 5,000 new files — usually a dependency or build folder that is not ignored — each new folder is listed as one `folder/` entry instead (`--untracked-files=normal`).
 - Discard restores tracked files from the index and moves untracked files and folders to the Trash; conflicted paths are refused. Discarding and dropping a stash ask first, in an in-app dialog.
 - Staging, unstaging and discarding many paths is split into batches that fit on one command line.
 - Commit + push: when the push fails, the commit is kept, the form is cleared, and the error says the push failed.
