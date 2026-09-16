@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
-import * as monaco from 'monaco-editor'
 import type { DiffResult } from '@shared/ipc'
 import { MONACO_FONT_FAMILY } from '../../lib/copy'
+import * as monaco from '../../lib/monaco-api'
 import { monacoThemeFor, useResolvedTheme } from '../../lib/theme'
 import { disposeWhenDiffSettled, nextContentVersion } from '../../logic/monaco-lifecycle'
 

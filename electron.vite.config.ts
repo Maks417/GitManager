@@ -65,8 +65,19 @@ export default defineConfig({
       }
     },
     plugins: [react(), contentSecurityPolicy()],
+    build: {
+      // electron-vite leaves the renderer unminified; the page keeps every loaded script's source in memory.
+      minify: true
+    },
     optimizeDeps: {
-      include: ['monaco-editor', '@monaco-editor/react']
+      // The parts of Monaco that src/renderer/src/lib/monaco-api.ts imports.
+      include: [
+        'monaco-editor/esm/vs/editor/edcore.main',
+        'monaco-editor/esm/vs/editor/editor.api',
+        'monaco-editor/esm/vs/basic-languages/monaco.contribution',
+        'monaco-editor/esm/vs/language/json/monaco.contribution',
+        '@monaco-editor/react'
+      ]
     },
     worker: {
       format: 'es'

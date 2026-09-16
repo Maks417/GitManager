@@ -19,5 +19,22 @@ export default [
       // A missing dependency is a bug, not a style warning.
       'react-hooks/exhaustive-deps': 'error'
     }
+  },
+  {
+    files: ['src/renderer/**/*.{ts,tsx}'],
+    rules: {
+      // The package entry adds Monaco's language services, whose workers a diff would start.
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'monaco-editor',
+              message: 'Import Monaco from lib/monaco-api: this entry also loads its TypeScript, CSS, HTML and JSON language services.'
+            }
+          ]
+        }
+      ]
+    }
   }
 ]
