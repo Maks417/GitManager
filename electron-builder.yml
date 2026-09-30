@@ -36,13 +36,12 @@ nsis:
 mac:
   icon: build/icon.icns
   target:
+    # Apple Silicon only; zip is the payload electron-updater downloads on macOS.
     - target: dmg
       arch:
-        - x64
         - arm64
     - target: zip
       arch:
-        - x64
         - arm64
   category: public.app-category.developer-tools
   hardenedRuntime: true
@@ -53,5 +52,14 @@ dmg:
 linux:
   icon: build/icon.png
   target:
-    - AppImage
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
   category: Development
+  # Required by the deb target (package.json author has no email).
+  maintainer: Maks417 <Maks417@users.noreply.github.com>
+  synopsis: Cross-platform Git repository manager
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}

@@ -8,9 +8,14 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same ref makes the running check pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    # The app ships for Windows and macOS; paths, line endings and file watching differ per OS.
+    # The app ships for Windows, macOS and Linux; paths, line endings and file watching differ per OS.
     strategy:
       fail-fast: false
       matrix:
