@@ -1,5 +1,21 @@
 import { app } from 'electron'
+import type { AppUpdater } from 'electron-updater'
 import type { UpdateStatus } from '@shared/ipc'
+
+/**
+ * Loaded on first use to keep it off the startup path. electron-updater is CommonJS and defines
+ * `autoUpdater` as a lazy getter, which import() does not detect as a named export (it comes back
+ * undefined in the packaged app), so read it from the module object instead.
+ */
+async function loadAutoUpdater(): Promise<AppUpdater> {
+  const mod = (await import('electron-updater')) as unknown as {
+    default?: { autoUpdater: AppUpdater }
+    autoUpdater?: AppUpdater
+  }
+  const autoUpdater = mod.default?.autoUpdater ?? mod.autoUpdater
+  if (!autoUpdater) throw new Error('The updater is not available in this build.')
+  return autoUpdater
+}
 
 let status: UpdateStatus = {
   checking: false,
@@ -50,7 +66,7 @@ export async function checkForUpdates(): Promise<UpdateStatus> {
   }
 
   try {
-    const { autoUpdater } = await import('electron-updater')
+    const autoUpdater = await loadAutoUpdater()
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
 
@@ -90,9 +106,9 @@ export async function checkForUpdates(): Promise<UpdateStatus> {
 
 export function installUpdate(): void {
   if (!app.isPackaged) return
-  void import('electron-updater').then(({ autoUpdater }) => {
-    autoUpdater.quitAndInstall()
-  })
+  loadAutoUpdater()
+    .then((autoUpdater) => autoUpdater.quitAndInstall())
+    .catch((err: unknown) => setStatus({ error: err instanceof Error ? err.message : String(err) }))
 }
 
 export function maybeCheckOnStartup(enabled: boolean): void {
