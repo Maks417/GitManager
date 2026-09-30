@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Check for and install signed updates published to GitHub Releases via `electron-updater`, with a status UI in the renderer.
+Check for and install updates published to GitHub Releases via `electron-updater`, with a status UI in the renderer. Windows (NSIS) and Linux (AppImage, deb) update unsigned; macOS needs a Developer ID–signed build, so the ad-hoc signed macOS builds from CI are updated manually for now.
 
 ## User flow
 

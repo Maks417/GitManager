@@ -7,17 +7,18 @@
 <p align="center">
   <strong>History-first Git for the desktop.</strong><br />
   Search the commit graph, review inline or side-by-side diffs, resolve conflicts,<br />
-  and clone from GitHub, GitLab or Bitbucket. For Windows and macOS.
+  and clone from GitHub, GitLab or Bitbucket. For Windows, macOS and Linux.
 </p>
 
 <p align="center">
   <a href="https://github.com/Maks417/GitManager/actions/workflows/ci.yml"><img src="https://github.com/Maks417/GitManager/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/Maks417/GitManager/releases"><img src="https://img.shields.io/github/v/release/Maks417/GitManager?include_prereleases&label=release" alt="Release" /></a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-12110F?labelColor=1C1A17" alt="Platforms" />
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-12110F?labelColor=1C1A17" alt="Platforms" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-E85D04?labelColor=1C1A17" alt="License" /></a>
 </p>
 
 <p align="center">
+  <a href="https://maks417.github.io/GitManager/">Website</a> ·
   <a href="#features">Features</a> ·
   <a href="#install">Install</a> ·
   <a href="#connect-host-accounts">Host accounts</a> ·
@@ -67,7 +68,7 @@
 | **Host accounts** | GitHub, GitLab (including self-managed instances), and Bitbucket for browsing and cloning |
 | **New repository** | Create a repository with its initial branch and a first README commit |
 | **Clone** | HTTPS or SSH from URL or linked host listings, with progress and cancel |
-| **Auto-updates** | Signed updates from [GitHub Releases](https://github.com/Maks417/GitManager/releases) |
+| **Auto-updates** | Updates itself from [GitHub Releases](https://github.com/Maks417/GitManager/releases) on Windows and Linux; on macOS, install new versions from the releases page |
 
 ## Install
 
@@ -76,13 +77,20 @@ Download the latest build from **[Releases](https://github.com/Maks417/GitManage
 | Platform | Download |
 |---|---|
 | **Windows** (x64, Arm64) | Installer (`.exe`) |
-| **macOS** (Intel, Apple silicon) | Disk image (`.dmg`) or `.zip` |
+| **macOS** (Apple silicon) | Disk image (`.dmg`) or `.zip` |
+| **Linux** (x64) | `.AppImage` for any distribution, or `.deb` for Ubuntu and Debian |
 
-Once installed, the app updates itself from the same releases.
+Builds are not code-signed yet, so the first launch needs one extra step:
+
+- **Windows:** if SmartScreen appears, choose **More info → Run anyway**.
+- **macOS:** open the app with right-click → **Open**, or run `xattr -cr "/Applications/Git Manager.app"`.
+- **Linux:** make the AppImage executable (`chmod +x Git-Manager-*.AppImage`), or install the package with `sudo apt install ./Git-Manager-*.deb`.
+
+On Windows and Linux the app then updates itself from the same releases. macOS updates need a signed build, so for now install new versions from the releases page.
 
 ### Requirements
 
-- **Windows** or **macOS**
+- **Windows** 10 or 11, **macOS** on Apple silicon, or **Linux** x64
 - **System Git** on `PATH`, or set `GIT_MANAGER_GIT_PATH` to a Git binary
 
 The app probes for Git at startup and guides you to install it if missing.
@@ -168,9 +176,10 @@ npm run lint
 npm run dist        # current platform
 npm run dist:win
 npm run dist:mac
+npm run dist:linux
 ```
 
-Publishing uses [`.github/workflows/release.yml`](.github/workflows/release.yml) (`GH_TOKEN` and platform signing secrets).
+Pushing a `v*` tag that matches `package.json` runs [`.github/workflows/release.yml`](.github/workflows/release.yml): it builds all three platforms and publishes the release with the built-in `GITHUB_TOKEN`. Signing is optional: add `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD` and `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` for a notarized macOS build, or `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` for Windows. Without them macOS builds are ad-hoc signed. The website in [`site/`](site/) deploys through [`.github/workflows/pages.yml`](.github/workflows/pages.yml).
 
 ## Architecture
 

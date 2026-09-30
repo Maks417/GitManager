@@ -19,3 +19,6 @@ coverage/
 *.zip
 *.yml.bak
 *.tsbuildinfo
+
+# Copied in by the Pages workflow (and for local previews)
+site/assets/

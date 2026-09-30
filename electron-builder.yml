@@ -12,6 +12,9 @@ extraResources:
     to: icon.png
   - from: build/icon.ico
     to: icon.ico
+# No spaces: GitHub turns them into dots on upload, which broke the mac zip's blockmap name
+# (Git.Manager-…) that latest-mac.yml refers to.
+artifactName: Git-Manager-${version}-${os}-${arch}.${ext}
 asar: true
 asarUnpack:
   - "**/*.node"
@@ -28,7 +31,6 @@ win:
       arch:
         - x64
         - arm64
-  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
@@ -46,9 +48,6 @@ mac:
   category: public.app-category.developer-tools
   hardenedRuntime: true
   gatekeeperAssess: false
-  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
-dmg:
-  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 linux:
   icon: build/icon.png
   target:
@@ -62,4 +61,3 @@ linux:
   # Required by the deb target (package.json author has no email).
   maintainer: Maks417 <Maks417@users.noreply.github.com>
   synopsis: Cross-platform Git repository manager
-  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
