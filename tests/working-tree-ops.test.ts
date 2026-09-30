@@ -52,7 +52,8 @@ describe('bulk staging', () => {
     await unstagePaths(dir, names)
     expect((await getStatus(dir)).filter((s) => s.staged)).toHaveLength(0)
     expect((await git(dir, 'status', '--porcelain')).length).toBeGreaterThan(0)
-  }, 60000)
+    // About 15 s on a Windows CI runner, but over 60 s when the runner is slow.
+  }, 180000)
 })
 
 describe('status of new files', () => {

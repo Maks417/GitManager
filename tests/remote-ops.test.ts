@@ -190,7 +190,9 @@ describe('stalled network', () => {
       const repo = await initRepo(tempDir('gm-net-stall-'))
       await git(repo, 'remote', 'add', 'origin', server.url)
       await expect(fetchRemote(repo, { idleTimeoutMs: 1500 })).rejects.toThrow(/stopped responding/)
-      await vi.waitFor(() => expect(server.closed()).toBeGreaterThan(0), { timeout: 10000, interval: 100 })
+      // The idle timer starts when Git does, so on a slow machine Git may be stopped before it connects:
+      // what matters is that no connection is left open.
+      await vi.waitFor(() => expect(server.open()).toBe(0), { timeout: 10000, interval: 100 })
     } finally {
       await server.stop()
     }
@@ -207,7 +209,7 @@ describe('stalled network', () => {
       controller.abort()
       await expect(run).resolves.toEqual({ outcome: 'cancelled' })
       // git-remote-http owns the socket: it closes only if the whole process tree was stopped.
-      await vi.waitFor(() => expect(server.closed()).toBeGreaterThan(0), { timeout: 10000, interval: 100 })
+      await vi.waitFor(() => expect(server.open()).toBe(0), { timeout: 10000, interval: 100 })
     } finally {
       await server.stop()
     }

@@ -4,7 +4,8 @@ import { createServer, type AddressInfo, type Socket } from 'net'
 export async function stallingServer(): Promise<{
   url: string
   connections: () => number
-  closed: () => number
+  /** Connections the client has not closed yet. */
+  open: () => number
   stop: () => Promise<void>
 }> {
   const sockets: Socket[] = []
@@ -22,7 +23,7 @@ export async function stallingServer(): Promise<{
   return {
     url: `http://127.0.0.1:${port}/stalled.git`,
     connections: () => sockets.length,
-    closed: () => closed,
+    open: () => sockets.length - closed,
     stop: () =>
       new Promise((resolve) => {
         for (const socket of sockets) socket.destroy()
