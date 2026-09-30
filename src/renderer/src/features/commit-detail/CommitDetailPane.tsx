@@ -1,6 +1,7 @@
 import type React from 'react'
 import { Copy, GitBranch, GitMerge } from 'lucide-react'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
+import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { Splitter } from '../../components/Splitter'
 import { Button, FileStatusDot } from '../../components/ui'
@@ -19,7 +20,13 @@ export function CommitDetailPane(): React.JSX.Element {
   const { busy } = useAppStatus()
   const { detail, selectedFile, diff, diffLoading } = useSelection()
   const { setSelectedFile } = useSelectionActions()
-  const { diffView, inspectorFilesWidth: filesWidth, setInspectorFilesWidth, persistLayout } = useLayout()
+  const {
+    diffView,
+    syntaxHighlighting,
+    inspectorFilesWidth: filesWidth,
+    setInspectorFilesWidth,
+    persistLayout
+  } = useLayout()
   const { runMergeOrRebase } = useGitActions()
   const confirm = useConfirm()
 
@@ -158,6 +165,7 @@ export function CommitDetailPane(): React.JSX.Element {
         <div className="diff-host">
           <div className="diff-toolbar">
             <div className="diff-toolbar-end">
+              <SyntaxHighlightToggle />
               <DiffViewSwitch />
             </div>
           </div>
@@ -169,6 +177,7 @@ export function CommitDetailPane(): React.JSX.Element {
                 diff={diff}
                 editorKey={`${commit.sha}:${diff.path}`}
                 sideBySide={diffView === 'side-by-side'}
+                syntaxHighlighting={syntaxHighlighting}
               />
             ) : (
               <div className="empty-state muted">Select a file</div>

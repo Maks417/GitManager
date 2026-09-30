@@ -347,28 +347,6 @@ export function parseNameStatusZ(out: string): FileChange[] {
   return files
 }
 
-function guessLanguage(path: string): string | undefined {
-  const ext = path.split('.').pop()?.toLowerCase()
-  const map: Record<string, string> = {
-    ts: 'typescript',
-    tsx: 'typescript',
-    js: 'javascript',
-    jsx: 'javascript',
-    json: 'json',
-    md: 'markdown',
-    py: 'python',
-    rs: 'rust',
-    go: 'go',
-    css: 'css',
-    html: 'html',
-    yml: 'yaml',
-    yaml: 'yaml',
-    sh: 'shell',
-    ps1: 'powershell'
-  }
-  return ext ? map[ext] : undefined
-}
-
 /** Keep Monaco responsive; full package-lock-sized buffers stall the DiffEditor. */
 const MAX_DIFF_CHARS = 180_000
 /** Byte budget roughly matching MAX_DIFF_CHARS for UTF-8 text. */
@@ -432,8 +410,7 @@ export async function getFileDiff(
       path,
       oldText: '',
       newText: neu.binary ? '' : neu.text,
-      binary: neu.binary,
-      language: guessLanguage(path)
+      binary: neu.binary
     }
   }
 
@@ -446,8 +423,7 @@ export async function getFileDiff(
     path,
     oldText: binary ? '' : oldSide.text,
     newText: binary ? '' : newSide.text,
-    binary,
-    language: guessLanguage(path)
+    binary
   }
 }
 
@@ -481,7 +457,6 @@ export async function getWorkingTreeDiff(
     path,
     oldText: binary ? '' : oldSide.text,
     newText: binary ? '' : newSide.text,
-    binary,
-    language: guessLanguage(path)
+    binary
   }
 }

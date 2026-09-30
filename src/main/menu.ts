@@ -89,6 +89,10 @@ export function buildAppMenu(): void {
           click: () => sendMenu(MenuChannels.toggleDiffView)
         },
         {
+          label: 'Toggle Syntax Colors',
+          click: () => sendMenu(MenuChannels.toggleSyntaxHighlighting)
+        },
+        {
           label: 'Toggle Sidebar',
           accelerator: 'CmdOrCtrl+B',
           click: () => sendMenu(MenuChannels.toggleSidebar)

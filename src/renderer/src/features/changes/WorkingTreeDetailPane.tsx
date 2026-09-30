@@ -18,6 +18,7 @@ import {
 import type { GitIdentity, StashEntry, StatusEntry } from '@shared/ipc'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
+import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { OperationBar } from '../../components/OperationBar'
 import { Splitter } from '../../components/Splitter'
@@ -62,7 +63,8 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const { goHistory } = useWorkingTreeActions()
   const { openDialog } = useDialogActions()
   const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, runRemote } = useGitActions()
-  const { changesFilesWidth: filesWidth, setChangesFilesWidth, persistLayout, diffView } = useLayout()
+  const { changesFilesWidth: filesWidth, setChangesFilesWidth, persistLayout, diffView, syntaxHighlighting } =
+    useLayout()
   const confirm = useConfirm()
   const canAmend = Boolean(headSha)
 
@@ -637,6 +639,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
             </>
           )}
           <div className="diff-toolbar-end">
+            <SyntaxHighlightToggle />
             <DiffViewSwitch />
           </div>
         </div>
@@ -648,6 +651,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
               diff={diff}
               editorKey={`${diff.path}:${diffSide}`}
               sideBySide={diffView === 'side-by-side'}
+              syntaxHighlighting={syntaxHighlighting}
             />
           ) : (
             <div className="empty-state muted">Select a file to view its changes</div>

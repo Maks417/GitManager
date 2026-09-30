@@ -3,6 +3,7 @@ import type React from 'react'
 import type { DiffResult } from '@shared/ipc'
 import { MONACO_FONT_FAMILY } from '../../lib/copy'
 import * as monaco from '../../lib/monaco-api'
+import { syntaxLanguageFor } from '../../lib/syntax'
 import { monacoThemeFor, useResolvedTheme } from '../../lib/theme'
 import { disposeWhenDiffSettled, nextContentVersion } from '../../logic/monaco-lifecycle'
 
@@ -11,6 +12,8 @@ interface Props {
   editorKey?: string
   /** Old and new text in two panes instead of one inline diff. */
   sideBySide: boolean
+  /** Syntax colors for the file's language (plain text when off or the file is too large). */
+  syntaxHighlighting: boolean
 }
 
 const DIFF_OPTIONS: monaco.editor.IStandaloneDiffEditorConstructionOptions = {
@@ -36,7 +39,7 @@ const DIFF_OPTIONS: monaco.editor.IStandaloneDiffEditorConstructionOptions = {
 }
 
 /** Shared Monaco diff viewer — uses locally bundled Monaco (see setupMonaco). */
-export function FileDiffViewer({ diff, editorKey, sideBySide }: Props): React.JSX.Element {
+export function FileDiffViewer({ diff, editorKey, sideBySide, syntaxHighlighting }: Props): React.JSX.Element {
   // New text mounts a new editor instead of editing its models: each editor then computes exactly one
   // diff, which is what lets teardown wait for it (see disposeWhenDiffSettled).
   const [shown, setShown] = useState(() => nextContentVersion(null, diff.oldText, diff.newText))
@@ -53,7 +56,11 @@ export function FileDiffViewer({ diff, editorKey, sideBySide }: Props): React.JS
       key={`${editorKey ?? diff.path}:${content.version}`}
       original={diff.oldText}
       modified={diff.newText}
-      language={diff.language || 'plaintext'}
+      language={syntaxLanguageFor(
+        diff.path,
+        syntaxHighlighting,
+        Math.max(diff.oldText.length, diff.newText.length)
+      )}
       sideBySide={sideBySide}
     />
   )
@@ -72,9 +79,10 @@ function DiffEditorHost({
 }): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
+  const modelsRef = useRef<monaco.editor.ITextModel[]>([])
   const theme = monacoThemeFor(useResolvedTheme())
-  // Text and language are fixed for a mounted host (the parent re-keys it); layout and theme are
-  // applied to the live editor by the effects below.
+  // Text is fixed for a mounted host (the parent re-keys it); language, layout and theme are applied to
+  // the live editor by the effects below, so switching syntax colors keeps the diff and its scroll position.
   const [initial] = useState(() => ({ original, modified, language, sideBySide, theme }))
 
   useEffect(() => {
@@ -95,9 +103,11 @@ function DiffEditorHost({
     })
     editor.setModel({ original: originalModel, modified: modifiedModel })
     editorRef.current = editor
+    modelsRef.current = [originalModel, modifiedModel]
 
     return () => {
       editorRef.current = null
+      modelsRef.current = []
       host.remove()
       disposeWhenDiffSettled(editor, [originalModel, modifiedModel])
     }
@@ -106,6 +116,10 @@ function DiffEditorHost({
   useEffect(() => {
     editorRef.current?.updateOptions({ renderSideBySide: sideBySide })
   }, [sideBySide])
+
+  useEffect(() => {
+    for (const model of modelsRef.current) monaco.editor.setModelLanguage(model, language)
+  }, [language])
 
   useEffect(() => {
     monaco.editor.setTheme(theme)

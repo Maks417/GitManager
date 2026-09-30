@@ -155,8 +155,7 @@ export const DiffResultSchema = z.object({
   path: z.string(),
   oldText: z.string(),
   newText: z.string(),
-  binary: z.boolean(),
-  language: z.string().optional()
+  binary: z.boolean()
 })
 export type DiffResult = z.infer<typeof DiffResultSchema>
 
@@ -285,6 +284,8 @@ export const AppPreferencesSchema = z.object({
   detailDock: z.enum(['right', 'bottom']).default('bottom').catch('bottom'),
   /** File diffs: the changes inline in one file, or the old and the new file side by side. */
   diffView: z.enum(['inline', 'side-by-side']).default('inline').catch('inline'),
+  /** Syntax colors in file diffs and the merge editor, for files small enough to color. */
+  syntaxHighlighting: z.boolean().default(true).catch(true),
   historyFilter: z.enum(['all', 'current']).default('all').catch('all'),
   sidebarCollapsed: z.boolean().default(false).catch(false),
   branchesExpanded: z.boolean().default(false).catch(false),

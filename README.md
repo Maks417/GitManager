@@ -213,7 +213,7 @@ flowchart LR
   Upd -->|electron-updater| GHReleases[(GitHub Releases)]
 ```
 
-Opening a repository lands on **History**. The graph uses most of the workspace; selecting a commit shows files and a Monaco diff, inline or side by side.
+Opening a repository lands on **History**. The graph uses most of the workspace; selecting a commit shows files and a Monaco diff, inline or side by side, with syntax colors for the file's language (the palette button turns them off).
 
 Full write-up: [`docs/architecture.md`](docs/architecture.md).
 

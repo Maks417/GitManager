@@ -48,7 +48,7 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 | Search box and branch suggestions | [`src/renderer/src/shell/HistorySearchBox.tsx`](../../src/renderer/src/shell/HistorySearchBox.tsx), [`src/renderer/src/logic/branch-suggest.ts`](../../src/renderer/src/logic/branch-suggest.ts) |
 | `branch:` parsing and matching | [`src/shared/branch-search.ts`](../../src/shared/branch-search.ts) |
 | Commit detail | [`src/renderer/src/features/commit-detail/CommitDetailPane.tsx`](../../src/renderer/src/features/commit-detail/CommitDetailPane.tsx) |
-| Diff viewer and Inline / Side by side switch | [`src/renderer/src/features/diff/FileDiffViewer.tsx`](../../src/renderer/src/features/diff/FileDiffViewer.tsx), [`src/renderer/src/features/diff/DiffViewSwitch.tsx`](../../src/renderer/src/features/diff/DiffViewSwitch.tsx) |
+| Diff viewer, Inline / Side by side switch and syntax colors | [`src/renderer/src/features/diff/FileDiffViewer.tsx`](../../src/renderer/src/features/diff/FileDiffViewer.tsx), [`src/renderer/src/features/diff/DiffViewSwitch.tsx`](../../src/renderer/src/features/diff/DiffViewSwitch.tsx), [`src/renderer/src/features/diff/SyntaxHighlightToggle.tsx`](../../src/renderer/src/features/diff/SyntaxHighlightToggle.tsx) |
 | Lane layout | [`src/history-core/layout.ts`](../../src/history-core/layout.ts) |
 | History state, jumps | [`src/renderer/src/hooks/useHistory.ts`](../../src/renderer/src/hooks/useHistory.ts), [`src/renderer/src/state/HistoryProvider.tsx`](../../src/renderer/src/state/HistoryProvider.tsx) |
 | Load / detail / diff | [`src/git-worker/ops/history.ts`](../../src/git-worker/ops/history.ts) |
@@ -75,7 +75,7 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 - Parent index selects which parent to diff against for merges (`DiffRequest.parentIndex`).
 - Column widths for graph/date/author are preference-backed and resizable.
 - Detail dock is `bottom` or `right` via `AppPreferences.detailDock`.
-- Diffs follow `AppPreferences.diffView`, shared with Changes, in either dock.
+- Diffs follow `AppPreferences.diffView` and `AppPreferences.syntaxHighlighting`, shared with Changes, in either dock.
 - The inspector never gets wider than its dock. A narrow header wraps: the commit's buttons move to a row of their own. Docked right, the file list narrows before the diff, which keeps room for its Inline / Side by side switch.
 - After routine mutations (commit, sync), history does a tip merge refresh; topology-changing ops (rebase, merge, checkout, delete branch) reload history fully.
 

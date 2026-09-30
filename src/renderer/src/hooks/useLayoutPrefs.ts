@@ -28,6 +28,7 @@ export function useLayoutPrefs(): {
   remoteBranchesExpanded: boolean
   detailDock: 'right' | 'bottom'
   diffView: AppPreferences['diffView']
+  syntaxHighlighting: boolean
   persistLayout: (partial: Partial<AppPreferences>) => void
   hydrateFromPrefs: (p: AppPreferences) => void
   toggleDock: () => void
@@ -38,6 +39,7 @@ export function useLayoutPrefs(): {
   setThemePref: (theme: ThemePreference) => void
   setHistoryFilter: (historyFilter: AppPreferences['historyFilter']) => void
   setDiffView: (diffView: AppPreferences['diffView']) => void
+  setSyntaxHighlighting: (enabled: boolean) => void
 } {
   const [prefs, setPrefs] = useState<AppPreferences | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState<number>(LAYOUT_DEFAULTS.sidebarWidth)
@@ -64,6 +66,7 @@ export function useLayoutPrefs(): {
   const remoteBranchesExpanded = Boolean(prefs?.remoteBranchesExpanded)
   const detailDock = prefs?.detailDock === 'right' ? 'right' : 'bottom'
   const diffView = prefs?.diffView === 'side-by-side' ? 'side-by-side' : 'inline'
+  const syntaxHighlighting = prefs?.syntaxHighlighting !== false
 
   const persistLayout = useCallback((partial: Partial<AppPreferences>): void => {
     void window.gitManager.prefs.set(partial).then(setPrefs)
@@ -136,6 +139,10 @@ export function useLayoutPrefs(): {
     void window.gitManager.prefs.set({ diffView: view }).then(setPrefs)
   }, [])
 
+  const setSyntaxHighlighting = useCallback((enabled: boolean): void => {
+    void window.gitManager.prefs.set({ syntaxHighlighting: enabled }).then(setPrefs)
+  }, [])
+
   return {
     prefs,
     setPrefs,
@@ -160,6 +167,7 @@ export function useLayoutPrefs(): {
     remoteBranchesExpanded,
     detailDock,
     diffView,
+    syntaxHighlighting,
     persistLayout,
     hydrateFromPrefs,
     toggleDock,
@@ -169,6 +177,7 @@ export function useLayoutPrefs(): {
     toggleRemoteBranches,
     setThemePref,
     setHistoryFilter,
-    setDiffView
+    setDiffView,
+    setSyntaxHighlighting
   }
 }

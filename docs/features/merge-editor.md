@@ -32,6 +32,7 @@ Resolve merge and rebase conflicts with a VS Code-style flow: list conflicted fi
 - `hasUnresolvedMarkers` blocks treating a file as done when markers remain.
 - Binary files and files over 8 MB are not shown as text; resolve them with Take ours / Take theirs (`merge:resolve-side`).
 - Regions are re-parsed from the result text on every edit, and the file's line endings (LF / CRLF) are preserved.
+- The three panes show syntax colors for the file's language, like diffs (`AppPreferences.syntaxHighlighting`, the palette button in the toolbar). A file whose ours, theirs or result text is over 1 MB stays plain, and the toolbar says so: coloring three such panes would keep the main thread busy for seconds. Whether a file is colored is decided when it loads, never while the result is edited.
 
 ## Diagram
 

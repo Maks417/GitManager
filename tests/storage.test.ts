@@ -60,6 +60,12 @@ describe('preferences schema', () => {
     expect(AppPreferencesSchema.parse({ diffView: 'split' }).diffView).toBe('inline')
     expect(AppPreferencesSchema.parse({ diffView: 'side-by-side' }).diffView).toBe('side-by-side')
   })
+
+  it('shows syntax colors unless they were turned off', () => {
+    expect(AppPreferencesSchema.parse({}).syntaxHighlighting).toBe(true)
+    expect(AppPreferencesSchema.parse({ syntaxHighlighting: 'no' }).syntaxHighlighting).toBe(true)
+    expect(AppPreferencesSchema.parse({ syntaxHighlighting: false }).syntaxHighlighting).toBe(false)
+  })
 })
 
 describe('token storage', () => {

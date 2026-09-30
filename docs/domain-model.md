@@ -12,7 +12,7 @@
 | HistoryPage | Paged history payload | `commits`, `graph`, `nextCursor`, `headSha`; `branches` and `notice` for a `branch:` search; `revealed` for a jump |
 | FileChange | File touched by a commit | `path`, `status`, optional stats / `oldPath` |
 | CommitDetail | Commit + changed files | `commit`, `files` |
-| DiffResult | Text for Monaco (or binary flag) | `path`, `oldText`, `newText`, `binary`, `language?` |
+| DiffResult | Text for Monaco (or binary flag) | `path`, `oldText`, `newText`, `binary` (the renderer picks the syntax language from `path`) |
 | StatusEntry | Working-tree / index status line | `path`, index/worktree letters, `staged`, `unstaged`, `untracked`, `conflicted`, optional `oldPath` (rename source) |
 | BranchInfo | Local branch + upstream divergence | `name`, `current`, `upstream`, `ahead`, `behind`, `sha` (tip; null before the first commit) |
 | RemoteBranchInfo | Remote-tracking branch | `name`, `remote`, `shortName`, `sha` |

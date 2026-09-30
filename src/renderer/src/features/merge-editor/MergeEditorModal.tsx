@@ -12,11 +12,15 @@ import { Banner, Button, Modal } from '../../components/ui'
 import { confirmResolveByDeleting, MONACO_FONT_FAMILY } from '../../lib/copy'
 import { toErrorMessage } from '../../lib/errors'
 import { useAsyncAction } from '../../lib/useAsyncAction'
+import { syntaxLanguageFor } from '../../lib/syntax'
 import { monacoThemeFor, useResolvedTheme } from '../../lib/theme'
+import { tooLargeToHighlight } from '../../logic/syntax-language'
+import { useLayout } from '../../state/LayoutProvider'
 import { useConfirm } from '../../state/ConfirmProvider'
 import { useDialogActions } from '../../state/DialogsProvider'
 import { useGitActions } from '../../state/GitActionsProvider'
 import { useActiveRepo, useSession, useSessionActions } from '../../state/RepoSessionProvider'
+import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 
 const paneStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', minHeight: 0, gap: 4 }
 
@@ -49,6 +53,7 @@ export function MergeEditorModal(): React.JSX.Element {
 
   const theme = useResolvedTheme()
   const monacoTheme = monacoThemeFor(theme)
+  const { syntaxHighlighting } = useLayout()
   const [files, setFiles] = useState<ConflictFile[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -123,6 +128,9 @@ export function MergeEditorModal(): React.JSX.Element {
   const activeFile = files.find((f) => f.path === activePath)
   const textEditable = Boolean(sides && !sides.binary && !sides.tooLarge)
   const oneSideDeleted = Boolean(activeFile && (!activeFile.hasOurs || !activeFile.hasTheirs))
+  // Decided by the sides as loaded, not by the result being edited, so colors never switch off mid-edit.
+  const longestSide = Math.max(sides?.ours.length ?? 0, sides?.theirs.length ?? 0, sides?.result.length ?? 0)
+  const language = activePath ? syntaxLanguageFor(activePath, syntaxHighlighting, longestSide) : 'plaintext'
 
   const acceptRegion = (choice: 'ours' | 'theirs' | 'both'): void => {
     if (!activeRegion) return
@@ -274,6 +282,10 @@ export function MergeEditorModal(): React.JSX.Element {
             {sides && regions.length === 0 && (
               <span className="muted">No conflict markers left</span>
             )}
+            <SyntaxHighlightToggle />
+            {syntaxHighlighting && tooLargeToHighlight(longestSide) && (
+              <span className="muted">Too large for syntax colors</span>
+            )}
           </>
         )}
         <div className="spacer" />
@@ -299,7 +311,7 @@ export function MergeEditorModal(): React.JSX.Element {
                 key={`ours:${activePath}`}
                 height="100%"
                 theme={monacoTheme}
-                language="plaintext"
+                language={language}
                 value={sides?.ours || ''}
                 options={{ ...editorOpts, readOnly: true }}
               />
@@ -310,7 +322,7 @@ export function MergeEditorModal(): React.JSX.Element {
                 key={`result:${activePath}`}
                 height="100%"
                 theme={monacoTheme}
-                language="plaintext"
+                language={language}
                 value={result}
                 onChange={(v) => setResult(v ?? '')}
                 options={editorOpts}
@@ -322,7 +334,7 @@ export function MergeEditorModal(): React.JSX.Element {
                 key={`theirs:${activePath}`}
                 height="100%"
                 theme={monacoTheme}
-                language="plaintext"
+                language={language}
                 value={sides?.theirs || ''}
                 options={{ ...editorOpts, readOnly: true }}
               />
