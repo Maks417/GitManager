@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
-import { existsSync } from 'fs'
+import { accessSync, constants, existsSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { isAbsolute, join } from 'path'
 import { StringDecoder } from 'string_decoder'
 import { isPathInside } from './path-utils'
 import { killProcessTree, treeSpawnOptions } from './process-tree'
@@ -91,11 +91,25 @@ export function gitNotFoundMessage(): string {
   return process.platform === 'darwin' ? GIT_NOT_FOUND_MESSAGE_DARWIN : GIT_NOT_FOUND_MESSAGE
 }
 
+/** False only for an explicit path that cannot be executed; a bare name is looked up on PATH by spawn. */
+function isExecutableFile(binary: string): boolean {
+  if (!isAbsolute(binary)) return true
+  try {
+    accessSync(binary, constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function isMissingGitError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
   const code = 'code' in err ? String((err as { code?: unknown }).code) : ''
   // ENOENT: binary missing from PATH. EFTYPE: present but not a valid executable (e.g. empty file on Windows).
   if (code === 'ENOENT' || code === 'EFTYPE') return true
+  // EACCES: a configured binary that is not executable (macOS/Linux). An unreadable working folder
+  // also reports EACCES, so only blame Git when the binary itself fails the check.
+  if (code === 'EACCES') return !isExecutableFile(resolveGitBinary())
   const message = 'message' in err ? String((err as { message?: unknown }).message) : ''
   return /\bENOENT\b/i.test(message) || /\bEFTYPE\b/i.test(message) || /spawn .+ ENOENT/i.test(message)
 }

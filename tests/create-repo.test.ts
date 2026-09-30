@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { join, resolve } from 'path'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import {
   createRepository,
@@ -91,7 +91,10 @@ describe('getEnclosingWorkTree', () => {
   it('finds the repository a folder is in, and nothing outside one', async () => {
     const repo = await initRepo(tempDir('gm-enclosing-'))
     mkdirSync(join(repo, 'packages', 'app'), { recursive: true })
-    expect(resolve((await getEnclosingWorkTree(join(repo, 'packages', 'app')))!)).toBe(resolve(repo))
+    // Git reports the real path: /private/var rather than the /var symlink on macOS, long names rather
+    // than 8.3 short ones (RUNNER~1) on Windows.
+    const top = await getEnclosingWorkTree(join(repo, 'packages', 'app'))
+    expect(realpathSync.native(top!)).toBe(realpathSync.native(repo))
     expect(await getEnclosingWorkTree(tempDir('gm-not-a-repo-'))).toBeNull()
     expect(await getEnclosingWorkTree(join(repo, 'missing'))).toBeNull()
   }, 30000)

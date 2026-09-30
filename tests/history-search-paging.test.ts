@@ -64,7 +64,8 @@ describe('history search', () => {
       'Refactor settings',
       'fix(auth): handle {beta} tokens',
       'Added a|b switch',
-      'Исправить Ошибку входа'
+      'Исправить Ошибку входа',
+      'Ёлка (новая) a|b.*'
     ]
     for (const [i, message] of messages.entries()) {
       await commitAt(dir, message, `2026-02-0${i + 1}T00:00:00Z`)
@@ -73,9 +74,12 @@ describe('history search', () => {
     expect(await subjects(dir, { search: 'fix login bug' })).toEqual(['Fix login bug in form'])
     expect(await subjects(dir, { search: 'fix(auth)' })).toEqual(['fix(auth): handle {beta} tokens'])
     expect(await subjects(dir, { search: '{beta}' })).toEqual(['fix(auth): handle {beta} tokens'])
-    expect(await subjects(dir, { search: 'a|b' })).toEqual(['Added a|b switch'])
+    expect(await subjects(dir, { search: 'a|b switch' })).toEqual(['Added a|b switch'])
     expect(await subjects(dir, { search: 'added' })).toEqual(['Added a|b switch'])
+    // Non-ASCII case folding must not depend on Git's locale (LC_ALL=C on macOS/Linux).
     expect(await subjects(dir, { search: 'ошибку' })).toEqual(['Исправить Ошибку входа'])
+    expect(await subjects(dir, { search: 'ЁЛКА (НОВАЯ) A|B.*' })).toEqual(['Ёлка (новая) a|b.*'])
+    expect(await subjects(dir, { search: 'ёлка (новая) a.b' })).toEqual([])
 
     expect(await subjects(dir, { search: 'fix', limit: 1 })).toEqual(['fix(auth): handle {beta} tokens'])
     expect(await subjects(dir, { search: 'fix', limit: 1, skip: 1 })).toEqual(['Fix login bug in form'])
@@ -88,6 +92,8 @@ describe('history search', () => {
     const sha = (await git(dir, 'rev-parse', 'HEAD~1')).trim()
 
     expect(await subjects(dir, { search: 'author:Ada Lovelace' })).toEqual(['Written by Ada'])
+    await commitAt(dir, 'Written by Pyotr', '2026-03-03T00:00:00Z', 'Пётр Иванов <pyotr@example.com>')
+    expect(await subjects(dir, { search: 'author:пётр' })).toEqual(['Written by Pyotr'])
     expect(await subjects(dir, { search: sha.slice(0, 10) })).toEqual(['Written by Ada'])
   }, 30000)
 })

@@ -83,9 +83,41 @@ function appendSearchArgs(args: string[], search: HistorySearch | null, author: 
   const messageText = search && search.kind !== 'author' ? search.text : ''
   if (!authorText && !messageText) return
   // Literal, case-insensitive matching: `(`, `|`, `{` and friends are never regex operators.
+  if (hasCasedNonAscii(authorText) || hasCasedNonAscii(messageText)) {
+    args.push('--extended-regexp', '--regexp-ignore-case')
+    if (authorText) args.push(`--author=${caseFoldedPattern(authorText)}`)
+    if (messageText) args.push(`--grep=${caseFoldedPattern(messageText)}`)
+    return
+  }
   args.push('--fixed-strings', '--regexp-ignore-case')
   if (authorText) args.push(`--author=${authorText}`)
   if (messageText) args.push(`--grep=${messageText}`)
+}
+
+function hasCasedNonAscii(text: string): boolean {
+  for (const ch of text) if (ch > '\x7f' && ch.toLowerCase() !== ch.toUpperCase()) return true
+  return false
+}
+
+function escapeExtendedRegexp(text: string): string {
+  return text.replace(/[\\^$.[|()*+?{]/g, '\\$&')
+}
+
+/**
+ * `text` as a literal extended regexp whose non-ASCII letters list their cases: "ошибку" → "(о|О)(ш|Ш)…".
+ * Git runs with LC_ALL=C (see spawnGit), where --regexp-ignore-case folds ASCII only; alternatives of
+ * whole UTF-8 byte sequences match the same way under any locale and regex engine.
+ */
+function caseFoldedPattern(text: string): string {
+  let pattern = ''
+  for (const ch of text) {
+    const cases = new Set([ch, ch.toLowerCase(), ch.toUpperCase()])
+    pattern +=
+      ch > '\x7f' && cases.size > 1
+        ? `(${[...cases].map(escapeExtendedRegexp).join('|')})`
+        : escapeExtendedRegexp(ch)
+  }
+  return pattern
 }
 
 interface BranchRef extends BranchName {

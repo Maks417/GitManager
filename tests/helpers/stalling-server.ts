@@ -11,6 +11,9 @@ export async function stallingServer(): Promise<{
   let closed = 0
   const server = createServer((socket) => {
     sockets.push(socket)
+    // Read and drop the request: while it sits unread, Node never reports the client's orderly close
+    // (a killed process on macOS/Linux sends FIN, not the reset Windows sends).
+    socket.resume()
     socket.on('close', () => closed++)
     socket.on('error', () => undefined)
   })
