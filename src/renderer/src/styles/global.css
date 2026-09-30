@@ -1597,6 +1597,21 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   font-size: var(--text-sm);
 }
 
+.about-author {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+
+.about-author-name {
+  font-size: var(--text-sm);
+}
+
+.about-social {
+  display: flex;
+  gap: var(--space-1);
+}
+
 .about-update {
   display: grid;
   gap: var(--space-2);

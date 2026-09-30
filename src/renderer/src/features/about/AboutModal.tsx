@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import type React from 'react'
 import type { AppInfo, UpdateStatus } from '@shared/ipc'
-import { Banner, Button, Modal } from '../../components/ui'
+import { Banner, Button, IconButton, Modal } from '../../components/ui'
 import { toErrorMessage } from '../../lib/errors'
 import logoUrl from '../../../favicon.svg'
+import { GitHubIcon, LinkedInIcon } from './BrandIcons'
+
+const AUTHOR = {
+  name: 'Max Davydov',
+  github: 'https://github.com/Maks417',
+  linkedin: 'https://www.linkedin.com/in/max-davydov/'
+}
 
 interface Props {
   status: UpdateStatus | null
@@ -80,6 +87,18 @@ export function AboutModal({ status, onClose, onStatus }: Props): React.JSX.Elem
             </>
           )}
         </p>
+
+        <div className="about-author">
+          <span className="about-author-name">Created by {AUTHOR.name}</span>
+          <div className="about-social">
+            <IconButton label={`${AUTHOR.name} on GitHub`} onClick={() => openExternal(AUTHOR.github)}>
+              <GitHubIcon />
+            </IconButton>
+            <IconButton label={`${AUTHOR.name} on LinkedIn`} onClick={() => openExternal(AUTHOR.linkedin)}>
+              <LinkedInIcon />
+            </IconButton>
+          </div>
+        </div>
 
         <div className="about-update">
           {updateMessage && <p className="about-update-status muted">{updateMessage}</p>}

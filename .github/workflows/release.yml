@@ -15,7 +15,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check tag matches package.json version
         shell: bash
@@ -57,9 +57,9 @@ jobs:
     # Linux is optional: its failure must not block publishing Windows and macOS.
     continue-on-error: ${{ matrix.platform == 'linux' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -85,6 +85,11 @@ jobs:
           WIN_CSC_LINK: ${{ matrix.platform == 'win' && secrets.WIN_CSC_LINK || '' }}
           WIN_CSC_KEY_PASSWORD: ${{ matrix.platform == 'win' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
         run: |
+          # A missing secret arrives as an empty string, but electron-builder treats a defined CSC_LINK
+          # as a certificate path (resolving "" to the project folder), so drop the empty ones.
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then unset "$name"; fi
+          done
           args=(--${{ matrix.platform }} --publish always)
           if [ "${{ matrix.platform }}" = mac ] && [ -z "$CSC_LINK" ]; then
             # No Developer ID yet: ad-hoc sign, otherwise Apple Silicon refuses the modified bundle.
@@ -95,7 +100,7 @@ jobs:
           npx electron-builder "${args[@]}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.platform }}
           path: |

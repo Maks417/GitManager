@@ -16,7 +16,7 @@ export function buildAppMenu(): void {
             label: app.name,
             submenu: [
               {
-                label: 'About Git Manager',
+                label: 'About',
                 click: () => sendMenu(MenuChannels.about)
               },
               { type: 'separator' as const },
@@ -156,7 +156,7 @@ export function buildAppMenu(): void {
         ...(!isMac
           ? [
               {
-                label: 'About Git Manager',
+                label: 'About',
                 click: () => sendMenu(MenuChannels.about)
               }
             ]
