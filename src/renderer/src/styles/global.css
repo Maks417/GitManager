@@ -50,30 +50,40 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #12110f;
-  --bg-elevated: #1c1a17;
-  --bg-panel: #161411;
-  --bg-subtle: #221f1b;
-  --border: #2e2a24;
-  --border-strong: #3f3931;
-  --text: #f2ede6;
-  --text-muted: #9a9186;
-  --text-inverse: #12110f;
-  --accent: #e85d04;
-  --accent-hover: #f48c06;
-  --accent-muted: rgba(232, 93, 4, 0.16);
-  --success: #6a9b6e;
-  --danger: #e35d5d;
-  --warning: #d4a017;
-  --info: #5b8fa8;
+  /* Dusk: lifted off black, one visible step per surface, text around 12:1 rather than 16:1. */
+  --bg: #1a1917;
+  --bg-elevated: #2a2825;
+  --bg-panel: #211f1c;
+  --bg-subtle: #2f2c28;
+  --border: #3a3631;
+  --border-strong: #4a453e;
+  --text: #e6e0d6;
+  --text-muted: #a39a8e;
+  --text-inverse: #1a1917;
+  --accent: #eb7a45;
+  --accent-hover: #f2915f;
+  --accent-muted: rgba(235, 122, 69, 0.12);
+  --success: #7fae82;
+  --danger: #e87070;
+  --warning: #d9ac3a;
+  --info: #6fa0b8;
   --status-added: var(--success);
   --status-modified: var(--warning);
   --status-deleted: var(--danger);
   --status-renamed: var(--info);
   --status-conflicted: var(--danger);
-  --row-hover: #24201c;
-  --row-selected: rgba(232, 93, 4, 0.18);
-  --focus-ring: #e85d04;
+  --row-hover: #2c2a26;
+  /* The selected commit or file is the only ember-washed row; where you are gets a neutral lift and a rim. */
+  --row-selected: rgba(235, 122, 69, 0.13);
+  --row-current: #2f2c28;
+  --row-current-rim: var(--accent);
+  --row-current-radius: 0 var(--radius-md) var(--radius-md) 0;
+  --row-checked: var(--bg-subtle);
+  --segment-active-bg: var(--row-selected);
+  --segment-active-fg: #f2a574;
+  --segment-active-rim: var(--accent);
+  --segment-active-hover-bg: rgba(235, 122, 69, 0.2);
+  --focus-ring: var(--accent);
   --sha: #e8a87c;
   --ref-pill-bg: #1a1714;
   --banner-danger-bg: #3a1e1e;
@@ -90,8 +100,8 @@
   --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.5);
   --welcome-glow: rgba(232, 93, 4, 0.12);
   --splitter-active: rgba(232, 93, 4, 0.4);
-  --head-stroke: #f2ede6;
-  --cursor-text: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='20'%3E%3Cpath fill='%2312110f' d='M1 1h9v3H1zM4 4h3v12H4zM1 16h9v3H1z'/%3E%3Cpath fill='%23f2ede6' d='M2 2h3v1H2zM6 2h3v1H6zM5 3h1v14H5zM2 17h3v1H2zM6 17h3v1H6z'/%3E%3C/svg%3E") 5 10, text;
+  --head-stroke: #e6e0d6;
+  --cursor-text: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='20'%3E%3Cpath fill='%231a1917' d='M1 1h9v3H1zM4 4h3v12H4zM1 16h9v3H1z'/%3E%3Cpath fill='%23e6e0d6' d='M2 2h3v1H2zM6 2h3v1H6zM5 3h1v14H5zM2 17h3v1H2zM6 17h3v1H6z'/%3E%3C/svg%3E") 5 10, text;
 }
 
 [data-theme="light"] {
@@ -120,6 +130,14 @@
   --status-conflicted: var(--danger);
   --row-hover: #e4e8ee;
   --row-selected: rgba(232, 93, 4, 0.14);
+  --row-current: var(--row-selected);
+  --row-current-rim: transparent;
+  --row-current-radius: var(--radius-md);
+  --row-checked: var(--accent-muted);
+  --segment-active-bg: var(--accent);
+  --segment-active-fg: var(--text-inverse);
+  --segment-active-rim: transparent;
+  --segment-active-hover-bg: var(--accent-hover);
   --focus-ring: #e85d04;
   --sha: #c45c0a;
   --ref-pill-bg: #ffffff;
@@ -522,9 +540,18 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
 }
 
 .mode-switch button.primary,
-.segmented button.active {
-  background: var(--accent);
-  color: var(--text-inverse);
+.segmented button.active,
+.conflict-list button.primary,
+.toolbar-menu > button.primary {
+  background: var(--segment-active-bg);
+  color: var(--segment-active-fg);
+  border-color: transparent;
+  box-shadow: inset 0 -2px 0 var(--segment-active-rim);
+}
+
+.conflict-list button.primary:hover:not(:disabled),
+.toolbar-menu > button.primary:hover:not(:disabled) {
+  background: var(--segment-active-hover-bg);
   border-color: transparent;
 }
 
@@ -1032,11 +1059,17 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   background: var(--row-hover);
 }
 
-.repo-list li.active,
-.branch-list li.active,
 .file-list li.active,
 .history-row.selected {
   background: var(--row-selected);
+}
+
+/* The repository and branch you are on: context, not the focus of attention. */
+.repo-list li.active,
+.branch-list li.active {
+  background: var(--row-current);
+  border-radius: var(--row-current-radius);
+  box-shadow: inset 2px 0 0 var(--row-current-rim);
 }
 
 .repo-list li {
@@ -1873,7 +1906,7 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
 }
 
 .file-list li.checked {
-  background: var(--accent-muted);
+  background: var(--row-checked);
 }
 
 .changes-files-meta {

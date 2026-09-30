@@ -2,6 +2,7 @@ import { loader } from '@monaco-editor/react'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import * as monaco from './monaco-api'
 import { letTabLeaveReadOnlyEditors } from './monaco-keys'
+import { MONACO_DARK_THEME } from './theme'
 
 const F1 = monaco.KeyCode.F1
 const CTRL_SHIFT_P = monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP
@@ -63,6 +64,85 @@ function disableCommandPalette(m: typeof monaco): void {
 }
 
 /**
+ * Dusk: the dark theme's surfaces and a softer palette in place of vs-dark's cool gray editor, saturated diff slabs and
+ * neon brackets. Colors mirror the `[data-theme="dark"]` tokens in global.css (Monaco needs literal hex).
+ */
+function defineDarkTheme(m: typeof monaco): void {
+  const bg = '#1A1917'
+  const panel = '#211F1C'
+  const elevated = '#2A2825'
+  const border = '#3A3631'
+  const text = '#D6D0C6'
+  const muted = '#A39A8E'
+  const added = '#7FAE82'
+  const removed = '#E87070'
+  const accent = '#EB7A45'
+
+  m.editor.defineTheme(MONACO_DARK_THEME, {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: '', foreground: text.slice(1) },
+      { token: 'keyword', foreground: 'C49BD6' },
+      { token: 'type', foreground: '7FB8C9' },
+      { token: 'string', foreground: 'A9C48C' },
+      { token: 'string.escape', foreground: 'DCB567' },
+      { token: 'string.key.json', foreground: 'C9B48A' },
+      { token: 'string.value.json', foreground: 'A9C48C' },
+      { token: 'number', foreground: 'DCB567' },
+      { token: 'comment', foreground: '948B80', fontStyle: 'italic' },
+      { token: 'regexp', foreground: 'D98E6A' },
+      { token: 'tag', foreground: 'C49BD6' },
+      { token: 'metatag', foreground: 'C49BD6' },
+      { token: 'attribute.name', foreground: 'C9B48A' },
+      { token: 'attribute.value', foreground: 'A9C48C' },
+      { token: 'variable', foreground: 'C9B48A' },
+      { token: 'delimiter', foreground: muted.slice(1) }
+    ],
+    colors: {
+      'editor.background': bg,
+      'editor.foreground': text,
+      'editorGutter.background': bg,
+      'editorLineNumber.foreground': '#7D756B',
+      'editorLineNumber.activeForeground': muted,
+      'editor.lineHighlightBackground': panel,
+      'editor.lineHighlightBorder': '#00000000',
+      'editor.selectionBackground': `${accent}40`,
+      'editor.inactiveSelectionBackground': `${accent}26`,
+      'editorCursor.foreground': accent,
+      'editorIndentGuide.background1': '#2F2C28',
+      'editorIndentGuide.activeBackground1': '#4A453E',
+      'editorBracketHighlight.foreground1': '#C9B48A',
+      'editorBracketHighlight.foreground2': '#B89AC9',
+      'editorBracketHighlight.foreground3': '#8FB3C4',
+      'editorBracketHighlight.foreground4': '#C9B48A',
+      'editorBracketHighlight.foreground5': '#B89AC9',
+      'editorBracketHighlight.foreground6': '#8FB3C4',
+      'diffEditor.insertedLineBackground': `${added}1A`,
+      'diffEditor.insertedTextBackground': `${added}38`,
+      'diffEditor.removedLineBackground': `${removed}1A`,
+      'diffEditor.removedTextBackground': `${removed}38`,
+      'diffEditorOverview.insertedForeground': `${added}99`,
+      'diffEditorOverview.removedForeground': `${removed}99`,
+      'diffEditor.diagonalFill': `${border}99`,
+      'diffEditor.unchangedRegionBackground': panel,
+      'scrollbarSlider.background': '#4A453E66',
+      'scrollbarSlider.hoverBackground': '#4A453E99',
+      'scrollbarSlider.activeBackground': '#4A453ECC',
+      'editorOverviewRuler.border': '#00000000',
+      'editorWidget.background': elevated,
+      'editorWidget.border': border,
+      'menu.background': elevated,
+      'menu.foreground': text,
+      'menu.border': border,
+      'menu.selectionBackground': `${accent}33`,
+      'menu.selectionForeground': text,
+      'menu.separatorBackground': border
+    }
+  })
+}
+
+/**
  * @monaco-editor/react defaults to a CDN loader. Electron CSP blocks those
  * scripts, so DiffEditor stays on "Loading…" forever. Bundle Monaco locally.
  */
@@ -90,6 +170,7 @@ export function setupMonaco(): void {
   })
 
   loader.config({ monaco })
+  defineDarkTheme(monaco)
   disableCommandPalette(monaco)
   letTabLeaveReadOnlyEditors()
 }

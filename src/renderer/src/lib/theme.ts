@@ -23,8 +23,11 @@ export function resolveAndApplyTheme(preference: ThemePreference): ResolvedTheme
   return resolved
 }
 
-export function monacoThemeFor(resolved: ResolvedTheme): 'vs' | 'vs-dark' {
-  return resolved === 'light' ? 'vs' : 'vs-dark'
+/** The Dusk dark theme for Monaco, defined in setupMonaco; light uses Monaco's own `vs`. */
+export const MONACO_DARK_THEME = 'gm-dark'
+
+export function monacoThemeFor(resolved: ResolvedTheme): 'vs' | typeof MONACO_DARK_THEME {
+  return resolved === 'light' ? 'vs' : MONACO_DARK_THEME
 }
 
 export function readDocumentTheme(): ResolvedTheme {

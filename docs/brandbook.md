@@ -16,33 +16,47 @@ Warm charcoal ink surfaces, an ember signal accent, cool stone light mode. Dense
 
 Resolved via CSS variables on `[data-theme="dark"]` and `[data-theme="light"]` in [`src/renderer/src/styles/global.css`](../src/renderer/src/styles/global.css).
 
-### Core (dark)
+### Core (dark) — Dusk
+
+Dark is tuned for long sessions: lifted off black, one visible step per surface, body text around 12:1 instead of 16:1, and a banked (less saturated) ember.
 
 | Token | Hex | Usage |
 |---|---|---|
-| `--bg` | `#12110F` | App canvas |
-| `--bg-elevated` | `#1C1A17` | Toolbar, menus, elevated chrome |
-| `--bg-panel` | `#161411` | Sidebars, panes |
-| `--bg-subtle` | `#221F1B` | Nested / rebasing / warning strips |
-| `--border` | `#2E2A24` | Hairlines |
-| `--border-strong` | `#3F3931` | Stronger dividers |
-| `--text` | `#F2EDE6` | Primary text |
-| `--text-muted` | `#9A9186` | Secondary text |
-| `--text-inverse` | `#12110F` | Text on accent fills |
-| `--accent` | `#E85D04` | Primary actions, selection rim |
-| `--accent-hover` | `#F48C06` | Primary hover |
-| `--accent-muted` | `rgba(232, 93, 4, 0.16)` | Soft accent wash |
-| `--success` | `#6A9B6E` | Success / ahead-clean |
-| `--danger` | `#E35D5D` | Destructive / errors |
-| `--warning` | `#D4A017` | Caution / rebase |
-| `--info` | `#5B8FA8` | Informational |
-| `--row-hover` | `#24201C` | List hover |
-| `--row-selected` | `rgba(232, 93, 4, 0.18)` | Selection |
-| `--focus-ring` | `#E85D04` | `:focus-visible` |
+| `--bg` | `#1A1917` | App canvas, inputs, editors (darkest) |
+| `--bg-panel` | `#211F1C` | Sidebars, panes |
+| `--bg-elevated` | `#2A2825` | Toolbar, headers, menus, commit form |
+| `--bg-subtle` | `#2F2C28` | Nested / rebasing / warning strips, checked files |
+| `--border` | `#3A3631` | Hairlines |
+| `--border-strong` | `#4A453E` | Stronger dividers |
+| `--text` | `#E6E0D6` | Primary text (12.6:1 on panels) |
+| `--text-muted` | `#A39A8E` | Secondary text |
+| `--text-inverse` | `#1A1917` | Text on accent fills |
+| `--accent` | `#EB7A45` | Primary actions, focus, selection rim |
+| `--accent-hover` | `#F2915F` | Primary hover |
+| `--accent-muted` | `rgba(235, 122, 69, 0.12)` | Soft accent wash |
+| `--success` | `#7FAE82` | Success / ahead-clean |
+| `--danger` | `#E87070` | Destructive / errors |
+| `--warning` | `#D9AC3A` | Caution / rebase |
+| `--info` | `#6FA0B8` | Informational |
+| `--row-hover` | `#2C2A26` | List hover |
+| `--row-selected` | `rgba(235, 122, 69, 0.13)` | Selected commit or file |
+| `--focus-ring` | `--accent` | `:focus-visible` |
 | `--sha` | `#E8A87C` | Monospace SHAs |
 | `--banner-danger-bg` | `#3A1E1E` | Error banner |
 | `--banner-danger-fg` | `#F5C4C4` | Error banner text |
 | `--banner-danger-border` | `#6B3030` | Error banner border |
+
+The app mark keeps `#12110F` / `#E85D04`: the brand icon and the UI tokens are separate.
+
+### One focal point
+
+In dark, only the selected commit or file gets the ember wash. Where you are (the active repository and branch) gets a neutral lift with a 2px ember rim; checked files get `--bg-subtle`; active segments (History/Changes, theme, diff view, the merge editor's file, an open Sync menu) get a tint with ember text and a 2px underline. Solid ember is kept for primary actions such as Commit and Save & stage. Light keeps its look: these tokens resolve there to the earlier values.
+
+| Token | Dark | Light |
+|---|---|---|
+| `--row-current` / `--row-current-rim` | `#2F2C28` / `--accent` | `--row-selected` / transparent |
+| `--row-checked` | `--bg-subtle` | `--accent-muted` |
+| `--segment-active-bg` / `-fg` / `-rim` | `--row-selected` / `#F2A574` / `--accent` | `--accent` / `--text-inverse` / transparent |
 
 ### Core (light)
 
@@ -129,7 +143,7 @@ Layout prefs remain: `--sidebar-width`, `--inspector-height`, `--detail-width`, 
 
 ## Theme
 
-`AppPreferences.theme`: `system` | `light` | `dark`. Resolved to `document.documentElement.dataset.theme`, the Electron `BrowserWindow` background and `nativeTheme.themeSource`, which themes what CSS cannot reach: the window frame, title bar and Windows/Linux menu bar. Monaco uses `vs` / `vs-dark`.
+`AppPreferences.theme`: `system` | `light` | `dark`. Resolved to `document.documentElement.dataset.theme`, the Electron `BrowserWindow` background and `nativeTheme.themeSource`, which themes what CSS cannot reach: the window frame, title bar and Windows/Linux menu bar. Monaco uses `vs` in light and `gm-dark` in dark: `setupMonaco` defines it on top of `vs-dark` with the Dusk surfaces, soft diff tints, muted bracket pairs and a warm syntax palette (keywords plum, types teal, strings sage, numbers amber, comments italic stone).
 
 **Text cursor:** `--cursor-text` is an explicit I-beam per theme — a dark stem with a light halo in light mode, the reverse in dark mode — used by Monaco editors and text fields. The system I-beam is an XOR cursor, and some GPU drivers (AMD on Windows 11) draw it solid white, which disappears on light surfaces.
 

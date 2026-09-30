@@ -4,7 +4,7 @@ export type ThemePreference = 'system' | 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
 
 export const THEME_BG = {
-  dark: '#12110F',
+  dark: '#1A1917',
   light: '#F4F6F8'
 } as const
 
