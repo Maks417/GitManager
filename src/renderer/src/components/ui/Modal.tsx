@@ -105,7 +105,8 @@ export function Modal({
         ref={dialogRef}
         className={['modal', className].filter(Boolean).join(' ')}
         style={{
-          ...(wide ? { width: 'min(720px, 94vw)', maxHeight: '90vh', overflow: 'auto' } : null),
+          // Height is capped for every dialog in CSS; the body scrolls, the buttons stay in view.
+          ...(wide ? { width: 'min(720px, 94vw)' } : null),
           ...style
         }}
         role="dialog"

@@ -1496,14 +1496,22 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
 
 .modal {
   width: min(520px, 92vw);
+  /* Never taller than the window: the body scrolls, the title and buttons stay in view. */
+  max-height: calc(100vh - 2 * var(--space-4));
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   box-shadow: var(--shadow-modal);
   animation: fade-in var(--duration-normal) var(--ease-out);
+}
+
+.modal > h3,
+.modal > .modal-actions {
+  flex: none;
 }
 
 .modal h3 {
@@ -1520,6 +1528,10 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   display: grid;
   gap: 10px;
   min-height: 0;
+  overflow: auto;
+  /* Room for focus rings, which the scroll box would otherwise clip. */
+  padding: 3px;
+  margin: -3px;
 }
 
 .confirm-dialog {
@@ -1992,10 +2004,64 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
 }
 
 .release-notes {
-  white-space: pre-wrap;
-  margin: 0;
+  font-size: var(--text-md);
+  line-height: var(--leading);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+}
+
+.release-notes h3,
+.release-notes h4 {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.release-notes h3 {
+  font-size: var(--text-lg);
+}
+
+.release-notes > :first-child {
+  margin-top: 0;
+}
+
+.release-notes p,
+.release-notes ul,
+.release-notes ol,
+.release-notes pre,
+.release-notes blockquote {
+  margin: 0 0 var(--space-2);
+}
+
+.release-notes ul,
+.release-notes ol {
+  padding-left: 20px;
+}
+
+.release-notes li + li {
+  margin-top: 2px;
+}
+
+.release-notes code {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+}
+
+.release-notes pre {
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.release-notes a {
+  color: var(--accent);
+}
+
+.release-notes-text {
+  white-space: pre-wrap;
 }
 
 body.resizing-col,

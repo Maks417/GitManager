@@ -1,6 +1,7 @@
 import type React from 'react'
 import type { UpdateStatus } from '@shared/ipc'
 import { Banner, Button, Modal } from '../../components/ui'
+import { ReleaseNotes } from './ReleaseNotes'
 
 interface Props {
   status: UpdateStatus | null
@@ -35,7 +36,7 @@ export function UpdatesModal({ status, onClose, onStatus }: Props): React.JSX.El
         <div>Available: {status?.available ? `yes (${status.version})` : 'no'}</div>
         <div>Downloaded: {status?.downloaded ? 'yes' : 'no'}</div>
         <div>Progress: {status?.progress != null ? `${status.progress.toFixed(0)}%` : '—'}</div>
-        {status?.releaseNotes && <pre className="release-notes">{status.releaseNotes}</pre>}
+        {status?.releaseNotes && <ReleaseNotes notes={status.releaseNotes} />}
         {status?.error && <Banner>{status.error}</Banner>}
       </div>
     </Modal>
