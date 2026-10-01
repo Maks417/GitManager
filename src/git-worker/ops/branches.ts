@@ -231,10 +231,43 @@ export async function checkoutRemoteBranch(repoPath: string, remoteRef: string):
   await gitOk(repoPath, ['checkout', '--track', remoteRef])
 }
 
-export async function createBranch(repoPath: string, name: string, doCheckout = true): Promise<void> {
+/** A branch at HEAD, or at `startPoint` (a commit picked in History). */
+export async function createBranch(
+  repoPath: string,
+  name: string,
+  doCheckout = true,
+  startPoint?: string
+): Promise<void> {
   assertRevision(name, 'branch name')
-  if (doCheckout) await gitOk(repoPath, ['checkout', '-b', name])
-  else await gitOk(repoPath, ['branch', name])
+  const at = startPoint ? [assertRevision(startPoint, 'start point')] : []
+  if (doCheckout) await gitOk(repoPath, ['checkout', '-b', name, ...at])
+  else await gitOk(repoPath, ['branch', name, ...at])
+}
+
+/** Push one tag to the default push remote, or delete it there. */
+export async function pushTag(
+  repoPath: string,
+  name: string,
+  remove: boolean,
+  ctx: RemoteOpContext = {}
+): Promise<RemoteOpResult> {
+  assertRevision(name, 'tag name')
+  const remote = await defaultPushRemote(repoPath)
+  const refspec = remove ? `:refs/tags/${name}` : `refs/tags/${name}:refs/tags/${name}`
+  try {
+    const result = await runNetwork(repoPath, ['push', '--progress', remote, refspec], ctx)
+    if (result.code !== 0) {
+      const raw = result.stderr || result.stdout
+      if (/\[rejected\]|already exists/.test(raw)) {
+        throw new Error(`The remote already has a different tag "${name}". Delete it there first, or pick another name.`)
+      }
+      throw new Error(raw.trim() || `git push failed (${result.code})`)
+    }
+  } catch (err) {
+    if (err instanceof GitCancelledError) return { outcome: 'cancelled' }
+    throw err
+  }
+  return { outcome: 'done' }
 }
 
 export async function mergeRef(repoPath: string, ref: string): Promise<{ conflicts: string[] }> {

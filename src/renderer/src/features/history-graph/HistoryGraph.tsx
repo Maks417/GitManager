@@ -3,11 +3,12 @@ import type React from 'react'
 import { Locate } from 'lucide-react'
 import type { Commit } from '@shared/ipc'
 import { ColumnResizeHandle } from '../../components/ColumnResizeHandle'
-import { Button, RefPill } from '../../components/ui'
+import { Button, isMenuKey, menuPointFor, RefPill } from '../../components/ui'
 import { formatRelativeDate } from '../../lib/format'
 import { describeBranches } from '../../logic/branch-suggest'
 import { nextListIndex } from '../../logic/list-nav'
 import { useAppStatus } from '../../state/AppStatusProvider'
+import { useCommitMenu } from '../../state/CommitMenuProvider'
 import { useHistoryActions, useHistoryState } from '../../state/HistoryProvider'
 import { useLayout } from '../../state/LayoutProvider'
 import { useSession } from '../../state/RepoSessionProvider'
@@ -43,6 +44,7 @@ export function HistoryGraph(): React.JSX.Element {
   const { currentBranch } = useSession()
   const { selectedSha } = useSelection()
   const { selectCommit } = useWorkingTreeActions()
+  const { openCommitMenu } = useCommitMenu()
   // Column widths live in the layout state, which a drag updates live and saves when it ends.
   const {
     prefs,
@@ -147,6 +149,14 @@ export function HistoryGraph(): React.JSX.Element {
   const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     // Keys pressed on a column resize handle are the handle's.
     if (e.target !== e.currentTarget) return
+    if (isMenuKey(e)) {
+      const commit = commits[selectedIndex]
+      const row = commit && document.getElementById(rowId(commit.sha))
+      if (!commit || !row) return
+      e.preventDefault()
+      openCommitMenu(commit, menuPointFor(row))
+      return
+    }
     if (e.key === 'Enter') {
       const files = document.querySelector<HTMLElement>('.inspector-files')
       if (selectedIndex < 0 || !files) return
@@ -292,6 +302,11 @@ export function HistoryGraph(): React.JSX.Element {
                     className={`history-row ${selectedSha === c.sha ? 'selected' : ''}`}
                     style={{ gridTemplateColumns: cols, height: ROW_HEIGHT }}
                     onClick={() => selectCommit(c.sha)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      selectCommit(c.sha)
+                      openCommitMenu(c, { x: e.clientX, y: e.clientY })
+                    }}
                     title={[c.subject, refTitle, c.shortSha, author].filter(Boolean).join('\n')}
                   >
                     <GraphCell

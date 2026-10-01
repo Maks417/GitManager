@@ -18,6 +18,7 @@ export type SessionState = Pick<
   | 'remoteBranches'
   | 'identity'
   | 'rebaseInProgress'
+  | 'sequencerOp'
   | 'mergeInProgress'
   | 'gitMissing'
   | 'currentBranch'
@@ -74,6 +75,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
     identity,
     rebaseInProgress,
     mergeInProgress,
+    sequencerOp,
     gitMissing,
     currentBranch,
     localBranchNames,
@@ -115,6 +117,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
       identity,
       rebaseInProgress,
       mergeInProgress,
+      sequencerOp,
       gitMissing,
       currentBranch,
       localBranchNames,
@@ -132,6 +135,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
       identity,
       rebaseInProgress,
       mergeInProgress,
+      sequencerOp,
       gitMissing,
       currentBranch,
       localBranchNames,

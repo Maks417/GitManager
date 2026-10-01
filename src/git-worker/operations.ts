@@ -15,6 +15,8 @@ export {
   getWorkingTreeDiff
 } from './ops/history'
 
+export { applyPartial } from './ops/patch'
+
 export {
   getStatus,
   filterIgnoredPaths,
@@ -44,8 +46,20 @@ export {
   isMergeInProgress,
   mergeAbort,
   friendlyPushError,
-  deleteBranch
+  deleteBranch,
+  pushTag
 } from './ops/branches'
+
+export {
+  cherryPickCommit,
+  revertCommit,
+  getSequencerOp,
+  sequencerStep,
+  countCommitsAfter,
+  resetToCommit,
+  createTag,
+  deleteTag
+} from './ops/commits'
 
 export {
   stashSave,

@@ -151,13 +151,73 @@ export const WorkingTreeDiffRequestSchema = z.object({
 })
 export type WorkingTreeDiffRequest = z.infer<typeof WorkingTreeDiffRequestSchema>
 
+export const ImageSideSchema = z.object({
+  /** `data:` URL of the image; null when the file is over the preview size limit. */
+  dataUrl: z.string().nullable(),
+  bytes: z.number()
+})
+export type ImageSide = z.infer<typeof ImageSideSchema>
+
+/** Both versions of an image file; a side is null when the file does not exist there (added or deleted). */
+export const ImagePreviewSchema = z.object({
+  old: ImageSideSchema.nullable(),
+  new: ImageSideSchema.nullable()
+})
+export type ImagePreview = z.infer<typeof ImagePreviewSchema>
+
+export const DiffHunkSchema = z.object({
+  oldStart: z.number(),
+  oldLines: z.number(),
+  newStart: z.number(),
+  newLines: z.number(),
+  /** Line numbers of each line: context lines have both, removed lines only old, added lines only new. */
+  lines: z.array(
+    z.object({
+      kind: z.enum(['context', 'add', 'del']),
+      oldLine: z.number().nullable(),
+      newLine: z.number().nullable()
+    })
+  )
+})
+export type DiffHunk = z.infer<typeof DiffHunkSchema>
+
+/** Hunks of a work-tree diff that can be staged one by one; `fingerprint` identifies the diff they come from. */
+export const HunkSetSchema = z.object({
+  fingerprint: z.string(),
+  hunks: z.array(DiffHunkSchema)
+})
+export type HunkSet = z.infer<typeof HunkSetSchema>
+
 export const DiffResultSchema = z.object({
   path: z.string(),
   oldText: z.string(),
   newText: z.string(),
-  binary: z.boolean()
+  binary: z.boolean(),
+  /** Set for image files (by extension), next to the text diff. */
+  image: ImagePreviewSchema.optional(),
+  /** Work-tree diffs only: set when single hunks or lines can be staged, unstaged or discarded. */
+  hunks: HunkSetSchema.optional()
 })
 export type DiffResult = z.infer<typeof DiffResultSchema>
+
+const LineNumbersSchema = z.array(z.number().int().min(1)).max(1_000_000)
+
+export const ApplyPartialRequestSchema = z.object({
+  repoPath: z.string(),
+  path: z.string().min(1),
+  side: z.enum(['staged', 'unstaged']),
+  /** Stage and discard work on unstaged changes, unstage on staged ones. */
+  action: z.enum(['stage', 'unstage', 'discard']),
+  fingerprint: z.string().min(1),
+  /** One hunk by index, or changed lines: removed lines by old line number, added lines by new line number. */
+  selection: z.union([
+    z.object({ hunk: z.number().int().min(0) }),
+    z.object({ oldLines: LineNumbersSchema, newLines: LineNumbersSchema })
+  ])
+})
+export type ApplyPartialRequest = z.infer<typeof ApplyPartialRequestSchema>
+export type PartialSelection = ApplyPartialRequest['selection']
+export type PartialAction = ApplyPartialRequest['action']
 
 export const StatusEntrySchema = z.object({
   path: z.string(),
@@ -354,6 +414,22 @@ export const RemoteOpRequestSchema = z.object({
   opId: OperationIdSchema
 })
 export type RemoteOpRequest = z.infer<typeof RemoteOpRequestSchema>
+
+/** Pushes one tag to the default push remote, or deletes it there; progress and cancel work as for a push. */
+export const TagPushRequestSchema = RemoteOpRequestSchema.extend({
+  tag: z.string().min(1),
+  remove: z.boolean().default(false)
+})
+export type TagPushRequest = z.input<typeof TagPushRequestSchema>
+
+export const ResetModeSchema = z.enum(['soft', 'mixed', 'hard'])
+export type ResetMode = z.infer<typeof ResetModeSchema>
+
+/** A cherry-pick or revert that stopped part way; continued, skipped or aborted like a rebase. */
+export const SequencerOpSchema = z.enum(['cherry-pick', 'revert'])
+export type SequencerOp = z.infer<typeof SequencerOpSchema>
+export const SequencerStepSchema = z.enum(['continue', 'skip', 'abort'])
+export type SequencerStep = z.infer<typeof SequencerStepSchema>
 
 export const RemoteProgressSchema = z.object({
   /** Git's current step, e.g. "Receiving objects". */

@@ -1,20 +1,29 @@
 import type React from 'react'
 import { Play, SkipForward, X } from 'lucide-react'
 import { Button } from './ui'
-import { CONFIRM_ABORT_MERGE, CONFIRM_ABORT_REBASE } from '../lib/copy'
+import { CONFIRM_ABORT_MERGE, CONFIRM_ABORT_REBASE, confirmAbortSequencer } from '../lib/copy'
 import { useConfirm } from '../state/ConfirmProvider'
+
+export type OperationKind = 'rebase' | 'merge' | 'cherry-pick' | 'revert'
 
 interface OperationBarProps {
   /** The multi-step Git operation that is in progress. */
-  kind: 'rebase' | 'merge'
+  kind: OperationKind
   busy?: boolean
-  /** Rebase only: continue after resolving conflicts. */
+  /** Not for a merge (a commit finishes it): continue after resolving conflicts. */
   onContinue?: () => Promise<unknown> | void
-  /** Rebase only: drop the commit the rebase stopped on. */
+  /** Not for a merge: drop the commit the operation stopped on. */
   onSkip?: () => Promise<unknown> | void
   onAbort?: () => Promise<unknown> | void
   /** `pane` adds icons for the Changes pane; `toolbar` is the merge editor style. */
   variant?: 'toolbar' | 'pane'
+}
+
+const LABEL: Record<OperationKind, string> = {
+  rebase: 'Rebase in progress',
+  merge: 'Merge in progress — commit to finish it',
+  'cherry-pick': 'Cherry-pick in progress',
+  revert: 'Revert in progress'
 }
 
 export function OperationBar({
@@ -26,38 +35,38 @@ export function OperationBar({
   variant = 'toolbar'
 }: OperationBarProps): React.JSX.Element | null {
   const confirm = useConfirm()
-  const canContinue = kind === 'rebase' && Boolean(onContinue)
-  const canSkip = kind === 'rebase' && Boolean(onSkip)
+  const canContinue = kind !== 'merge' && Boolean(onContinue)
+  const canSkip = kind !== 'merge' && Boolean(onSkip)
   if (!canContinue && !canSkip && !onAbort) return null
 
   const pane = variant === 'pane'
   const runAbort = async (): Promise<void> => {
-    if (!(await confirm(kind === 'rebase' ? CONFIRM_ABORT_REBASE : CONFIRM_ABORT_MERGE))) return
+    const request =
+      kind === 'rebase' ? CONFIRM_ABORT_REBASE : kind === 'merge' ? CONFIRM_ABORT_MERGE : confirmAbortSequencer(kind)
+    if (!(await confirm(request))) return
     await onAbort?.()
   }
 
   return (
     <div className={pane ? 'rebase-bar' : 'merge-toolbar'}>
-      <span className="muted">
-        {kind === 'rebase' ? 'Rebase in progress' : 'Merge in progress — commit to finish it'}
-      </span>
+      <span className="muted">{LABEL[kind]}</span>
       {canContinue && (
         <Button
           variant="primary"
           disabled={busy}
-          hint="Continue rebase"
-          title="Continue rebase"
+          hint={`Continue ${kind}`}
+          title={`Continue ${kind}`}
           onClick={() => void onContinue?.()}
         >
           {pane && <Play size={14} strokeWidth={2} />}
-          Continue rebase
+          Continue {kind}
         </Button>
       )}
       {canSkip && (
         <Button
           disabled={busy}
-          hint="Skip the commit the rebase stopped on"
-          title="Skip the commit the rebase stopped on"
+          hint={`Skip the commit the ${kind} stopped on`}
+          title={`Skip the commit the ${kind} stopped on`}
           onClick={() => void onSkip?.()}
         >
           {pane && <SkipForward size={14} strokeWidth={2} />}

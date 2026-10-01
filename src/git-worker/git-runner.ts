@@ -375,18 +375,36 @@ export async function runGitDelimited(
   })
 }
 
+export interface CappedGitOutput {
+  buffer: Buffer
+  binary: boolean
+  truncated: boolean
+  ok: boolean
+}
+
 /**
  * Stream at most `maxBytes` from `git show <spec>` for diff display (Windows + macOS).
  */
-export async function readGitShowCapped(
+export async function readGitShowCapped(cwd: string, spec: string, maxBytes: number): Promise<CappedGitOutput> {
+  return streamGitCapped(cwd, ['show', spec], maxBytes, true)
+}
+
+/** Raw bytes of a blob (`git cat-file blob`: no textconv), up to `maxBytes`, NUL bytes included. */
+export async function readGitBlobCapped(cwd: string, spec: string, maxBytes: number): Promise<CappedGitOutput> {
+  return streamGitCapped(cwd, ['cat-file', 'blob', spec], maxBytes, false)
+}
+
+/** Collect at most `maxBytes` of stdout; with `stopOnBinary`, the first NUL byte ends the read. */
+function streamGitCapped(
   cwd: string,
-  spec: string,
-  maxBytes: number
-): Promise<{ buffer: Buffer; binary: boolean; truncated: boolean; ok: boolean }> {
+  args: string[],
+  maxBytes: number,
+  stopOnBinary: boolean
+): Promise<CappedGitOutput> {
   return new Promise((resolve, reject) => {
     let child: ChildProcessWithoutNullStreams
     try {
-      child = spawnGit({ cwd, args: ['show', spec] })
+      child = spawnGit({ cwd, args })
     } catch (err) {
       reject(isMissingGitError(err) ? new Error(gitNotFoundMessage()) : err)
       return
@@ -411,7 +429,7 @@ export async function readGitShowCapped(
       } else {
         truncated = true
       }
-      if (binary || total >= maxBytes) {
+      if ((stopOnBinary && binary) || total >= maxBytes) {
         child.kill('SIGTERM')
       }
     })

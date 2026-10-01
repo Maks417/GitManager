@@ -1,5 +1,5 @@
 import type React from 'react'
-import { Copy, GitBranch, GitMerge } from 'lucide-react'
+import { Copy, Ellipsis, GitBranch, GitMerge } from 'lucide-react'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
@@ -9,6 +9,7 @@ import { confirmMerge, confirmRebase } from '../../lib/copy'
 import { formatRelativeDate } from '../../lib/format'
 import { nextListIndex } from '../../logic/list-nav'
 import { useAppStatus } from '../../state/AppStatusProvider'
+import { useCommitMenu } from '../../state/CommitMenuProvider'
 import { useConfirm } from '../../state/ConfirmProvider'
 import { useGitActions } from '../../state/GitActionsProvider'
 import { useLayout } from '../../state/LayoutProvider'
@@ -29,6 +30,7 @@ export function CommitDetailPane(): React.JSX.Element {
   } = useLayout()
   const { runMergeOrRebase } = useGitActions()
   const confirm = useConfirm()
+  const { openCommitMenu } = useCommitMenu()
 
   if (!detail) {
     return (
@@ -113,6 +115,19 @@ export function CommitDetailPane(): React.JSX.Element {
               }
             >
               Rebase onto…
+            </Button>
+            <Button
+              variant="ghost"
+              icon={<Ellipsis size={14} strokeWidth={1.75} />}
+              hint="Cherry-pick, revert, reset, branch or tag at this commit"
+              title="More actions for this commit"
+              aria-haspopup="menu"
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect()
+                openCommitMenu(commit, { x: r.left, y: r.bottom + 4 })
+              }}
+            >
+              More…
             </Button>
           </div>
         </div>

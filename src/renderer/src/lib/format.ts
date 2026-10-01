@@ -14,3 +14,11 @@ export function formatRelativeDate(iso: string): string {
   if (day < 30) return `${day}d ago`
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })
 }
+
+/** File size for display: `812 B`, `12.4 KB`, `3.1 MB`. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const kb = bytes / 1024
+  if (kb < 1024) return `${kb.toFixed(1)} KB`
+  return `${(kb / 1024).toFixed(1)} MB`
+}

@@ -5,7 +5,8 @@ import {
   type GitProgress,
   type RemoteOpKind,
   type RemoteOpRequest,
-  type RemoteOpResult
+  type RemoteOpResult,
+  type TagPushRequest
 } from '@shared/ipc'
 import { runCancellableOp } from '../git-worker/client'
 import type { CancellableGitMethod } from '../git-worker/method-registry'
@@ -44,6 +45,14 @@ export function runRemoteOperation(
   request: RemoteOpRequest
 ): Promise<RemoteOpResult> {
   return runTracked(sender, request.opId, METHODS[kind], [request.repoPath], { repoPath: request.repoPath, kind })
+}
+
+/** Push one tag (or delete it on the remote), shown and cancelled like a push. */
+export function runTagPush(sender: WebContents, request: TagPushRequest): Promise<RemoteOpResult> {
+  return runTracked(sender, request.opId, 'pushTag', [request.repoPath, request.tag, request.remove ?? false], {
+    repoPath: request.repoPath,
+    kind: 'push'
+  })
 }
 
 /** Clone `url` into `target` with progress; cancelling removes the partly cloned folder. */

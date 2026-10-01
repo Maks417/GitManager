@@ -2003,3 +2003,199 @@ body.resizing-row * {
   cursor: row-resize !important;
   user-select: none !important;
 }
+
+/* Image previews in the diff pane */
+.diff-with-preview {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-preview-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.image-diff {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  overflow: auto;
+}
+
+.image-diff-columns {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+.image-diff-stacked {
+  grid-auto-rows: minmax(160px, 1fr);
+}
+
+.image-diff-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+}
+
+.image-diff-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  /* Checkerboard, so transparent pixels read as transparent. */
+  background-color: var(--bg-panel);
+  background-image:
+    linear-gradient(45deg, var(--bg-subtle) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--bg-subtle) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--bg-subtle) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--bg-subtle) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* Out of flow, so the panel's height (not the image's) sets the size; margin: auto centers it. */
+.image-diff-canvas img {
+  position: absolute;
+  inset: var(--space-3);
+  margin: auto;
+  max-width: calc(100% - 2 * var(--space-3));
+  max-height: calc(100% - 2 * var(--space-3));
+  object-fit: contain;
+}
+
+.image-diff-note {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.image-diff-panel figcaption {
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.image-diff-label {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.image-diff-canvas img.image-diff-pixelated {
+  image-rendering: pixelated;
+}
+
+/* Stage / unstage / discard toolbar above a hunk in the Changes diff */
+.hunk-actions {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-menu);
+  font-family: var(--font-sans);
+}
+
+.hunk-actions .hunk-action {
+  padding: 2px 8px;
+  font-size: var(--text-sm);
+  line-height: 18px;
+  white-space: nowrap;
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+}
+
+.hunk-actions .hunk-action:hover:not(:disabled) {
+  background: var(--bg-subtle);
+}
+
+.hunk-actions .hunk-action-danger {
+  color: var(--danger);
+}
+
+.hunk-actions .hunk-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* A dropdown-menu opened at a point (right-click, Shift+F10) */
+.context-menu {
+  position: fixed;
+  top: auto;
+  min-width: 220px;
+  max-width: 360px;
+  z-index: 60;
+  gap: 0;
+}
+
+.context-menu-entry {
+  display: grid;
+}
+
+.context-menu-entry button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-menu-entry button.context-menu-danger {
+  color: var(--danger);
+}
+
+.context-menu-entry button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Commit action dialogs */
+.modal-lead {
+  margin: 0 0 var(--space-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reset-modes {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.reset-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.reset-mode.active {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.reset-mode input {
+  margin-top: 3px;
+}
+
+.reset-mode-danger {
+  color: var(--danger);
+}

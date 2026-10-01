@@ -5,14 +5,17 @@ import type {
   DiffResult,
   FileChange,
   HistoryPage,
-  HistoryQuery
+  HistoryQuery,
+  ImagePreview,
+  ImageSide
 } from '@shared/ipc'
 import { decorateCommitsWithColors, layoutCommitGraph } from '@history-core/layout'
 import { matchBranchPatterns, splitBranchTokens, type BranchName } from '@shared/branch-search'
 import { HISTORY_PAGE_SIZE } from '@shared/layout-defaults'
 import { parseHistorySearch, type HistorySearch } from '../history-query'
-import { gitOk, readGitShowCapped, runGit, runGitDelimited } from '../git-runner'
+import { gitOk, readGitBlobCapped, readGitShowCapped, runGit, runGitDelimited } from '../git-runner'
 import { assertRevision, assertSha, readRepoFile, resolveRepoPath } from './guards'
+import { getDiffHunks } from './patch'
 import { resolveHeadSha, SHA_RE } from './shared'
 
 /** List payload omits body (`%b`) — load body only in commit detail. */
@@ -421,6 +424,58 @@ async function readWorktreeFileCapped(
   return { text: capDiffText(file.buffer.toString('utf8')), binary: false }
 }
 
+/** Image types the diff pane previews, by extension. */
+const IMAGE_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  avif: 'image/avif',
+  svg: 'image/svg+xml'
+}
+/** Larger image versions are not sent to the renderer; the pane says how big they are instead. */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+export function imageMimeFor(path: string): string | null {
+  const dot = path.lastIndexOf('.')
+  if (dot < 0 || dot < path.lastIndexOf('/')) return null
+  return IMAGE_MIME[path.slice(dot + 1).toLowerCase()] ?? null
+}
+
+function imageSide(mime: string, buffer: Buffer, bytes: number, complete: boolean): ImageSide {
+  if (!complete || bytes > MAX_IMAGE_BYTES) return { dataUrl: null, bytes }
+  return { dataUrl: `data:${mime};base64,${buffer.toString('base64')}`, bytes }
+}
+
+/** One version of an image from the object store; null when `spec` names no blob. */
+async function readGitBlobImage(repoPath: string, spec: string, mime: string): Promise<ImageSide | null> {
+  const size = await gitBlobSize(repoPath, spec)
+  if (size === null) return null
+  if (size > MAX_IMAGE_BYTES) return { dataUrl: null, bytes: size }
+  const blob = await readGitBlobCapped(repoPath, spec, MAX_IMAGE_BYTES)
+  return imageSide(mime, blob.buffer, size, blob.ok && blob.buffer.length === size)
+}
+
+async function readWorktreeImage(repoPath: string, path: string, mime: string): Promise<ImageSide | null> {
+  const file = await readRepoFile(repoPath, path, MAX_IMAGE_BYTES)
+  if (!file.exists) return null
+  return imageSide(mime, file.buffer, file.size, !file.truncated)
+}
+
+async function imagePreview(
+  readOld: (mime: string) => Promise<ImageSide | null>,
+  readNew: (mime: string) => Promise<ImageSide | null>,
+  path: string
+): Promise<ImagePreview | undefined> {
+  const mime = imageMimeFor(path)
+  if (!mime) return undefined
+  const [old, neu] = await Promise.all([readOld(mime), readNew(mime)])
+  return { old, new: neu }
+}
+
 export async function getFileDiff(
   repoPath: string,
   sha: string,
@@ -436,26 +491,24 @@ export async function getFileDiff(
   const parents = tokens.slice(1)
   const parent = parents[parentIndex]
 
-  if (!parent) {
-    const neu = await readGitBlobText(repoPath, `${sha}:${path}`)
-    return {
-      path,
-      oldText: '',
-      newText: neu.binary ? '' : neu.text,
-      binary: neu.binary
-    }
-  }
-
-  const [oldSide, newSide] = await Promise.all([
-    readGitBlobText(repoPath, `${parent}:${oldPath || path}`),
-    readGitBlobText(repoPath, `${sha}:${path}`)
+  const oldSpec = parent ? `${parent}:${oldPath || path}` : null
+  const newSpec = `${sha}:${path}`
+  const [oldSide, newSide, image] = await Promise.all([
+    oldSpec ? readGitBlobText(repoPath, oldSpec) : { text: '', binary: false },
+    readGitBlobText(repoPath, newSpec),
+    imagePreview(
+      async (mime) => (oldSpec ? readGitBlobImage(repoPath, oldSpec, mime) : null),
+      (mime) => readGitBlobImage(repoPath, newSpec, mime),
+      path
+    )
   ])
   const binary = oldSide.binary || newSide.binary
   return {
     path,
     oldText: binary ? '' : oldSide.text,
     newText: binary ? '' : newSide.text,
-    binary
+    binary,
+    ...(image && { image })
   }
 }
 
@@ -473,22 +526,41 @@ export async function getWorkingTreeDiff(
   side: 'staged' | 'unstaged'
 ): Promise<DiffResult> {
   resolveRepoPath(repoPath, path)
-  let oldSide = { text: '', binary: false }
-  let newSide = { text: '', binary: false }
 
-  if (side === 'staged') {
-    ;[oldSide, newSide] = await Promise.all([blobAtHead(repoPath, path), blobInIndex(repoPath, path)])
-  } else {
+  const readTexts = async (): Promise<[{ text: string; binary: boolean }, { text: string; binary: boolean }]> => {
+    if (side === 'staged') return Promise.all([blobAtHead(repoPath, path), blobInIndex(repoPath, path)])
     const indexBlob = await blobInIndex(repoPath, path)
-    oldSide = indexBlob.text || indexBlob.binary ? indexBlob : await blobAtHead(repoPath, path)
-    newSide = await readWorktreeFileCapped(repoPath, path)
+    const oldSide = indexBlob.text || indexBlob.binary ? indexBlob : await blobAtHead(repoPath, path)
+    return [oldSide, await readWorktreeFileCapped(repoPath, path)]
   }
+  const readImage = (): Promise<ImagePreview | undefined> =>
+    side === 'staged'
+      ? imagePreview(
+          (mime) => readGitBlobImage(repoPath, `HEAD:${path}`, mime),
+          (mime) => readGitBlobImage(repoPath, `:${path}`, mime),
+          path
+        )
+      : imagePreview(
+          // Unstaged changes are against the index; a path missing there falls back to HEAD, as for text.
+          async (mime) =>
+            (await readGitBlobImage(repoPath, `:${path}`, mime)) ?? readGitBlobImage(repoPath, `HEAD:${path}`, mime),
+          (mime) => readWorktreeImage(repoPath, path, mime),
+          path
+        )
 
+  const [[oldSide, newSide], image, hunks] = await Promise.all([
+    readTexts(),
+    readImage(),
+    // Without hunks the file is still shown and staged as a whole.
+    getDiffHunks(repoPath, path, side).catch(() => undefined)
+  ])
   const binary = oldSide.binary || newSide.binary
   return {
     path,
     oldText: binary ? '' : oldSide.text,
     newText: binary ? '' : newSide.text,
-    binary
+    binary,
+    ...(image && { image }),
+    ...(hunks && !binary && { hunks })
   }
 }

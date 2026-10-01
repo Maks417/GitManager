@@ -125,11 +125,17 @@ export function useWorkingTree({
 
   useEffect(() => {
     if (!workingCopySelected) return
-    if (focusedStatusPath && status.some((s) => s.path === focusedStatusPath)) return
+    const focused = focusedStatusPath ? status.find((s) => s.path === focusedStatusPath) : undefined
+    if (focused) {
+      // Staging or unstaging the last hunk on the side shown leaves only the other side with changes.
+      const hasSide = diffSide === 'staged' ? focused.staged : focused.unstaged || focused.untracked
+      if (!hasSide) setDiffSide(defaultSideFor(focused))
+      return
+    }
     const first = status[0]
     setFocusedStatusPath(first?.path ?? null)
     if (first) setDiffSide(defaultSideFor(first))
-  }, [status, workingCopySelected, focusedStatusPath, setFocusedStatusPath, setDiffSide])
+  }, [status, workingCopySelected, focusedStatusPath, diffSide, setFocusedStatusPath, setDiffSide])
 
   useEffect(() => {
     if (!repoPath || selectionKind !== 'commit' || !selectedSha || !isSha(selectedSha)) {

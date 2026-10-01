@@ -43,6 +43,7 @@ const api = {
     probe: () => ipcRenderer.invoke(IpcChannels.git.probe),
     stage: (repoPath: string, paths: string[]) => ipcRenderer.invoke(IpcChannels.git.stage, repoPath, paths),
     unstage: (repoPath: string, paths: string[]) => ipcRenderer.invoke(IpcChannels.git.unstage, repoPath, paths),
+    applyPartial: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.applyPartial, request),
     commit: (repoPath: string, message: string, amend?: boolean) =>
       ipcRenderer.invoke(IpcChannels.git.commit, repoPath, message, amend),
     fetch: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.fetch, request),
@@ -57,8 +58,8 @@ const api = {
     checkout: (repoPath: string, ref: string) => ipcRenderer.invoke(IpcChannels.git.checkout, repoPath, ref),
     checkoutRemoteBranch: (repoPath: string, remoteRef: string) =>
       ipcRenderer.invoke(IpcChannels.git.checkoutRemoteBranch, repoPath, remoteRef),
-    createBranch: (repoPath: string, name: string, checkout?: boolean) =>
-      ipcRenderer.invoke(IpcChannels.git.createBranch, repoPath, name, checkout),
+    createBranch: (repoPath: string, name: string, checkout?: boolean, startPoint?: string) =>
+      ipcRenderer.invoke(IpcChannels.git.createBranch, repoPath, name, checkout, startPoint),
     deleteBranch: (repoPath: string, name: string, force?: boolean) =>
       ipcRenderer.invoke(IpcChannels.git.deleteBranch, repoPath, name, force),
     merge: (repoPath: string, ref: string) => ipcRenderer.invoke(IpcChannels.git.merge, repoPath, ref),
@@ -70,6 +71,18 @@ const api = {
     rebaseSkip: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.rebaseSkip, repoPath),
     mergeAbort: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.mergeAbort, repoPath),
     mergeInProgress: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.mergeInProgress, repoPath),
+    cherryPick: (repoPath: string, sha: string) => ipcRenderer.invoke(IpcChannels.git.cherryPick, repoPath, sha),
+    revert: (repoPath: string, sha: string) => ipcRenderer.invoke(IpcChannels.git.revert, repoPath, sha),
+    sequencerOp: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.sequencerOp, repoPath),
+    sequencerStep: (repoPath: string, step: string) =>
+      ipcRenderer.invoke(IpcChannels.git.sequencerStep, repoPath, step),
+    commitsAfter: (repoPath: string, sha: string) => ipcRenderer.invoke(IpcChannels.git.commitsAfter, repoPath, sha),
+    reset: (repoPath: string, sha: string, mode: string) =>
+      ipcRenderer.invoke(IpcChannels.git.reset, repoPath, sha, mode),
+    createTag: (repoPath: string, name: string, sha: string, message?: string) =>
+      ipcRenderer.invoke(IpcChannels.git.createTag, repoPath, name, sha, message),
+    deleteTag: (repoPath: string, name: string) => ipcRenderer.invoke(IpcChannels.git.deleteTag, repoPath, name),
+    pushTag: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.pushTag, request),
     stash: (repoPath: string, message?: string) => ipcRenderer.invoke(IpcChannels.git.stash, repoPath, message),
     stashList: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.stashList, repoPath),
     stashApply: (repoPath: string, ref?: string) =>

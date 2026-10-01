@@ -15,7 +15,7 @@ import {
   Plus,
   Trash2
 } from 'lucide-react'
-import type { GitIdentity, StashEntry, StatusEntry } from '@shared/ipc'
+import type { GitIdentity, PartialAction, PartialSelection, StashEntry, StatusEntry } from '@shared/ipc'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
@@ -24,7 +24,7 @@ import { OperationBar } from '../../components/OperationBar'
 import { Splitter } from '../../components/Splitter'
 import { Button, FileStatusDot, RefPill, SegmentedControl } from '../../components/ui'
 import type { DiffSide } from '../../hooks/selection'
-import { CONFIRM_DISCARD, confirmDropStash } from '../../lib/copy'
+import { CONFIRM_DISCARD, confirmDiscardPart, confirmDropStash } from '../../lib/copy'
 import { toErrorMessage } from '../../lib/errors'
 import { statusKindFor } from '../../logic/file-status'
 import { nextListIndex } from '../../logic/list-nav'
@@ -54,7 +54,7 @@ const rowKey = (side: DiffSide, path: string): string => `${side}\0${path}`
 export function WorkingTreeDetailPane(): React.JSX.Element {
   const repoPath = useActiveRepo().path
   const { status } = useStatus()
-  const { identity, rebaseInProgress, mergeInProgress } = useSession()
+  const { identity, rebaseInProgress, mergeInProgress, sequencerOp } = useSession()
   const { afterGitMutation } = useSessionActions()
   const { focusedStatusPath: focusedPath, diffSide, diff, diffLoading } = useSelection()
   const { setFocusedStatusPath, setDiffSide } = useSelectionActions()
@@ -62,7 +62,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const { setError: onError } = useAppStatusActions()
   const { goHistory } = useWorkingTreeActions()
   const { openDialog } = useDialogActions()
-  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, runRemote } = useGitActions()
+  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep, runRemote } = useGitActions()
   const { changesFilesWidth: filesWidth, setChangesFilesWidth, persistLayout, diffView, syntaxHighlighting } =
     useLayout()
   const confirm = useConfirm()
@@ -142,6 +142,19 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
       await loadStashes()
       setBusy(false)
     }
+  }
+
+  /** Stage, unstage or discard one hunk or the selected lines of the diff shown. */
+  const applyPartial = async (selection: PartialSelection, action: PartialAction): Promise<void> => {
+    const fingerprint = diff?.hunks?.fingerprint
+    const path = diff?.path
+    if (!fingerprint || !path) return
+    if (action === 'discard' && !(await confirm(confirmDiscardPart('hunk' in selection ? 'hunk' : 'lines', path)))) {
+      return
+    }
+    await run(() =>
+      window.gitManager.git.applyPartial({ repoPath, path, side: diffSide, action, fingerprint, selection })
+    )
   }
 
   // Concluding a merge may legitimately commit no new changes (e.g. every conflict resolved as ours).
@@ -288,6 +301,15 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
     />
   ) : mergeInProgress ? (
     <OperationBar kind="merge" variant="pane" busy={busy} onAbort={() => run(mergeAbort)} />
+  ) : sequencerOp ? (
+    <OperationBar
+      kind={sequencerOp}
+      variant="pane"
+      busy={busy}
+      onContinue={() => run(() => sequencerStep('continue'))}
+      onSkip={() => run(() => sequencerStep('skip'))}
+      onAbort={() => run(() => sequencerStep('abort'))}
+    />
   ) : null
 
   const stashPanel = (
@@ -652,6 +674,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
               editorKey={`${diff.path}:${diffSide}`}
               sideBySide={diffView === 'side-by-side'}
               syntaxHighlighting={syntaxHighlighting}
+              hunkActions={busy || focused?.conflicted ? undefined : { side: diffSide, run: applyPartial }}
             />
           ) : (
             <div className="empty-state muted">Select a file to view its changes</div>

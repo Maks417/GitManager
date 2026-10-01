@@ -1,5 +1,6 @@
 import type React from 'react'
 import { AppStatusProvider } from './AppStatusProvider'
+import { CommitMenuProvider } from './CommitMenuProvider'
 import { ConfirmProvider } from './ConfirmProvider'
 import { DialogsProvider } from './DialogsProvider'
 import { GitActionsProvider } from './GitActionsProvider'
@@ -20,7 +21,9 @@ export function AppProviders({ children }: { children: React.ReactNode }): React
               <RepoSessionProvider>
                 <HistoryProvider>
                   <WorkingTreeProvider>
-                    <GitActionsProvider>{children}</GitActionsProvider>
+                    <GitActionsProvider>
+                      <CommitMenuProvider>{children}</CommitMenuProvider>
+                    </GitActionsProvider>
                   </WorkingTreeProvider>
                 </HistoryProvider>
               </RepoSessionProvider>

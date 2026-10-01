@@ -1,5 +1,6 @@
 import type {
   AppInfo,
+  ApplyPartialRequest,
   AppPreferences,
   BranchInfo,
   CloneRequest,
@@ -25,6 +26,10 @@ import type {
   RemoteOpResult,
   RemoteRepo,
   RepoRemovalInfo,
+  ResetMode,
+  SequencerOp,
+  SequencerStep,
+  TagPushRequest,
   RepoRemoveOptions,
   RepoRemoveResult,
   Repository,
@@ -78,6 +83,7 @@ export interface GitManagerApi {
     probe: () => Promise<GitProbeResult>
     stage: (repoPath: string, paths: string[]) => Promise<void>
     unstage: (repoPath: string, paths: string[]) => Promise<void>
+    applyPartial: (request: ApplyPartialRequest) => Promise<void>
     commit: (repoPath: string, message: string, amend?: boolean) => Promise<string>
     /** Network operations report progress through `onProgress` and stop with `cancelOperation(opId)`. */
     fetch: (request: RemoteOpRequest) => Promise<RemoteOpResult>
@@ -87,7 +93,8 @@ export interface GitManagerApi {
     onProgress: (callback: (progress: GitProgress) => void) => () => void
     checkout: (repoPath: string, ref: string) => Promise<void>
     checkoutRemoteBranch: (repoPath: string, remoteRef: string) => Promise<void>
-    createBranch: (repoPath: string, name: string, checkout?: boolean) => Promise<void>
+    /** At HEAD, or at `startPoint` when given. */
+    createBranch: (repoPath: string, name: string, checkout?: boolean, startPoint?: string) => Promise<void>
     deleteBranch: (repoPath: string, name: string, force?: boolean) => Promise<void>
     merge: (repoPath: string, ref: string) => Promise<{ conflicts: string[] }>
     rebase: (repoPath: string, upstream: string) => Promise<{ conflicts: string[] }>
@@ -97,6 +104,17 @@ export interface GitManagerApi {
     rebaseSkip: (repoPath: string) => Promise<{ conflicts: string[] }>
     mergeAbort: (repoPath: string) => Promise<void>
     mergeInProgress: (repoPath: string) => Promise<boolean>
+    cherryPick: (repoPath: string, sha: string) => Promise<{ conflicts: string[] }>
+    revert: (repoPath: string, sha: string) => Promise<{ conflicts: string[] }>
+    /** The cherry-pick or revert that stopped part way, or null. */
+    sequencerOp: (repoPath: string) => Promise<SequencerOp | null>
+    sequencerStep: (repoPath: string, step: SequencerStep) => Promise<{ conflicts: string[] }>
+    /** Commits on the current branch after `sha`. */
+    commitsAfter: (repoPath: string, sha: string) => Promise<number>
+    reset: (repoPath: string, sha: string, mode: ResetMode) => Promise<void>
+    createTag: (repoPath: string, name: string, sha: string, message?: string) => Promise<void>
+    deleteTag: (repoPath: string, name: string) => Promise<void>
+    pushTag: (request: TagPushRequest) => Promise<RemoteOpResult>
     stash: (repoPath: string, message?: string) => Promise<void>
     stashList: (repoPath: string) => Promise<StashEntry[]>
     stashApply: (repoPath: string, ref?: string) => Promise<void>

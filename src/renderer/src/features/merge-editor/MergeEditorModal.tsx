@@ -44,12 +44,19 @@ interface ForFile<T> {
 
 export function MergeEditorModal(): React.JSX.Element {
   const repoPath = useActiveRepo().path
-  const { rebaseInProgress, mergeInProgress } = useSession()
+  const { rebaseInProgress, mergeInProgress, sequencerOp } = useSession()
   const { afterGitMutation } = useSessionActions()
   const { closeDialog } = useDialogActions()
-  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort } = useGitActions()
+  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep } = useGitActions()
   const confirm = useConfirm()
   const onClose = (): void => closeDialog('mergeEditor')
+  const editorKind = rebaseInProgress
+    ? 'Rebase'
+    : sequencerOp === 'cherry-pick'
+      ? 'Cherry-pick'
+      : sequencerOp === 'revert'
+        ? 'Revert'
+        : 'Merge'
 
   const theme = useResolvedTheme()
   const monacoTheme = monacoThemeFor(theme)
@@ -141,8 +148,8 @@ export function MergeEditorModal(): React.JSX.Element {
   const afterResolved = async (): Promise<void> => {
     const remaining = await loadFiles()
     await afterGitMutation({ history: 'full' })
-    // While rebasing, stay open so the user can continue the rebase from here.
-    if (remaining.length === 0 && !rebaseInProgress) onClose()
+    // While rebasing, cherry-picking or reverting, stay open so the user can continue from here.
+    if (remaining.length === 0 && !rebaseInProgress && !sequencerOp) onClose()
   }
 
   const save = (): void => {
@@ -177,7 +184,7 @@ export function MergeEditorModal(): React.JSX.Element {
 
   return (
     <Modal
-      title={`${rebaseInProgress ? 'Rebase' : 'Merge'} editor — ${activePath || 'no conflicts'}`}
+      title={`${editorKind} editor — ${activePath || 'no conflicts'}`}
       onClose={onClose}
       // Escape or a stray click must not throw away unsaved edits in the result.
       dismissible={false}
@@ -239,6 +246,29 @@ export function MergeEditorModal(): React.JSX.Element {
           onAbort={() =>
             run(async () => {
               await mergeAbort()
+              onClose()
+            })
+          }
+        />
+      ) : sequencerOp ? (
+        <OperationBar
+          kind={sequencerOp}
+          busy={busy}
+          onContinue={() =>
+            run(async () => {
+              await sequencerStep('continue')
+              await loadFiles()
+            })
+          }
+          onSkip={() =>
+            run(async () => {
+              await sequencerStep('skip')
+              await loadFiles()
+            })
+          }
+          onAbort={() =>
+            run(async () => {
+              await sequencerStep('abort')
               onClose()
             })
           }

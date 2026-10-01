@@ -23,6 +23,49 @@ export const CONFIRM_DISCARD: ConfirmRequest = {
   danger: true
 }
 
+export const confirmDiscardPart = (what: 'hunk' | 'lines', path: string): ConfirmRequest => ({
+  title: what === 'hunk' ? 'Discard hunk' : 'Discard lines',
+  message: `Discard the ${what === 'hunk' ? 'selected hunk' : 'selected changed lines'} in ${path}?
+
+Those lines go back to their staged or committed version. This cannot be undone.`,
+  confirmLabel: 'Discard',
+  danger: true
+})
+
+export const confirmAbortSequencer = (kind: 'cherry-pick' | 'revert'): ConfirmRequest => ({
+  title: `Abort ${kind}`,
+  message: `Abort the ${kind}? Conflict resolutions made so far are discarded and the branch returns to where it was before.`,
+  confirmLabel: `Abort ${kind}`,
+  danger: true
+})
+
+export const confirmCheckoutCommit = (shortSha: string): ConfirmRequest => ({
+  title: 'Check out commit',
+  message: `Check out ${shortSha}?\n\nHEAD will be detached: new commits belong to no branch until you create one. Uncommitted changes are carried over when Git can do so safely.`,
+  confirmLabel: 'Check out'
+})
+
+export const confirmCherryPick = (shortSha: string, subject: string, branch: string): ConfirmRequest => ({
+  title: 'Cherry-pick',
+  message: `Apply ${shortSha} “${subject}” on top of ${branch} as a new commit?`,
+  confirmLabel: 'Cherry-pick'
+})
+
+export const confirmRevert = (shortSha: string, subject: string, branch: string): ConfirmRequest => ({
+  title: 'Revert',
+  message: `Add a commit to ${branch} that undoes ${shortSha} “${subject}”?`,
+  confirmLabel: 'Revert'
+})
+
+export const confirmDeleteTag = (name: string, onRemote: boolean): ConfirmRequest => ({
+  title: onRemote ? 'Delete tag on remote' : 'Delete tag',
+  message: onRemote
+    ? `Delete the tag ${name} on the remote? Others who fetched it keep their copy.`
+    : `Delete the tag ${name} in this repository? A copy pushed to a remote stays there.`,
+  confirmLabel: 'Delete tag',
+  danger: true
+})
+
 export const confirmMerge = (ref: string): ConfirmRequest => ({
   title: 'Merge',
   message: `Merge ${ref} into the current branch?`,

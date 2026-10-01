@@ -6,9 +6,11 @@ import { useAsyncAction } from '../../lib/useAsyncAction'
 interface Props {
   onClose: () => void
   onCreate: (name: string, checkout: boolean) => Promise<void>
+  /** Shown under the title, e.g. the commit the branch starts at. */
+  lead?: React.ReactNode
 }
 
-export function CreateBranchModal({ onClose, onCreate }: Props): React.JSX.Element {
+export function CreateBranchModal({ onClose, onCreate, lead }: Props): React.JSX.Element {
   const [name, setName] = useState('')
   const [checkout, setCheckout] = useState(true)
   const { busy, error, setError, run } = useAsyncAction()
@@ -40,6 +42,7 @@ export function CreateBranchModal({ onClose, onCreate }: Props): React.JSX.Eleme
         </div>
       }
     >
+      {lead && <p className="muted modal-lead">{lead}</p>}
       {error && <Banner>{error}</Banner>}
       <Field label="Name">
         <Input

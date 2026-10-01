@@ -1,10 +1,18 @@
 import { ipcMain, shell } from 'electron'
-import { IpcChannels, RemoteOpRequestSchema, SetGitIdentityRequestSchema } from '@shared/ipc'
+import {
+  ApplyPartialRequestSchema,
+  IpcChannels,
+  RemoteOpRequestSchema,
+  ResetModeSchema,
+  SequencerStepSchema,
+  SetGitIdentityRequestSchema,
+  TagPushRequestSchema
+} from '@shared/ipc'
 import { z } from 'zod'
 import * as git from '../../git-worker/client'
 import { probeGit } from '../../git-worker/client'
 import { resolveRepoPath } from '../../git-worker/ops/guards'
-import { cancelRemoteOperation, runRemoteOperation } from '../remote-ops'
+import { cancelRemoteOperation, runRemoteOperation, runTagPush } from '../remote-ops'
 import { assertSender } from './assert-sender'
 import {
   NonEmptyStringSchema,
@@ -30,6 +38,11 @@ export function registerGitHandlers(): void {
   ipcMain.handle(IpcChannels.git.unstage, async (event, repoPath: unknown, paths: unknown) => {
     assertSender(event)
     await git.unstagePaths(parseRepoPath(repoPath), parsePaths(paths))
+  })
+  ipcMain.handle(IpcChannels.git.applyPartial, async (event, raw: unknown) => {
+    assertSender(event)
+    const request = ApplyPartialRequestSchema.parse(raw)
+    await git.applyPartial(parseRepoPath(request.repoPath), request)
   })
   ipcMain.handle(
     IpcChannels.git.commit,
@@ -71,9 +84,14 @@ export function registerGitHandlers(): void {
   )
   ipcMain.handle(
     IpcChannels.git.createBranch,
-    async (event, repoPath: unknown, name: unknown, checkout?: unknown) => {
+    async (event, repoPath: unknown, name: unknown, checkout?: unknown, startPoint?: unknown) => {
       assertSender(event)
-      await git.createBranch(parseRepoPath(repoPath), parseRef(name), optionalBool.parse(checkout) ?? true)
+      await git.createBranch(
+        parseRepoPath(repoPath),
+        parseRef(name),
+        optionalBool.parse(checkout) ?? true,
+        startPoint === undefined || startPoint === null ? undefined : parseRef(startPoint)
+      )
     }
   )
   ipcMain.handle(
@@ -114,6 +132,45 @@ export function registerGitHandlers(): void {
   ipcMain.handle(IpcChannels.git.mergeInProgress, async (event, repoPath: unknown) => {
     assertSender(event)
     return git.isMergeInProgress(parseRepoPath(repoPath))
+  })
+  ipcMain.handle(IpcChannels.git.cherryPick, async (event, repoPath: unknown, sha: unknown) => {
+    assertSender(event)
+    return git.cherryPickCommit(parseRepoPath(repoPath), parseRef(sha))
+  })
+  ipcMain.handle(IpcChannels.git.revert, async (event, repoPath: unknown, sha: unknown) => {
+    assertSender(event)
+    return git.revertCommit(parseRepoPath(repoPath), parseRef(sha))
+  })
+  ipcMain.handle(IpcChannels.git.sequencerOp, async (event, repoPath: unknown) => {
+    assertSender(event)
+    return git.getSequencerOp(parseRepoPath(repoPath))
+  })
+  ipcMain.handle(IpcChannels.git.sequencerStep, async (event, repoPath: unknown, step: unknown) => {
+    assertSender(event)
+    return git.sequencerStep(parseRepoPath(repoPath), SequencerStepSchema.parse(step))
+  })
+  ipcMain.handle(IpcChannels.git.commitsAfter, async (event, repoPath: unknown, sha: unknown) => {
+    assertSender(event)
+    return git.countCommitsAfter(parseRepoPath(repoPath), parseRef(sha))
+  })
+  ipcMain.handle(IpcChannels.git.reset, async (event, repoPath: unknown, sha: unknown, mode: unknown) => {
+    assertSender(event)
+    await git.resetToCommit(parseRepoPath(repoPath), parseRef(sha), ResetModeSchema.parse(mode))
+  })
+  ipcMain.handle(
+    IpcChannels.git.createTag,
+    async (event, repoPath: unknown, name: unknown, sha: unknown, message?: unknown) => {
+      assertSender(event)
+      await git.createTag(parseRepoPath(repoPath), parseRef(name), parseRef(sha), optionalString.parse(message))
+    }
+  )
+  ipcMain.handle(IpcChannels.git.deleteTag, async (event, repoPath: unknown, name: unknown) => {
+    assertSender(event)
+    await git.deleteTag(parseRepoPath(repoPath), parseRef(name))
+  })
+  ipcMain.handle(IpcChannels.git.pushTag, async (event, raw: unknown) => {
+    assertSender(event)
+    return runTagPush(event.sender, TagPushRequestSchema.parse(raw))
   })
   ipcMain.handle(IpcChannels.git.stash, async (event, repoPath: unknown, message?: unknown) => {
     assertSender(event)

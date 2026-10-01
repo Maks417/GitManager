@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import type { RemoteOpKind, RemoteOpResult, Repository } from '@shared/ipc'
+import type { RemoteOpKind, RemoteOpResult, Repository, ResetMode, SequencerStep } from '@shared/ipc'
 import { useLatestRef } from '../hooks/useLatestRef'
 import { confirmForceDeleteBranch, GIT_MISSING_MESSAGE } from '../lib/copy'
 import { toErrorMessage } from '../lib/errors'
@@ -36,7 +36,8 @@ export interface GitActions {
   requestRemoveRepo: (repo: Repository) => void
   /** Fetch, pull or push, then refresh; errors go to the banner, a cancel shows none. */
   runSync: (kind: RemoteOpKind) => Promise<void>
-  runMergeOrRebase: (op: 'merge' | 'rebase', ref: string) => Promise<void>
+  /** Merge, rebase, cherry-pick or revert, then refresh; conflicts open the merge editor. */
+  runMergeOrRebase: (op: ConflictingOp, ref: string) => Promise<void>
   checkoutBranch: (name: string) => Promise<void>
   checkoutRemote: (remoteRef: string) => Promise<void>
   deleteBranch: (name: string) => Promise<void>
@@ -45,12 +46,24 @@ export interface GitActions {
   // These throw, so the dialog or pane that started them can show the error in place.
   /** Fetch, pull or push with toolbar progress; resolves `cancelled` when stopped. */
   runRemote: (kind: RemoteOpKind) => Promise<RemoteOpResult>
-  createBranch: (name: string, checkout: boolean) => Promise<void>
+  /** At HEAD, or at `startPoint` (a commit picked in History). */
+  createBranch: (name: string, checkout: boolean, startPoint?: string) => Promise<void>
+  createTag: (name: string, sha: string, message?: string) => Promise<void>
+  resetTo: (sha: string, mode: ResetMode) => Promise<void>
+  /** Delete a tag here; errors go to the banner. */
+  deleteTag: (name: string) => Promise<void>
+  /** Push a tag, or delete it on the remote, with toolbar progress; errors go to the banner. */
+  pushTag: (name: string, remove: boolean) => Promise<void>
+  /** Continue, skip or abort the cherry-pick or revert in progress. */
+  sequencerStep: (step: SequencerStep) => Promise<void>
   rebaseContinue: () => Promise<void>
   rebaseSkip: () => Promise<void>
   rebaseAbort: () => Promise<void>
   mergeAbort: () => Promise<void>
 }
+
+/** Operations that can stop on conflicts. */
+export type ConflictingOp = 'merge' | 'rebase' | 'cherryPick' | 'revert'
 
 const GitActionsContext = createContext<GitActions | null>(null)
 /** Kept apart from the actions: it changes with every progress update. */
@@ -198,16 +211,13 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
   )
 
   const runMergeOrRebase = useCallback(
-    async (op: 'merge' | 'rebase', ref: string): Promise<void> => {
+    async (op: ConflictingOp, ref: string): Promise<void> => {
       const repo = getActiveRepo()
       if (!repo) return
       await runWithBusy(
         async () => {
           try {
-            const result =
-              op === 'merge'
-                ? await window.gitManager.git.merge(repo.path, ref)
-                : await window.gitManager.git.rebase(repo.path, ref)
+            const result = await window.gitManager.git[op](repo.path, ref)
             await afterGitMutation({ history: 'full' })
             if (result.conflicts.length > 0) openDialog('mergeEditor')
           } catch (err) {
@@ -273,13 +283,93 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
   )
 
   const createBranch = useCallback(
-    async (name: string, checkout: boolean): Promise<void> => {
+    async (name: string, checkout: boolean, startPoint?: string): Promise<void> => {
       const repo = getActiveRepo()
       if (!repo) return
-      await window.gitManager.git.createBranch(repo.path, name, checkout)
+      await window.gitManager.git.createBranch(repo.path, name, checkout, startPoint)
       await afterGitMutation({ history: 'full' })
     },
     [getActiveRepo, afterGitMutation]
+  )
+
+  const createTag = useCallback(
+    async (name: string, sha: string, message?: string): Promise<void> => {
+      const repo = getActiveRepo()
+      if (!repo) return
+      await window.gitManager.git.createTag(repo.path, name, sha, message)
+      await afterGitMutation({ history: 'full' })
+    },
+    [getActiveRepo, afterGitMutation]
+  )
+
+  const resetTo = useCallback(
+    async (sha: string, mode: ResetMode): Promise<void> => {
+      const repo = getActiveRepo()
+      if (!repo) return
+      try {
+        await window.gitManager.git.reset(repo.path, sha, mode)
+      } finally {
+        await afterGitMutation({ history: 'full' }).catch(() => undefined)
+      }
+    },
+    [getActiveRepo, afterGitMutation]
+  )
+
+  const deleteTag = useCallback(
+    async (name: string): Promise<void> => {
+      const repo = getActiveRepo()
+      if (!repo) return
+      await runWithBusy(
+        async () => {
+          await window.gitManager.git.deleteTag(repo.path, name)
+          await afterGitMutation({ history: 'full' })
+        },
+        { setBusy, setError }
+      )
+    },
+    [getActiveRepo, afterGitMutation, setBusy, setError]
+  )
+
+  const pushTag = useCallback(
+    async (name: string, remove: boolean): Promise<void> => {
+      const repo = getActiveRepo()
+      if (!repo) return
+      const running = remoteOpRef.current
+      if (running) {
+        setError(remoteOpRunningMessage(running))
+        return
+      }
+      await runWithBusy(
+        async () => {
+          const opId = crypto.randomUUID()
+          publishRemoteOp({ opId, kind: 'push', repoName: repo.name, phase: null, percent: null, cancellable: true, cancelling: false })
+          try {
+            await window.gitManager.git.pushTag({ repoPath: repo.path, opId, tag: name, remove })
+          } finally {
+            if (remoteOpRef.current?.opId === opId) publishRemoteOp(null)
+            await afterGitMutation({ history: 'none' }).catch(() => undefined)
+          }
+        },
+        { setBusy, setError }
+      )
+    },
+    [getActiveRepo, publishRemoteOp, afterGitMutation, setBusy, setError]
+  )
+
+  const sequencerStep = useCallback(
+    async (step: SequencerStep): Promise<void> => {
+      const repo = getActiveRepo()
+      if (!repo) return
+      try {
+        const result = await window.gitManager.git.sequencerStep(repo.path, step)
+        // Continuing may stop on the next commit's conflicts; past them the merge editor is not needed.
+        if (result.conflicts.length > 0) openDialog('mergeEditor')
+        else closeDialog('mergeEditor')
+      } finally {
+        await afterGitMutation({ history: 'full' }).catch(() => undefined)
+      }
+    },
+    [getActiveRepo, afterGitMutation, openDialog, closeDialog]
   )
 
   const rebaseStep = useCallback(
@@ -321,6 +411,11 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       cancelRemote,
       runRemote,
       createBranch,
+      createTag,
+      resetTo,
+      deleteTag,
+      pushTag,
+      sequencerStep,
       rebaseContinue: () => rebaseStep('rebaseContinue'),
       rebaseSkip: () => rebaseStep('rebaseSkip'),
       rebaseAbort: () => abortOperation('rebaseAbort'),
@@ -341,6 +436,11 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       cancelRemote,
       runRemote,
       createBranch,
+      createTag,
+      resetTo,
+      deleteTag,
+      pushTag,
+      sequencerStep,
       rebaseStep,
       abortOperation
     ]

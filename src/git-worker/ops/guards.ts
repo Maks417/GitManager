@@ -73,17 +73,20 @@ export interface RepoFileRead {
   exists: boolean
   buffer: Buffer
   truncated: boolean
+  /** Full size in bytes, also when only part of the file was read. */
+  size: number
 }
 
 /** Read up to `maxBytes` of a work-tree file. Symlinks yield their target path, as Git stores them. */
 export async function readRepoFile(repoPath: string, relPath: string, maxBytes: number): Promise<RepoFileRead> {
   const full = resolveRepoPath(repoPath, relPath)
   await assertRealParentInside(repoPath, full, relPath)
-  const missing: RepoFileRead = { exists: false, buffer: Buffer.alloc(0), truncated: false }
+  const missing: RepoFileRead = { exists: false, buffer: Buffer.alloc(0), truncated: false, size: 0 }
   const st = await lstat(full).catch(() => null)
   if (!st) return missing
   if (st.isSymbolicLink()) {
-    return { exists: true, buffer: Buffer.from(await readlink(full), 'utf8'), truncated: false }
+    const target = Buffer.from(await readlink(full), 'utf8')
+    return { exists: true, buffer: target, truncated: false, size: target.length }
   }
   if (!st.isFile()) return missing
   const handle = await open(full, 'r')
@@ -91,7 +94,7 @@ export async function readRepoFile(repoPath: string, relPath: string, maxBytes: 
     const size = Math.min(st.size, maxBytes)
     const buffer = Buffer.alloc(size)
     const { bytesRead } = await handle.read(buffer, 0, size, 0)
-    return { exists: true, buffer: buffer.subarray(0, bytesRead), truncated: st.size > maxBytes }
+    return { exists: true, buffer: buffer.subarray(0, bytesRead), truncated: st.size > maxBytes, size: st.size }
   } finally {
     await handle.close()
   }

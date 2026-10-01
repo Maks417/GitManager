@@ -10,6 +10,7 @@ import type {
   Repository,
   RepoWatchEvent,
   RepoWatchState,
+  SequencerOp,
   StatusEntry,
   UpdateStatus
 } from '@shared/ipc'
@@ -60,6 +61,8 @@ export function useRepoSession({
   identity: GitIdentity | null
   setIdentity: React.Dispatch<React.SetStateAction<GitIdentity | null>>
   rebaseInProgress: boolean
+  /** A cherry-pick or revert that stopped part way. */
+  sequencerOp: SequencerOp | null
   mergeInProgress: boolean
   gitMissing: boolean
   currentBranch: BranchInfo | null
@@ -86,6 +89,7 @@ export function useRepoSession({
   const [status, setStatus] = useState<StatusEntry[]>([])
   const [identity, setIdentity] = useState<GitIdentity | null>(null)
   const [rebaseInProgress, setRebaseInProgress] = useState(false)
+  const [sequencerOp, setSequencerOp] = useState<SequencerOp | null>(null)
   const [mergeInProgress, setMergeInProgress] = useState(false)
   const [gitMissing, setGitMissing] = useState(false)
   const [watchState, setWatchState] = useState<RepoWatchState | null>(null)
@@ -150,14 +154,15 @@ export function useRepoSession({
     async (repo: Repository): Promise<Repository> => {
       const metaToken = metaGate.begin()
       const statusToken = statusGate.begin()
-      const [b, remoteB, s, fresh, id, rebasing, merging] = await Promise.all([
+      const [b, remoteB, s, fresh, id, rebasing, merging, sequencer] = await Promise.all([
         window.gitManager.repo.branches(repo.path),
         window.gitManager.repo.remoteBranches(repo.path),
         window.gitManager.repo.status(repo.path),
         window.gitManager.repo.get(repo.id),
         window.gitManager.git.getIdentity(repo.path),
         window.gitManager.git.rebaseInProgress(repo.path),
-        window.gitManager.git.mergeInProgress(repo.path)
+        window.gitManager.git.mergeInProgress(repo.path),
+        window.gitManager.git.sequencerOp(repo.path)
       ])
       // The user may have switched repositories while these requests ran. Never apply another
       // repository's branches or status, and never switch the app back to it. A newer refresh of this
@@ -170,6 +175,7 @@ export function useRepoSession({
       setIdentity(id)
       setRebaseInProgress(rebasing)
       setMergeInProgress(merging)
+      setSequencerOp(sequencer)
       if (statusGate.isLatest(statusToken)) {
         setStatus(s)
         noteConflicts(repo.path, s)
@@ -357,6 +363,7 @@ export function useRepoSession({
     setIdentity,
     rebaseInProgress,
     mergeInProgress,
+    sequencerOp,
     gitMissing,
     currentBranch,
     localBranchNames,
