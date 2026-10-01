@@ -66,6 +66,22 @@ export const confirmDeleteTag = (name: string, onRemote: boolean): ConfirmReques
   danger: true
 })
 
+/** After a rejected push: confirm pulls, the alternative force-pushes. */
+export const choosePullOrForcePush = (branch: string): ConfirmRequest => ({
+  title: 'Push rejected',
+  message: `The remote ${branch} has commits that yours doesn't.\n\nPull them in first, then push. Or, if you rewrote ${branch} on purpose (amend, rebase), force push: it uses --force-with-lease, so it stops instead of overwriting commits you haven't fetched.`,
+  confirmLabel: 'Pull',
+  alternative: { label: 'Force push', danger: true }
+})
+
+/** After a diverged pull: confirm merges, the alternative rebases. */
+export const chooseMergeOrRebase = (branch: string, upstream: string): ConfirmRequest => ({
+  title: 'Branches have diverged',
+  message: `${branch} and ${upstream} each have commits the other doesn't.\n\nMerge ${upstream} into ${branch}, or rebase ${branch} onto it to keep the history linear. Push afterwards to publish the result.`,
+  confirmLabel: 'Merge',
+  alternative: { label: 'Rebase' }
+})
+
 export const confirmMerge = (ref: string): ConfirmRequest => ({
   title: 'Merge',
   message: `Merge ${ref} into the current branch?`,

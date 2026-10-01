@@ -3,6 +3,7 @@ import { IpcChannels, type UpdateStatus } from '@shared/ipc'
 import { z } from 'zod'
 import { checkForUpdates, getUpdateStatus, installUpdate, subscribeUpdateStatus } from '../updater'
 import { subscribeRepoWatch, subscribeRepoWatchState } from '../repo-watcher'
+import { resolveRepoPath } from '../../git-worker/ops/guards'
 import { assertSender } from './assert-sender'
 
 export function registerAppHandlers(): void {
@@ -36,6 +37,12 @@ export function registerAppHandlers(): void {
       throw new Error('Only http(s) URLs allowed')
     }
     await shell.openExternal(url.href)
+  })
+
+  ipcMain.handle(IpcChannels.shell.showInFolder, async (event, repoPath: unknown, path: unknown) => {
+    assertSender(event)
+    // Only paths inside the repository, never one that climbs out of it.
+    shell.showItemInFolder(resolveRepoPath(z.string().min(1).parse(repoPath), z.string().min(1).parse(path)))
   })
 
   subscribeUpdateStatus((status: UpdateStatus) => {

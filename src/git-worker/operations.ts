@@ -17,6 +17,8 @@ export {
 
 export { applyPartial } from './ops/patch'
 
+export { getFileHistory, getBlame } from './ops/file-history'
+
 export {
   getStatus,
   filterIgnoredPaths,
@@ -34,6 +36,7 @@ export {
   fetchRemote,
   pullRemote,
   pushRemote,
+  forcePushRemote,
   checkoutRef,
   checkoutRemoteBranch,
   createBranch,

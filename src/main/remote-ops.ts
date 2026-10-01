@@ -44,7 +44,8 @@ export function runRemoteOperation(
   kind: RemoteOpKind,
   request: RemoteOpRequest
 ): Promise<RemoteOpResult> {
-  return runTracked(sender, request.opId, METHODS[kind], [request.repoPath], { repoPath: request.repoPath, kind })
+  const method = kind === 'push' && request.force ? 'forcePushRemote' : METHODS[kind]
+  return runTracked(sender, request.opId, method, [request.repoPath], { repoPath: request.repoPath, kind })
 }
 
 /** Push one tag (or delete it on the remote), shown and cancelled like a push. */

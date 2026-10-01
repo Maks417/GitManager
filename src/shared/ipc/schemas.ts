@@ -128,6 +128,46 @@ export const FileChangeSchema = z.object({
 })
 export type FileChange = z.infer<typeof FileChangeSchema>
 
+/** A commit in the history of one file, with the path the file had in it. */
+export const FileHistoryEntrySchema = CommitSchema.extend({
+  path: z.string(),
+  status: FileChangeSchema.shape.status,
+  /** Where the file came from when this commit renamed or copied it. */
+  oldPath: z.string().optional()
+})
+export type FileHistoryEntry = z.infer<typeof FileHistoryEntrySchema>
+
+export const FileHistoryPageSchema = z.object({
+  entries: z.array(FileHistoryEntrySchema),
+  hasMore: z.boolean()
+})
+export type FileHistoryPage = z.infer<typeof FileHistoryPageSchema>
+
+export const BlameCommitSchema = z.object({
+  sha: z.string(),
+  shortSha: z.string(),
+  author: z.string(),
+  authoredAt: z.string(),
+  summary: z.string(),
+  /** Lines changed in the work tree and not committed yet. */
+  uncommitted: z.boolean(),
+  /** The commit before this one that touched the file, and the file's path there: "blame before this change". */
+  previousSha: z.string().optional(),
+  previousPath: z.string().optional()
+})
+export type BlameCommit = z.infer<typeof BlameCommitSchema>
+
+export const BlameResultSchema = z.object({
+  path: z.string(),
+  /** The commit blamed at, or null for the work tree. */
+  rev: z.string().nullable(),
+  text: z.string(),
+  /** Runs of consecutive lines (1-based) last changed by the same commit. */
+  groups: z.array(z.object({ sha: z.string(), startLine: z.number(), lineCount: z.number() })),
+  commits: z.record(z.string(), BlameCommitSchema)
+})
+export type BlameResult = z.infer<typeof BlameResultSchema>
+
 export const CommitDetailSchema = z.object({
   commit: CommitSchema,
   files: z.array(FileChangeSchema)
@@ -411,7 +451,9 @@ export const OperationIdSchema = z.string().regex(/^[\w-]{8,64}$/, 'Invalid oper
 
 export const RemoteOpRequestSchema = z.object({
   repoPath: z.string().min(1),
-  opId: OperationIdSchema
+  opId: OperationIdSchema,
+  /** Push only: overwrite the remote branch, guarded by --force-with-lease. */
+  force: z.boolean().optional()
 })
 export type RemoteOpRequest = z.infer<typeof RemoteOpRequestSchema>
 
@@ -449,7 +491,15 @@ export const GitProgressSchema = RemoteProgressSchema.extend({
 export type GitProgress = z.infer<typeof GitProgressSchema>
 
 export const RemoteOpResultSchema = z.object({
-  outcome: z.enum(['done', 'cancelled'])
+  /**
+   * `rejected`: a push the remote refused because it has commits this branch lacks.
+   * `diverged`: a pull that cannot fast-forward because both sides have new commits.
+   */
+  outcome: z.enum(['done', 'cancelled', 'rejected', 'diverged']),
+  /** For `rejected` and `diverged`: the branch. */
+  branch: z.string().optional(),
+  /** For `diverged`: its upstream, as a full ref name (refs/remotes/origin/main). */
+  upstream: z.string().optional()
 })
 export type RemoteOpResult = z.infer<typeof RemoteOpResultSchema>
 

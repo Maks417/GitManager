@@ -891,6 +891,12 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   border-bottom: none;
 }
 
+/* The row stretches the disclosure button to its height; a fixed-size icon button would sit at the top. */
+.panel-disclosure-row > .icon-btn {
+  align-self: center;
+  margin: 0 4px;
+}
+
 .branch-list li {
   display: flex;
   flex-direction: column;
@@ -2198,4 +2204,81 @@ body.resizing-row * {
 
 .reset-mode-danger {
   color: var(--danger);
+}
+
+/* File history and blame dialogs */
+.file-history-body,
+.blame-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 10px;
+}
+
+.file-history-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(240px, 32%) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.file-history-list {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.file-history-list li {
+  display: grid;
+  gap: 2px;
+}
+
+.file-history-meta {
+  font-size: var(--text-xs);
+}
+
+.file-history-more {
+  display: flex;
+  justify-content: center;
+  cursor: default;
+}
+
+.file-history-layout .diff-host {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.blame-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.blame-bar-commit {
+  flex: 1;
+  min-width: 0;
+}
+
+.blame-editor {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* The gutter shows "sha author date  line": keep its spaces and read it from the left. */
+.blame-editor .margin-view-overlays .line-numbers {
+  white-space: pre;
+  text-align: left;
+}
+
+.blame-editor .blame-band {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }

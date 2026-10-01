@@ -4,13 +4,15 @@ import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { Splitter } from '../../components/Splitter'
-import { Button, FileStatusDot } from '../../components/ui'
+import { Button, FileStatusDot, isMenuKey, menuPointFor } from '../../components/ui'
 import { confirmMerge, confirmRebase } from '../../lib/copy'
 import { formatRelativeDate } from '../../lib/format'
 import { nextListIndex } from '../../logic/list-nav'
 import { useAppStatus } from '../../state/AppStatusProvider'
 import { useCommitMenu } from '../../state/CommitMenuProvider'
+import type { FileTarget } from '../../state/FileMenuProvider'
 import { useConfirm } from '../../state/ConfirmProvider'
+import { useFileMenu } from '../../state/FileMenuProvider'
 import { useGitActions } from '../../state/GitActionsProvider'
 import { useLayout } from '../../state/LayoutProvider'
 import { useSelection, useSelectionActions } from '../../state/SelectionProvider'
@@ -31,6 +33,7 @@ export function CommitDetailPane(): React.JSX.Element {
   const { runMergeOrRebase } = useGitActions()
   const confirm = useConfirm()
   const { openCommitMenu } = useCommitMenu()
+  const { openFileMenu } = useFileMenu()
 
   if (!detail) {
     return (
@@ -46,7 +49,22 @@ export function CommitDetailPane(): React.JSX.Element {
   const { commit, files } = detail
   const selectedIndex = files.findIndex((f) => f.path === selectedFile?.path)
 
+  const fileTarget = (f: (typeof files)[number]): FileTarget => ({
+    path: f.path,
+    sha: commit.sha,
+    deletedInCommit: f.status === 'deleted',
+    inWorkTree: true
+  })
+
   const onFilesKeyDown = (e: React.KeyboardEvent<HTMLUListElement>): void => {
+    if (isMenuKey(e)) {
+      const file = files[selectedIndex]
+      const row = document.getElementById(fileOptionId(selectedIndex))
+      if (!file || !row) return
+      e.preventDefault()
+      openFileMenu(fileTarget(file), menuPointFor(row))
+      return
+    }
     if (e.key === 'Escape') {
       // Back to the commit list this file list was entered from.
       const commits = document.querySelector<HTMLElement>('.history-table')
@@ -153,6 +171,11 @@ export function CommitDetailPane(): React.JSX.Element {
               aria-selected={selectedFile?.path === f.path}
               className={selectedFile?.path === f.path ? 'active' : ''}
               onClick={() => setSelectedFile(f)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setSelectedFile(f)
+                openFileMenu(fileTarget(f), { x: e.clientX, y: e.clientY })
+              }}
               title={f.path}
             >
               <div className="row-inline">

@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { z } from 'zod'
 import {
   DiffRequestSchema,
   HistoryQuerySchema,
@@ -7,7 +8,7 @@ import {
 } from '@shared/ipc'
 import * as git from '../../git-worker/client'
 import { assertSender } from './assert-sender'
-import { parseRef, parseRepoPath } from './parse'
+import { NonEmptyStringSchema, parseRef, parseRepoPath } from './parse'
 
 export function registerHistoryHandlers(): void {
   ipcMain.handle(IpcChannels.history.load, async (event, raw: unknown) => {
@@ -30,5 +31,23 @@ export function registerHistoryHandlers(): void {
     assertSender(event)
     const req = WorkingTreeDiffRequestSchema.parse(raw)
     return git.getWorkingTreeDiff(req.repoPath, req.path, req.side)
+  })
+
+  ipcMain.handle(IpcChannels.history.fileHistory, async (event, repoPath: unknown, path: unknown, skip?: unknown) => {
+    assertSender(event)
+    return git.getFileHistory(
+      parseRepoPath(repoPath),
+      NonEmptyStringSchema.parse(path),
+      z.number().int().min(0).optional().parse(skip)
+    )
+  })
+
+  ipcMain.handle(IpcChannels.history.blame, async (event, repoPath: unknown, path: unknown, rev?: unknown) => {
+    assertSender(event)
+    return git.getBlame(
+      parseRepoPath(repoPath),
+      NonEmptyStringSchema.parse(path),
+      rev === undefined || rev === null ? undefined : parseRef(rev)
+    )
   })
 }

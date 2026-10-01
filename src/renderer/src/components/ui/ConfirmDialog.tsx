@@ -15,6 +15,9 @@ interface ConfirmDialogProps {
   checkboxLabel?: string
   /** Use danger styling for destructive confirms. */
   danger?: boolean
+  /** A second action next to the confirming one. */
+  alternative?: { label: string; danger?: boolean }
+  onAlternative?: () => void
   busy?: boolean
   error?: string | null
   onConfirm: (options: { checked: boolean }) => void
@@ -29,6 +32,8 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   checkboxLabel,
   danger = false,
+  alternative,
+  onAlternative,
   busy = false,
   error = null,
   onConfirm,
@@ -47,6 +52,11 @@ export function ConfirmDialog({
           <Button disabled={busy} onClick={onCancel}>
             {cancelLabel}
           </Button>
+          {alternative && (
+            <Button variant={alternative.danger ? 'danger' : 'default'} disabled={busy} onClick={onAlternative}>
+              {alternative.label}
+            </Button>
+          )}
           <Button
             variant={danger || checked ? 'danger' : 'primary'}
             disabled={busy}

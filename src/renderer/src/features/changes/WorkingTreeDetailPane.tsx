@@ -15,14 +15,21 @@ import {
   Plus,
   Trash2
 } from 'lucide-react'
-import type { GitIdentity, PartialAction, PartialSelection, StashEntry, StatusEntry } from '@shared/ipc'
+import type {
+  GitIdentity,
+  PartialAction,
+  PartialSelection,
+  RemoteOpResult,
+  StashEntry,
+  StatusEntry
+} from '@shared/ipc'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { OperationBar } from '../../components/OperationBar'
 import { Splitter } from '../../components/Splitter'
-import { Button, FileStatusDot, RefPill, SegmentedControl } from '../../components/ui'
+import { Button, FileStatusDot, isMenuKey, menuPointFor, RefPill, SegmentedControl } from '../../components/ui'
 import type { DiffSide } from '../../hooks/selection'
 import { CONFIRM_DISCARD, confirmDiscardPart, confirmDropStash } from '../../lib/copy'
 import { toErrorMessage } from '../../lib/errors'
@@ -30,6 +37,7 @@ import { statusKindFor } from '../../logic/file-status'
 import { nextListIndex } from '../../logic/list-nav'
 import { useAppStatusActions } from '../../state/AppStatusProvider'
 import { useConfirm } from '../../state/ConfirmProvider'
+import { useFileMenu, type FileTarget } from '../../state/FileMenuProvider'
 import { useDialogActions } from '../../state/DialogsProvider'
 import { useGitActions } from '../../state/GitActionsProvider'
 import { useHistoryState } from '../../state/HistoryProvider'
@@ -62,10 +70,12 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const { setError: onError } = useAppStatusActions()
   const { goHistory } = useWorkingTreeActions()
   const { openDialog } = useDialogActions()
-  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep, runRemote } = useGitActions()
+  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep, runRemote, resolveRemoteOutcome } =
+    useGitActions()
   const { changesFilesWidth: filesWidth, setChangesFilesWidth, persistLayout, diffView, syntaxHighlighting } =
     useLayout()
   const confirm = useConfirm()
+  const { openFileMenu } = useFileMenu()
   const canAmend = Boolean(headSha)
 
   const [message, setMessage] = useState('')
@@ -177,9 +187,23 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
 
   const targets = checked
 
+  const fileTarget = (s: StatusEntry): FileTarget => ({
+    path: s.path,
+    inWorkTree: s.workTreeStatus !== 'D' && s.indexStatus !== 'D',
+    untracked: s.untracked
+  })
+
   const onFilesKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     // Section checkboxes and toggles handle their own keys.
     if (e.target !== e.currentTarget) return
+    if (isMenuKey(e)) {
+      const row = navRows[navIndex]
+      const el = document.getElementById(changesRowId(navIndex))
+      if (!row || !el) return
+      e.preventDefault()
+      openFileMenu(fileTarget(row.entry), menuPointFor(el))
+      return
+    }
     if (e.key === ' ') {
       const row = navRows[navIndex]
       if (!row) return
@@ -211,6 +235,12 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
         onClick={() => {
           setFocusedStatusPath(s.path)
           setDiffSide(side)
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setFocusedStatusPath(s.path)
+          setDiffSide(side)
+          openFileMenu(fileTarget(s), { x: e.clientX, y: e.clientY })
         }}
         title={s.path}
       >
@@ -608,7 +638,8 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
                   : 'Create a new commit'
             }
             disabled={busy || !message.trim() || !identityReady}
-            onClick={() =>
+            onClick={() => {
+              let pushed: RemoteOpResult | undefined
               void run(async () => {
                 if (needsStageBeforeCommit) {
                   if (changesEntries.length > 0) throw new Error(STAGE_BEFORE_COMMIT)
@@ -622,13 +653,16 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
                 if (pushAfterCommit) {
                   try {
                     // Same path as Sync → Push: progress and Cancel in the toolbar.
-                    await runRemote('push')
+                    pushed = await runRemote('push')
                   } catch (err) {
                     throw new Error(`Committed, but the push failed: ${toErrorMessage(err)}`)
                   }
                 }
+              }).then(() => {
+                // A rejected push offers a pull or a force push, once this pane is no longer busy.
+                if (pushed) void resolveRemoteOutcome(pushed)
               })
-            }
+            }}
           >
             {amend ? 'Amend' : 'Commit'}
           </Button>

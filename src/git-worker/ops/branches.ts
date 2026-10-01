@@ -137,9 +137,9 @@ export async function pullRemote(repoPath: string, ctx: RemoteOpContext = {}): P
   })
   if (merged.code !== 0) {
     if (/not possible to fast-forward/i.test(merged.stderr)) {
-      throw new Error(
-        `Pull stopped: "${branch}" and its upstream have diverged. Merge or rebase them, then pull again.`
-      )
+      // Both sides have commits: the caller asks whether to merge or rebase.
+      const upstream = (await gitOk(repoPath, ['rev-parse', '--symbolic-full-name', '@{upstream}'])).trim()
+      return { outcome: 'diverged', branch, upstream }
     }
     throw new Error(merged.stderr.trim() || merged.stdout.trim() || `git merge failed (${merged.code})`)
   }
@@ -161,15 +161,34 @@ async function defaultPushRemote(repoPath: string): Promise<string> {
   )
 }
 
+/** A ref Git refused to update: a non-fast-forward push, or a force push whose lease no longer holds. */
+const REJECTED_RE = /^\s*! \[rejected\]/m
+
 /** Maps raw `git push` stderr into actionable UI copy. */
-export function friendlyPushError(raw: string): string {
-  if (/\[rejected\]/.test(raw)) {
-    return 'Push rejected: the remote branch has commits that yours does not (or commits that were already pushed were amended or rebased). Pull first — or force-push from a terminal if you rewrote history on purpose.'
+export function friendlyPushError(raw: string, force = false): string {
+  if (force && REJECTED_RE.test(raw)) {
+    return 'Force push stopped: the remote branch changed since your last fetch, so it would have overwritten commits you have not seen. Fetch, look at what is new, then decide again.'
   }
   return raw.trim() || 'Push failed'
 }
 
+/**
+ * Push the current branch. A push the remote rejects because it has commits this branch lacks resolves
+ * `rejected`, for the caller to offer a pull or a force push.
+ */
 export async function pushRemote(repoPath: string, ctx: RemoteOpContext = {}): Promise<RemoteOpResult> {
+  return pushBranch(repoPath, false, ctx)
+}
+
+/**
+ * Overwrite the remote branch with this one, but only if it is still where the last fetch saw it
+ * (`--force-with-lease`) and that state was integrated here (`--force-if-includes`, Git 2.30+).
+ */
+export async function forcePushRemote(repoPath: string, ctx: RemoteOpContext = {}): Promise<RemoteOpResult> {
+  return pushBranch(repoPath, true, ctx)
+}
+
+async function pushBranch(repoPath: string, force: boolean, ctx: RemoteOpContext): Promise<RemoteOpResult> {
   const branch = await currentBranchName(repoPath)
   if (!branch) throw new Error('Check out a branch before pushing (HEAD is detached).')
   const upstream = await runGit({
@@ -177,13 +196,19 @@ export async function pushRemote(repoPath: string, ctx: RemoteOpContext = {}): P
     args: ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']
   })
   // A branch created here has no upstream yet: publish it and remember where it went.
-  const args =
-    upstream.code === 0
-      ? ['push', '--progress']
-      : ['push', '--progress', '--set-upstream', await defaultPushRemote(repoPath), `HEAD:refs/heads/${branch}`]
+  const target =
+    upstream.code === 0 ? [] : ['--set-upstream', await defaultPushRemote(repoPath), `HEAD:refs/heads/${branch}`]
+  const forceArgs = force ? ['--force-with-lease', '--force-if-includes'] : []
   try {
-    const result = await runNetwork(repoPath, args, ctx)
-    if (result.code !== 0) throw new Error(friendlyPushError(result.stderr || result.stdout))
+    let result = await runNetwork(repoPath, ['push', '--progress', ...forceArgs, ...target], ctx)
+    if (force && result.code !== 0 && /unknown option.*force-if-includes/i.test(result.stderr)) {
+      result = await runNetwork(repoPath, ['push', '--progress', '--force-with-lease', ...target], ctx)
+    }
+    if (result.code !== 0) {
+      const raw = result.stderr || result.stdout
+      if (!force && REJECTED_RE.test(raw)) return { outcome: 'rejected', branch }
+      throw new Error(friendlyPushError(raw, force))
+    }
   } catch (err) {
     if (err instanceof GitCancelledError) return { outcome: 'cancelled' }
     throw err

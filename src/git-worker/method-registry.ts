@@ -4,6 +4,8 @@
  */
 import {
   applyPartial,
+  getBlame,
+  getFileHistory,
   cherryPickCommit,
   countCommitsAfter,
   createTag,
@@ -48,6 +50,7 @@ import {
   planDiscard,
   pullRemote,
   pushRemote,
+  forcePushRemote,
   rebaseAbort,
   rebaseContinue,
   rebaseOnto,
@@ -78,6 +81,8 @@ export const GIT_METHODS = {
   getWorktreeInfo,
   pruneWorktree,
   getWorkingTreeDiff,
+  getFileHistory,
+  getBlame,
   getStatus,
   filterIgnoredPaths,
   getBranches,
@@ -91,6 +96,7 @@ export const GIT_METHODS = {
   fetchRemote,
   pullRemote,
   pushRemote,
+  forcePushRemote,
   checkoutRef,
   checkoutRemoteBranch,
   createBranch,
@@ -129,7 +135,7 @@ export const GIT_METHODS = {
 export type GitMethodName = keyof typeof GIT_METHODS
 
 /** Operations that take `{ signal, onProgress }` as their last argument: they report progress and can be cancelled. */
-export const CANCELLABLE_GIT_METHODS = ['fetchRemote', 'pullRemote', 'pushRemote', 'pushTag', 'cloneRepository'] as const
+export const CANCELLABLE_GIT_METHODS = ['fetchRemote', 'pullRemote', 'pushRemote', 'forcePushRemote', 'pushTag', 'cloneRepository'] as const
 export type CancellableGitMethod = (typeof CANCELLABLE_GIT_METHODS)[number]
 
 export function getGitMethod(method: string): ((...args: never[]) => unknown) | undefined {

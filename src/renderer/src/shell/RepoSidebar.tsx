@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  RefreshCw,
   Trash2
 } from 'lucide-react'
 import { confirmDeleteBranch, confirmMerge, confirmRebase } from '../lib/copy'
@@ -20,7 +21,7 @@ import { useRovingList } from '../hooks/useRovingList'
 import { useAppStatus } from '../state/AppStatusProvider'
 import { useConfirm } from '../state/ConfirmProvider'
 import { useDialogActions } from '../state/DialogsProvider'
-import { useGitActions } from '../state/GitActionsProvider'
+import { useGitActions, useRemoteOp } from '../state/GitActionsProvider'
 import { useHistoryActions } from '../state/HistoryProvider'
 import { useLayout } from '../state/LayoutProvider'
 import { useActiveRepo, useSession } from '../state/RepoSessionProvider'
@@ -51,8 +52,11 @@ export function RepoSidebar(): React.JSX.Element {
     checkoutBranch,
     runMergeOrRebase,
     deleteBranch,
-    checkoutRemote
+    checkoutRemote,
+    runSync
   } = useGitActions()
+  const remoteOp = useRemoteOp()
+  const fetching = remoteOp?.kind === 'fetch'
   const { showBranchHistory, revealCommit } = useHistoryActions()
 
   // Each list is one Tab stop: arrows move between rows, Enter opens the repository or checks out the branch.
@@ -269,6 +273,14 @@ export function RepoSidebar(): React.JSX.Element {
                     )}
                   </span>
                 </button>
+                {/* The list shows what the last fetch saw; this updates it, like Sync → Fetch. */}
+                <IconButton
+                  label={fetching ? 'Fetching remote branches…' : 'Fetch remote branches'}
+                  disabled={busy || remoteOp !== null}
+                  onClick={() => void runSync('fetch')}
+                >
+                  <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'spin' : undefined} />
+                </IconButton>
               </div>
               {remoteBranchesExpanded && (
                 <ul className="branch-list" aria-label="Remote branches" onKeyDown={remoteRows.onKeyDown}>

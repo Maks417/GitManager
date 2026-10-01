@@ -37,7 +37,11 @@ const api = {
       ipcRenderer.invoke(IpcChannels.history.commitDetail, repoPath, sha),
     fileDiff: (request: unknown) => ipcRenderer.invoke(IpcChannels.history.fileDiff, request),
     workingTreeDiff: (request: unknown) =>
-      ipcRenderer.invoke(IpcChannels.history.workingTreeDiff, request)
+      ipcRenderer.invoke(IpcChannels.history.workingTreeDiff, request),
+    fileHistory: (repoPath: string, path: string, skip?: number) =>
+      ipcRenderer.invoke(IpcChannels.history.fileHistory, repoPath, path, skip),
+    blame: (repoPath: string, path: string, rev?: string) =>
+      ipcRenderer.invoke(IpcChannels.history.blame, repoPath, path, rev)
   },
   git: {
     probe: () => ipcRenderer.invoke(IpcChannels.git.probe),
@@ -127,7 +131,9 @@ const api = {
     getInfo: () => ipcRenderer.invoke(IpcChannels.app.getInfo)
   },
   shell: {
-    openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.shell.openExternal, url)
+    openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.shell.openExternal, url),
+    showInFolder: (repoPath: string, path: string) =>
+      ipcRenderer.invoke(IpcChannels.shell.showInFolder, repoPath, path)
   }
 }
 

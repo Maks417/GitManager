@@ -1,5 +1,7 @@
 import type {
   AppInfo,
+  BlameResult,
+  FileHistoryPage,
   ApplyPartialRequest,
   AppPreferences,
   BranchInfo,
@@ -78,6 +80,10 @@ export interface GitManagerApi {
     commitDetail: (repoPath: string, sha: string) => Promise<CommitDetail>
     fileDiff: (request: DiffRequest) => Promise<DiffResult>
     workingTreeDiff: (request: WorkingTreeDiffRequest) => Promise<DiffResult>
+    /** Commits that changed a file, newest first, across renames; `skip` pages through them. */
+    fileHistory: (repoPath: string, path: string, skip?: number) => Promise<FileHistoryPage>
+    /** At a commit, or in the work tree when `rev` is omitted. */
+    blame: (repoPath: string, path: string, rev?: string) => Promise<BlameResult>
   }
   git: {
     probe: () => Promise<GitProbeResult>
@@ -158,6 +164,8 @@ export interface GitManagerApi {
   }
   shell: {
     openExternal: (url: string) => Promise<void>
+    /** Show a repository file in Explorer / Finder / the file manager. */
+    showInFolder: (repoPath: string, path: string) => Promise<void>
   }
 }
 

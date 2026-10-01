@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import {
+  forcePushRemote,
   isMergeInProgress,
   isRebaseInProgress,
   listConflictFiles,
@@ -82,7 +83,7 @@ describe('push', () => {
     )
   }, 60000)
 
-  it('explains a rejected non-fast-forward push', async () => {
+  it('reports a rejected non-fast-forward push', async () => {
     const { clone } = await cloneOfBare()
     const alice = await clone('alice')
     const bob = await clone('bob')
@@ -90,7 +91,32 @@ describe('push', () => {
     await pushRemote(alice)
     await git(bob, 'commit', '-q', '--allow-empty', '-m', 'bob')
 
-    await expect(pushRemote(bob)).rejects.toThrow(/Push rejected/)
+    expect(await pushRemote(bob)).toEqual({ outcome: 'rejected', branch: 'main' })
+  }, 60000)
+
+  it('force-pushes a rewritten branch with a lease', async () => {
+    const { bare, clone } = await cloneOfBare()
+    const bob = await clone('bob')
+    await git(bob, 'commit', '-q', '--allow-empty', '-m', 'bob')
+    await pushRemote(bob)
+    await git(bob, 'commit', '-q', '--amend', '--allow-empty', '-m', 'bob, reworded')
+
+    expect(await pushRemote(bob)).toEqual({ outcome: 'rejected', branch: 'main' })
+    expect(await forcePushRemote(bob)).toEqual({ outcome: 'done' })
+    expect((await git(bare, 'log', '-1', '--format=%s', 'main')).trim()).toBe('bob, reworded')
+  }, 60000)
+
+  it('refuses a force push over commits it has not fetched', async () => {
+    const { bare, clone } = await cloneOfBare()
+    const alice = await clone('alice')
+    const bob = await clone('bob')
+    await git(alice, 'commit', '-q', '--allow-empty', '-m', 'alice')
+    await pushRemote(alice)
+    await git(bob, 'commit', '-q', '--allow-empty', '-m', 'bob')
+
+    expect(await pushRemote(bob)).toEqual({ outcome: 'rejected', branch: 'main' })
+    await expect(forcePushRemote(bob)).rejects.toThrow(/Force push stopped/)
+    expect((await git(bare, 'log', '-1', '--format=%s', 'main')).trim()).toBe('alice')
   }, 60000)
 
   it('refuses to push a detached HEAD', async () => {

@@ -48,7 +48,9 @@ export const IpcChannels = {
     load: 'history:load',
     commitDetail: 'history:commit-detail',
     fileDiff: 'history:file-diff',
-    workingTreeDiff: 'history:working-tree-diff'
+    workingTreeDiff: 'history:working-tree-diff',
+    fileHistory: 'history:file-history',
+    blame: 'history:blame'
   },
   git: {
     probe: 'git:probe',
@@ -117,6 +119,7 @@ export const IpcChannels = {
     getInfo: 'app:get-info'
   },
   shell: {
-    openExternal: 'shell:open-external'
+    openExternal: 'shell:open-external',
+    showInFolder: 'shell:show-in-folder'
   }
 } as const

@@ -2,12 +2,12 @@ import { createContext, useCallback, useEffect, useMemo, useRef, useState } from
 import type React from 'react'
 import type { RemoteOpKind, RemoteOpResult, Repository, ResetMode, SequencerStep } from '@shared/ipc'
 import { useLatestRef } from '../hooks/useLatestRef'
-import { confirmForceDeleteBranch, GIT_MISSING_MESSAGE } from '../lib/copy'
+import { choosePullOrForcePush, chooseMergeOrRebase, confirmForceDeleteBranch, GIT_MISSING_MESSAGE } from '../lib/copy'
 import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
 import { useAppStatus, useAppStatusActions } from './AppStatusProvider'
-import { useConfirm } from './ConfirmProvider'
+import { useChoose, useConfirm } from './ConfirmProvider'
 import { useRequiredContext } from './context'
 import { useDialogActions } from './DialogsProvider'
 import { useSession, useSessionActions } from './RepoSessionProvider'
@@ -34,8 +34,13 @@ export interface GitActions {
   openNewRepo: () => void
   selectRepo: (repo: Repository) => void
   requestRemoveRepo: (repo: Repository) => void
-  /** Fetch, pull or push, then refresh; errors go to the banner, a cancel shows none. */
+  /**
+   * Fetch, pull or push, then refresh; errors go to the banner, a cancel shows none. A rejected push offers
+   * a pull or a force push, and a diverged pull a merge or a rebase.
+   */
   runSync: (kind: RemoteOpKind) => Promise<void>
+  /** Offer the way forward after a rejected push or a diverged pull; does nothing for other outcomes. */
+  resolveRemoteOutcome: (result: RemoteOpResult) => Promise<void>
   /** Merge, rebase, cherry-pick or revert, then refresh; conflicts open the merge editor. */
   runMergeOrRebase: (op: ConflictingOp, ref: string) => Promise<void>
   checkoutBranch: (name: string) => Promise<void>
@@ -45,7 +50,7 @@ export interface GitActions {
   cancelRemote: () => void
   // These throw, so the dialog or pane that started them can show the error in place.
   /** Fetch, pull or push with toolbar progress; resolves `cancelled` when stopped. */
-  runRemote: (kind: RemoteOpKind) => Promise<RemoteOpResult>
+  runRemote: (kind: RemoteOpKind, options?: { force?: boolean }) => Promise<RemoteOpResult>
   /** At HEAD, or at `startPoint` (a commit picked in History). */
   createBranch: (name: string, checkout: boolean, startPoint?: string) => Promise<void>
   createTag: (name: string, sha: string, message?: string) => Promise<void>
@@ -96,6 +101,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
   const { setSelection, setViewMode } = useSelectionActions()
   const { openDialog, closeDialog } = useDialogActions()
   const confirm = useConfirm()
+  const choose = useChoose()
   // Guards read the latest value without re-creating every action whenever `busy` toggles.
   const busyRef = useLatestRef(busy)
   const [remoteOp, setRemoteOp] = useState<RemoteOpState | null>(null)
@@ -163,7 +169,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
   )
 
   const runRemote = useCallback(
-    async (kind: RemoteOpKind): Promise<RemoteOpResult> => {
+    async (kind: RemoteOpKind, options: { force?: boolean } = {}): Promise<RemoteOpResult> => {
       const repo = getActiveRepo()
       if (!repo) throw new Error('No repository is open.')
       const running = remoteOpRef.current
@@ -171,7 +177,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       const opId = crypto.randomUUID()
       publishRemoteOp({ opId, kind, repoName: repo.name, phase: null, percent: null, cancellable: true, cancelling: false })
       try {
-        return await window.gitManager.git[kind]({ repoPath: repo.path, opId })
+        return await window.gitManager.git[kind]({ repoPath: repo.path, opId, ...(options.force && { force: true }) })
       } finally {
         if (remoteOpRef.current?.opId === opId) publishRemoteOp(null)
       }
@@ -186,18 +192,19 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
     void window.gitManager.git.cancelOperation(current.opId)
   }, [publishRemoteOp])
 
-  const runSync = useCallback(
-    async (kind: RemoteOpKind): Promise<void> => {
-      if (!getActiveRepo()) return
+  /** One remote operation with the busy state and banner; resolves its result, or undefined after an error. */
+  const syncOnce = useCallback(
+    async (kind: RemoteOpKind, force = false): Promise<RemoteOpResult | undefined> => {
+      if (!getActiveRepo()) return undefined
       const running = remoteOpRef.current
       if (running) {
         setError(remoteOpRunningMessage(running))
-        return
+        return undefined
       }
-      await runWithBusy(
+      return runWithBusy(
         async () => {
           try {
-            await runRemote(kind)
+            return await runRemote(kind, { force })
           } finally {
             // Also after a failure or cancel: a fetch stopped part way may still have updated some refs.
             // Refreshes whichever repository is active by now, never switching back.
@@ -229,6 +236,48 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       )
     },
     [getActiveRepo, afterGitMutation, openDialog, setBusy, setError]
+  )
+
+  /** After a diverged pull: merge the upstream in, or rebase onto it. */
+  const offerMergeOrRebase = useCallback(
+    async (result: RemoteOpResult): Promise<void> => {
+      if (!result.upstream) return
+      const upstream = result.upstream.replace(/^refs\/(remotes|heads)\//, '')
+      const answer = await choose(chooseMergeOrRebase(result.branch ?? 'This branch', upstream))
+      if (answer === 'cancel') return
+      await runMergeOrRebase(answer === 'confirm' ? 'merge' : 'rebase', result.upstream)
+    },
+    [choose, runMergeOrRebase]
+  )
+
+  // Runs after the busy state of the operation that led here has ended, so the follow-up can take it again.
+  const resolveRemoteOutcome = useCallback(
+    async (result: RemoteOpResult): Promise<void> => {
+      if (result.outcome === 'diverged') {
+        await offerMergeOrRebase(result)
+        return
+      }
+      if (result.outcome !== 'rejected') return
+      const answer = await choose(choosePullOrForcePush(result.branch ?? 'This branch'))
+      if (answer === 'cancel') return
+      if (answer === 'alternative') {
+        await syncOnce('push', true)
+        return
+      }
+      // Pull, then push what was asked for; a pull that finds the branches diverged asks how to combine them.
+      const pulled = await syncOnce('pull')
+      if (pulled?.outcome === 'diverged') await offerMergeOrRebase(pulled)
+      else if (pulled?.outcome === 'done') await syncOnce('push')
+    },
+    [choose, syncOnce, offerMergeOrRebase]
+  )
+
+  const runSync = useCallback(
+    async (kind: RemoteOpKind): Promise<void> => {
+      const result = await syncOnce(kind)
+      if (result) await resolveRemoteOutcome(result)
+    },
+    [syncOnce, resolveRemoteOutcome]
   )
 
   const checkoutBranch = useCallback(
@@ -404,6 +453,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       selectRepo,
       requestRemoveRepo,
       runSync,
+      resolveRemoteOutcome,
       runMergeOrRebase,
       checkoutBranch,
       checkoutRemote,
@@ -429,6 +479,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       selectRepo,
       requestRemoveRepo,
       runSync,
+      resolveRemoteOutcome,
       runMergeOrRebase,
       checkoutBranch,
       checkoutRemote,

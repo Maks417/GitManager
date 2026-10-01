@@ -142,11 +142,11 @@ describe('pullRemote', () => {
     await expect(pullRemote(repo)).rejects.toThrow(/no upstream/)
   }, 30000)
 
-  it('explains diverged branches', async () => {
+  it('reports diverged branches with the upstream to merge or rebase onto', async () => {
     const { clone, publish } = await remoteWithClones()
     await publish('from other')
     await git(clone, 'commit', '-q', '--allow-empty', '-m', 'local work')
-    await expect(pullRemote(clone)).rejects.toThrow(/diverged/)
+    expect(await pullRemote(clone)).toEqual({ outcome: 'diverged', branch: 'main', upstream: 'refs/remotes/origin/main' })
   }, 60000)
 })
 
