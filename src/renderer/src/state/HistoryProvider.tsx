@@ -6,9 +6,9 @@ import { useLatestRef } from '../hooks/useLatestRef'
 import { branchNotOnCurrentBranch, branchTipTooDeep, COMMIT_TOO_DEEP } from '../lib/copy'
 import { useAppStatus, useAppStatusActions } from './AppStatusProvider'
 import { useRequiredContext } from './context'
-import { useLayout } from './LayoutProvider'
+import { useLayoutPrefsState } from './LayoutProvider'
 import { useSession, useSessionActions } from './RepoSessionProvider'
-import { useSelection, useSelectionActions } from './SelectionProvider'
+import { useSelectionActions, useSelectionCore } from './SelectionProvider'
 
 /** A commit for the history list to scroll into view. */
 export interface RevealRequest {
@@ -20,6 +20,7 @@ export interface RevealRequest {
 export interface HistoryState {
   commits: Commit[]
   graphBySha: Map<string, GraphNode>
+  maxLane: number
   headSha: string | null
   nextCursor: string | null
   historyLoadingMore: boolean
@@ -58,9 +59,9 @@ const HistoryActionsContext = createContext<HistoryActions | null>(null)
 export function HistoryProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { busy } = useAppStatus()
   const { setBusy, setError } = useAppStatusActions()
-  const { prefs } = useLayout()
+  const { prefs } = useLayoutPrefsState()
   const { activeRepo } = useSession()
-  const { selection } = useSelection()
+  const { selection } = useSelectionCore()
   const { setSelection, setViewMode, setDetail, setSelectedFile, setDiff, setFocusedStatusPath } =
     useSelectionActions()
   const { setRemoteBranches, refreshRepoMeta, historyFnsRef, getActiveRepo } = useSessionActions()
@@ -75,6 +76,7 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
   const {
     commits,
     graphBySha,
+    maxLane,
     headSha,
     nextCursor,
     historyLoadingMore,
@@ -183,6 +185,7 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
     () => ({
       commits,
       graphBySha,
+      maxLane,
       headSha,
       nextCursor,
       historyLoadingMore,
@@ -191,7 +194,18 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
       notice,
       revealRequest
     }),
-    [commits, graphBySha, headSha, nextCursor, historyLoadingMore, search, branchFilter, notice, revealRequest]
+    [
+      commits,
+      graphBySha,
+      maxLane,
+      headSha,
+      nextCursor,
+      historyLoadingMore,
+      search,
+      branchFilter,
+      notice,
+      revealRequest
+    ]
   )
 
   const actions = useMemo<HistoryActions>(

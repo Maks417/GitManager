@@ -9,7 +9,12 @@ import type { RemoteOpResult, RemoteProgress } from '@shared/ipc'
 import type * as ops from './operations'
 import type { RemoteOpContext } from './ops/branches'
 import { getGitMethod, type CancellableGitMethod, type GitMethodName } from './method-registry'
-import { cancelAllGit as cancelAllGitLocal, cancelGitIn as cancelGitInLocal, probeGit } from './git-runner'
+import {
+  cancelAllGit as cancelAllGitLocal,
+  cancelGitIn as cancelGitInLocal,
+  GitCancelledError,
+  probeGit
+} from './git-runner'
 
 type Pending = {
   resolve: (value: unknown) => void
@@ -130,16 +135,23 @@ async function invoke(method: GitMethodName | ControlMethod, args: unknown[]): P
 
 async function invokeInline(method: string, args: unknown[]): Promise<unknown> {
   if (method === 'cancelAllGit') {
+    const { gitRepoScheduler } = await import('./scheduler-instance')
+    gitRepoScheduler.cancelAll()
     cancelAllGitLocal()
     return
   }
   if (method === 'cancelGitIn') {
+    const { gitRepoScheduler } = await import('./scheduler-instance')
+    gitRepoScheduler.cancelIn(String(args[0]))
     cancelGitInLocal(String(args[0]))
     return
   }
   const fn = getGitMethod(method)
   if (!fn) throw new Error(`Unknown git method: ${method}`)
-  return (fn as (...a: unknown[]) => Promise<unknown> | unknown)(...args)
+  const { gitRepoScheduler } = await import('./scheduler-instance')
+  return gitRepoScheduler.schedule(method, args, () =>
+    (fn as (...a: unknown[]) => Promise<unknown> | unknown)(...args)
+  )
 }
 
 export function cancelAllGit(): void {
@@ -174,11 +186,30 @@ export function runCancellableOp<T>(
 
   const runInline = (): Promise<T> => {
     const controller = new AbortController()
-    cancel = () => controller.abort()
-    if (cancelRequested) controller.abort()
+    const scheduleId = nextId++
+    cancel = () => {
+      cancelRequested = true
+      controller.abort()
+      void import('./scheduler-instance').then(({ gitRepoScheduler }) => {
+        gitRepoScheduler.cancelRequest(scheduleId)
+      })
+    }
     const fn = getGitMethod(method) as unknown as (...a: unknown[]) => Promise<T>
     const context: RemoteOpContext = { signal: controller.signal, onProgress }
-    return fn(...args, context)
+    return import('./scheduler-instance').then(async ({ gitRepoScheduler }) => {
+      if (cancelRequested) return { outcome: 'cancelled' } as T
+      try {
+        return await gitRepoScheduler.schedule(
+          method,
+          args,
+          () => fn(...args, context),
+          scheduleId
+        )
+      } catch (err) {
+        if (err instanceof GitCancelledError) return { outcome: 'cancelled' } as T
+        throw err
+      }
+    })
   }
 
   const promise = (async (): Promise<T> => {
@@ -228,6 +259,7 @@ function wrap<K extends GitMethodName>(method: K) {
 }
 
 export const inspectRepository = wrap('inspectRepository')
+export const refreshRepoSession = wrap('refreshRepoSession')
 export const createRepository = wrap('createRepository')
 export const getDefaultBranchName = wrap('getDefaultBranchName')
 export const getEnclosingWorkTree = wrap('getEnclosingWorkTree')

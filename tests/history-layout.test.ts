@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { decorateCommitsWithColors, layoutCommitGraph, type LayoutCommit } from '../src/history-core/layout'
+import {
+  appendLayoutCommitGraph,
+  decorateCommitsWithColors,
+  layoutCommitGraph,
+  layoutCommitGraphWithCheckpoint,
+  type LayoutCommit
+} from '../src/history-core/layout'
 import type { Commit, GraphNode } from '../src/shared/ipc'
 
 const byNumber = (a: number, b: number): number => a - b
@@ -95,6 +101,43 @@ describe('layoutCommitGraph', () => {
     expect(nodes[4].joins).toEqual([1, 2])
     expect(nodes[5]).toMatchObject({ lane: 0, hasIncoming: false })
     expectContinuity(nodes)
+  })
+})
+
+describe('appendLayoutCommitGraph', () => {
+  it('matches a full layout when pages are appended', () => {
+    const all = mergedFeatureBranches(40)
+    const full = layoutCommitGraphWithCheckpoint(all)
+    const first = layoutCommitGraphWithCheckpoint(all.slice(0, 15))
+    const second = appendLayoutCommitGraph(first.checkpoint, all.slice(15, 30))
+    const third = appendLayoutCommitGraph(second.checkpoint, all.slice(30))
+    const merged = [...first.nodes, ...second.nodes, ...third.nodes]
+    expect(merged).toEqual(full.nodes)
+    expect(third.checkpoint).toEqual(full.checkpoint)
+    expect(Math.max(first.maxLane, second.maxLane, third.maxLane)).toBe(full.maxLane)
+    expectContinuity(merged)
+  })
+
+  it('keeps the prefix nodes identical after an append', () => {
+    const all = [
+      { sha: 'M4', parents: ['M3', 'F2'] },
+      { sha: 'F2', parents: ['F1'] },
+      { sha: 'M3', parents: ['M2'] },
+      { sha: 'F1', parents: ['M1'] },
+      { sha: 'M2', parents: ['M1'] },
+      { sha: 'M1', parents: [] }
+    ]
+    const prefix = layoutCommitGraphWithCheckpoint(all.slice(0, 3))
+    const appended = appendLayoutCommitGraph(prefix.checkpoint, all.slice(3))
+    const full = layoutCommitGraph(all)
+    expect(prefix.nodes).toEqual(full.slice(0, 3))
+    expect([...prefix.nodes, ...appended.nodes]).toEqual(full)
+    expectContinuity([...prefix.nodes, ...appended.nodes])
+  })
+
+  it('starts from an empty checkpoint like a full layout', () => {
+    const commits = mergedFeatureBranches(8)
+    expect(appendLayoutCommitGraph([], commits)).toEqual(layoutCommitGraphWithCheckpoint(commits))
   })
 })
 

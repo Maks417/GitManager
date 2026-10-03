@@ -6,6 +6,8 @@ import {
   CreateRepoRequestSchema,
   IpcChannels,
   NewRepoTargetRequestSchema,
+  RepoRefreshRequestSchema,
+  RepoSessionSnapshotSchema,
   RepoRemoveOptionsSchema,
   type NewRepoTarget,
   type RepoRemoveResult,
@@ -220,6 +222,16 @@ export function registerRepoHandlers(): void {
     const fresh = await git.inspectRepository(existing.path)
     upsertRepository(fresh)
     return fresh
+  })
+
+  ipcMain.handle(IpcChannels.repo.refresh, async (event, raw: unknown) => {
+    assertSender(event)
+    const request = RepoRefreshRequestSchema.parse(raw)
+    const snapshot = RepoSessionSnapshotSchema.parse(await git.refreshRepoSession(request))
+    if (request.persistRepository && snapshot.repository) {
+      upsertRepository(snapshot.repository)
+    }
+    return snapshot
   })
 
   ipcMain.handle(IpcChannels.repo.status, async (event, repoPath: unknown) => {

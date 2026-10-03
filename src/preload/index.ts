@@ -11,6 +11,7 @@ const api = {
     inspectNewRepo: (request: unknown) => ipcRenderer.invoke(IpcChannels.repo.inspectNewRepo, request),
     clone: (request: unknown) => ipcRenderer.invoke(IpcChannels.repo.clone, request),
     get: (id: string) => ipcRenderer.invoke(IpcChannels.repo.get, id),
+    refresh: (request: unknown) => ipcRenderer.invoke(IpcChannels.repo.refresh, request),
     status: (repoPath: string) => ipcRenderer.invoke(IpcChannels.repo.status, repoPath),
     branches: (repoPath: string) => ipcRenderer.invoke(IpcChannels.repo.branches, repoPath),
     remoteBranches: (repoPath: string) =>

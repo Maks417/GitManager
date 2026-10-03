@@ -9,7 +9,7 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 1. Switch to **Changes** (or select the working-copy row).
 2. Browse staged / unstaged / untracked lists; open a file for its staged or unstaged Monaco diff, inline or side by side ([Diff view](#diff-view)).
 3. Stage paths, write a message, Commit (optional Amend).
-4. Stash panel: stash (includes untracked), apply / pop / drop entries.
+4. Stash panel (collapsed by default): expand to apply / pop / drop entries; the Stash action stays available in the header.
 5. Identity modal: set `user.name` / `user.email` at local or global scope.
 
 ## Keyboard
@@ -25,7 +25,7 @@ Diffs show syntax colors for the file's language: any of the ~80 Monarch grammar
 
 ## Live status
 
-When preference `liveStatusWatch` is enabled (default), the main process recursively watches the active repository with Node `fs.watch({ recursive: true })`. Debounced work-tree edits (and index changes) refresh status only; changes to HEAD, refs or merge/rebase state also refresh branches and tip-refresh history. Linked worktrees and submodules keep that metadata outside the work tree (their `.git` is a file), so it is watched where Git keeps it: a linked worktree's own folder under the main repository's `.git/worktrees/` plus the shared `refs/` and `packed-refs`, or a submodule's repository under the superproject's `.git/modules/`. Another worktree's metadata never refreshes this one, and a submodule's commits refresh the superproject's status. Git's ignore rules decide which work-tree changes matter (`git check-ignore`, so tracked `build/` or `dist/` files still count); dependency folders such as `node_modules`, `.git/objects`, lock files and editor temps are skipped outright. Background reads never take the index lock (`GIT_OPTIONAL_LOCKS=0`).
+When preference `liveStatusWatch` is enabled (default), the main process recursively watches the active repository with Node `fs.watch({ recursive: true })`. Debounced work-tree edits (and index changes) refresh status only; changes to HEAD, refs or merge/rebase state also refresh branches and tip-refresh history. The renderer coalesces overlapping watch events (one in-flight refresh, trailing rerun, status promoted to meta) and loads them through a single `repo:refresh` snapshot RPC. Tip history refresh runs only when the snapshot's history fingerprint (HEAD, refs, in-progress ops) changes. Linked worktrees and submodules keep that metadata outside the work tree (their `.git` is a file), so it is watched where Git keeps it: a linked worktree's own folder under the main repository's `.git/worktrees/` plus the shared `refs/` and `packed-refs`, or a submodule's repository under the superproject's `.git/modules/`. Another worktree's metadata never refreshes this one, and a submodule's commits refresh the superproject's status. Git's ignore rules decide which work-tree changes matter (`git check-ignore`, so tracked `build/` or `dist/` files still count); dependency folders such as `node_modules`, `.git/objects`, lock files and editor temps are skipped outright. Background reads never take the index lock (`GIT_OPTIONAL_LOCKS=0`).
 
 When the operating system refuses to watch more files — Linux's inotify limit (`fs.inotify.max_user_watches`), or too many open files — the repository is polled instead. Every 5 seconds while one of the app's windows is focused, the app compares a fingerprint of `git status --porcelain=v2 --branch --untracked-files=all` and the refs, and refreshes branches, status and history when it changes. A banner above the list says so (on Linux, with the command that raises the limit) and can be dismissed.
 
@@ -33,7 +33,9 @@ When the operating system refuses to watch more files — Linux's inotify limit 
 |---|---|
 | Watcher | [`src/main/repo-watcher.ts`](../../src/main/repo-watcher.ts) |
 | Polling fingerprint | [`src/git-worker/ops/watch.ts`](../../src/git-worker/ops/watch.ts) |
-| IPC | `repo:watch` / `repo:unwatch` / `repo:on-changed` / `repo:on-watch-state` |
+| Snapshot refresh | [`src/git-worker/ops/session-snapshot.ts`](../../src/git-worker/ops/session-snapshot.ts), `repo:refresh` |
+| Refresh coalescing | [`src/renderer/src/logic/repo-refresh-scheduler.ts`](../../src/renderer/src/logic/repo-refresh-scheduler.ts) |
+| IPC | `repo:watch` / `repo:unwatch` / `repo:on-changed` / `repo:on-watch-state` / `repo:refresh` |
 | UI subscription | [`src/renderer/src/hooks/useRepoSession.ts`](../../src/renderer/src/hooks/useRepoSession.ts) |
 | Polling notice | [`src/renderer/src/shell/WatchNotice.tsx`](../../src/renderer/src/shell/WatchNotice.tsx) |
 

@@ -3,7 +3,7 @@ import { MenuChannels, type MenuChannel } from '@shared/ipc'
 import { useDialogActions } from '../state/DialogsProvider'
 import { useGitActions } from '../state/GitActionsProvider'
 import { useHistoryActions } from '../state/HistoryProvider'
-import { useLayout } from '../state/LayoutProvider'
+import { useLayoutPrefsState } from '../state/LayoutProvider'
 import { useWorkingTreeActions } from '../state/WorkingTreeProvider'
 
 /** Runs the commands the application menu (File, View, Repository, Help) sends from the main process. */
@@ -12,7 +12,8 @@ export function useMenuCommands(): void {
   const { addRepo, openClone, openNewRepo, runSync } = useGitActions()
   const { searchInputRef } = useHistoryActions()
   const { goHistory, selectWorkingCopy } = useWorkingTreeActions()
-  const { toggleDiffView, toggleDock, toggleSidebar, setSyntaxHighlighting, syntaxHighlighting } = useLayout()
+  const { toggleDiffView, toggleDock, toggleSidebar, setSyntaxHighlighting, syntaxHighlighting } =
+    useLayoutPrefsState()
 
   // The menu is subscribed once; each command runs with the state of the latest render.
   const runCommand = useEffectEvent((channel: MenuChannel): void => {

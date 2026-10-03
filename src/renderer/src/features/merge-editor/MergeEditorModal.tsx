@@ -15,7 +15,7 @@ import { useAsyncAction } from '../../lib/useAsyncAction'
 import { syntaxLanguageFor } from '../../lib/syntax'
 import { monacoThemeFor, useResolvedTheme } from '../../lib/theme'
 import { tooLargeToHighlight } from '../../logic/syntax-language'
-import { useLayout } from '../../state/LayoutProvider'
+import { useLayoutPrefsState } from '../../state/LayoutProvider'
 import { useConfirm } from '../../state/ConfirmProvider'
 import { useDialogActions } from '../../state/DialogsProvider'
 import { useGitActions } from '../../state/GitActionsProvider'
@@ -60,7 +60,7 @@ export function MergeEditorModal(): React.JSX.Element {
 
   const theme = useResolvedTheme()
   const monacoTheme = monacoThemeFor(theme)
-  const { syntaxHighlighting } = useLayout()
+  const { syntaxHighlighting } = useLayoutPrefsState()
   const [files, setFiles] = useState<ConflictFile[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)

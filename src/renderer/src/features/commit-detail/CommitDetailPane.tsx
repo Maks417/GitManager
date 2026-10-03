@@ -14,22 +14,27 @@ import type { FileTarget } from '../../state/FileMenuProvider'
 import { useConfirm } from '../../state/ConfirmProvider'
 import { useFileMenu } from '../../state/FileMenuProvider'
 import { useGitActions } from '../../state/GitActionsProvider'
-import { useLayout } from '../../state/LayoutProvider'
-import { useSelection, useSelectionActions } from '../../state/SelectionProvider'
+import {
+  useLayoutActions,
+  useLayoutPaneFiles,
+  useLayoutPrefsState
+} from '../../state/LayoutProvider'
+import {
+  useSelectionActions,
+  useSelectionDetail,
+  useSelectionDiffContent
+} from '../../state/SelectionProvider'
 
 const fileOptionId = (index: number): string => `inspector-file-${index}`
 
 export function CommitDetailPane(): React.JSX.Element {
   const { busy } = useAppStatus()
-  const { detail, selectedFile, diff, diffLoading } = useSelection()
+  const { detail, selectedFile } = useSelectionDetail()
+  const { diff, diffLoading } = useSelectionDiffContent()
   const { setSelectedFile } = useSelectionActions()
-  const {
-    diffView,
-    syntaxHighlighting,
-    inspectorFilesWidth: filesWidth,
-    setInspectorFilesWidth,
-    persistLayout
-  } = useLayout()
+  const { diffView, syntaxHighlighting } = useLayoutPrefsState()
+  const { persistLayout } = useLayoutActions()
+  const { inspectorFilesWidth: filesWidth, setInspectorFilesWidth } = useLayoutPaneFiles()
   const { runMergeOrRebase } = useGitActions()
   const confirm = useConfirm()
   const { openCommitMenu } = useCommitMenu()

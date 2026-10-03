@@ -33,6 +33,7 @@ export const IpcChannels = {
     inspectNewRepo: 'repo:inspect-new-repo',
     clone: 'repo:clone',
     get: 'repo:get',
+    refresh: 'repo:refresh',
     status: 'repo:status',
     branches: 'repo:branches',
     remoteBranches: 'repo:remote-branches',

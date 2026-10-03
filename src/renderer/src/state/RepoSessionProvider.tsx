@@ -5,7 +5,7 @@ import { useRepoSession, type HistoryFns } from '../hooks/useRepoSession'
 import { useAppStatusActions } from './AppStatusProvider'
 import { useRequiredContext } from './context'
 import { useDialogActions } from './DialogsProvider'
-import { useLayout } from './LayoutProvider'
+import { useLayoutActions, useLayoutPrefsState } from './LayoutProvider'
 import { useSelectionActions } from './SelectionProvider'
 
 type SessionBundle = ReturnType<typeof useRepoSession>
@@ -61,7 +61,8 @@ const SessionActionsContext = createContext<SessionActions | null>(null)
 /** Repository list, the active repository, its branches and status, and live-watch refreshes. */
 export function RepoSessionProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { setError, setAccounts, setUpdateStatus } = useAppStatusActions()
-  const { hydrateFromPrefs, prefs } = useLayout()
+  const { prefs } = useLayoutPrefsState()
+  const { hydrateFromPrefs } = useLayoutActions()
   const { openDialog } = useDialogActions()
   const { setSelection, setViewMode } = useSelectionActions()
   const historyFnsRef = useRef<HistoryFns | null>(null)

@@ -3,36 +3,30 @@ import type React from 'react'
 import { Locate } from 'lucide-react'
 import type { Commit } from '@shared/ipc'
 import { ColumnResizeHandle } from '../../components/ColumnResizeHandle'
-import { Button, isMenuKey, menuPointFor, RefPill } from '../../components/ui'
-import { formatRelativeDate } from '../../lib/format'
+import { Button, isMenuKey, menuPointFor } from '../../components/ui'
 import { describeBranches } from '../../logic/branch-suggest'
 import { nextListIndex } from '../../logic/list-nav'
+import { virtualWindow } from '../../logic/virtual-window'
 import { useAppStatus } from '../../state/AppStatusProvider'
 import { useCommitMenu } from '../../state/CommitMenuProvider'
 import { useHistoryActions, useHistoryState } from '../../state/HistoryProvider'
-import { useLayout } from '../../state/LayoutProvider'
+import { useLayoutActions, useLayoutHistoryColumns, useLayoutPrefsState } from '../../state/LayoutProvider'
 import { useSession } from '../../state/RepoSessionProvider'
-import { useSelection } from '../../state/SelectionProvider'
+import { useSelectionCore } from '../../state/SelectionProvider'
 import { useWorkingTreeActions } from '../../state/WorkingTreeProvider'
-import { GraphCell } from './GraphCell'
+import { commitRowId, HistoryRow } from './HistoryRow'
 
 const ROW_HEIGHT = 34
 const OVERSCAN = 12
 /** Moving the selection this close to the end of the loaded commits loads the next page. */
 const LOAD_MORE_WITHIN = 20
 
-const rowId = (sha: string): string => `commit-row-${sha}`
-
-function formatAuthor(c: Commit): string {
-  if (c.authorName && c.authorEmail) return `${c.authorName} <${c.authorEmail}>`
-  return c.authorName || c.authorEmail || ''
-}
-
 export function HistoryGraph(): React.JSX.Element {
   const { busy } = useAppStatus()
   const {
     commits,
     graphBySha,
+    maxLane,
     headSha,
     nextCursor,
     historyLoadingMore: loadingMore,
@@ -42,36 +36,58 @@ export function HistoryGraph(): React.JSX.Element {
   } = useHistoryState()
   const { loadMoreHistory, revealCommit, finishReveal } = useHistoryActions()
   const { currentBranch } = useSession()
-  const { selectedSha } = useSelection()
+  const { selectedSha } = useSelectionCore()
   const { selectCommit } = useWorkingTreeActions()
   const { openCommitMenu } = useCommitMenu()
   // Column widths live in the layout state, which a drag updates live and saves when it ends.
+  const { prefs, setHistoryFilter } = useLayoutPrefsState()
+  const { persistLayout } = useLayoutActions()
   const {
-    prefs,
-    setHistoryFilter,
     historyGraphColWidth: graphW,
     historyDateColWidth: dateW,
     historyAuthorColWidth: authorW,
     setHistoryGraphColWidth,
     setHistoryDateColWidth,
-    setHistoryAuthorColWidth,
-    persistLayout
-  } = useLayout()
+    setHistoryAuthorColWidth
+  } = useLayoutHistoryColumns()
   const filter = prefs?.historyFilter || 'all'
   const hasMore = Boolean(nextCursor)
 
   const listRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
+  const scrollTopRef = useRef(0)
+  const scrollRafRef = useRef(0)
   const [viewportH, setViewportH] = useState(400)
+  const [windowRange, setWindowRange] = useState(() => virtualWindow(0, 400, 0, ROW_HEIGHT, OVERSCAN))
+
+  const syncWindow = useCallback((scrollTop: number, height: number, totalRows: number): void => {
+    const next = virtualWindow(scrollTop, height, totalRows, ROW_HEIGHT, OVERSCAN)
+    setWindowRange((prev) =>
+      prev.startIndex === next.startIndex && prev.endIndex === next.endIndex ? prev : next
+    )
+  }, [])
 
   useEffect(() => {
     const el = listRef.current
     if (!el) return
-    const measure = (): void => setViewportH(el.clientHeight)
+    const measure = (): void => {
+      const height = el.clientHeight
+      setViewportH(height)
+      syncWindow(scrollTopRef.current, height, commits.length)
+    }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
+  }, [commits.length, syncWindow])
+
+  useEffect(() => {
+    syncWindow(scrollTopRef.current, viewportH, commits.length)
+  }, [commits.length, viewportH, syncWindow])
+
+  useEffect(() => {
+    return () => {
+      if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current)
+    }
   }, [])
 
   const selectedIndex = useMemo(
@@ -104,12 +120,6 @@ export function HistoryGraph(): React.JSX.Element {
     finishReveal(revealRequest.seq)
   }, [revealRequest, commits, finishReveal, scrollRowIntoView])
 
-  const maxLane = useMemo(() => {
-    let m = 0
-    for (const g of graphBySha.values()) m = Math.max(m, g.lane, ...g.lanes)
-    return m
-  }, [graphBySha])
-
   const autoGraphMin = Math.max(80, (maxLane + 2) * 14)
   const graphWidth = Math.max(graphW, autoGraphMin)
   const cols = `${graphWidth}px minmax(120px, 1fr) ${dateW}px ${authorW}px`
@@ -127,18 +137,13 @@ export function HistoryGraph(): React.JSX.Element {
   }
 
   const totalRows = commits.length
-  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
-  const visibleCount = Math.ceil(viewportH / ROW_HEIGHT) + OVERSCAN * 2
-  const endIndex = Math.min(totalRows, startIndex + visibleCount)
-  const offsetY = startIndex * ROW_HEIGHT
+  const { startIndex, endIndex, offsetY } = windowRange
   // Only a rendered row can be the active descendant.
   const activeRowId =
-    selectedIndex >= startIndex && selectedIndex < endIndex ? rowId(commits[selectedIndex].sha) : undefined
+    selectedIndex >= startIndex && selectedIndex < endIndex ? commitRowId(commits[selectedIndex].sha) : undefined
 
-  const onScroll = useCallback(
-    (e: React.UIEvent<HTMLDivElement>) => {
-      const target = e.currentTarget
-      setScrollTop(target.scrollTop)
+  const maybeLoadMore = useCallback(
+    (target: HTMLDivElement): void => {
       if (!hasMore || loadingMore || busy) return
       const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
       if (remaining < ROW_HEIGHT * 8) void loadMoreHistory()
@@ -146,12 +151,33 @@ export function HistoryGraph(): React.JSX.Element {
     [hasMore, loadMoreHistory, loadingMore, busy]
   )
 
+  const onScroll = useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const target = e.currentTarget
+      scrollTopRef.current = target.scrollTop
+      maybeLoadMore(target)
+      if (scrollRafRef.current) return
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = 0
+        syncWindow(scrollTopRef.current, target.clientHeight, commits.length)
+      })
+    },
+    [commits.length, maybeLoadMore, syncWindow]
+  )
+
+  const onOpenMenu = useCallback(
+    (commit: Commit, point: { x: number; y: number }): void => {
+      openCommitMenu(commit, point)
+    },
+    [openCommitMenu]
+  )
+
   const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     // Keys pressed on a column resize handle are the handle's.
     if (e.target !== e.currentTarget) return
     if (isMenuKey(e)) {
       const commit = commits[selectedIndex]
-      const row = commit && document.getElementById(rowId(commit.sha))
+      const row = commit && document.getElementById(commitRowId(commit.sha))
       if (!commit || !row) return
       e.preventDefault()
       openCommitMenu(commit, menuPointFor(row))
@@ -287,52 +313,21 @@ export function HistoryGraph(): React.JSX.Element {
               role="presentation"
               style={{ transform: `translateY(${offsetY}px)` }}
             >
-              {commits.slice(startIndex, endIndex).map((c) => {
-                const node = graphBySha.get(c.sha)
-                const refTitle =
-                  c.refs.length > 0 ? c.refs.map((r) => r.name).join(', ') : undefined
-                const author = formatAuthor(c)
-                return (
-                  <div
-                    key={c.sha}
-                    id={rowId(c.sha)}
-                    role="option"
-                    aria-selected={selectedSha === c.sha}
-                    data-sha={c.sha}
-                    className={`history-row ${selectedSha === c.sha ? 'selected' : ''}`}
-                    style={{ gridTemplateColumns: cols, height: ROW_HEIGHT }}
-                    onClick={() => selectCommit(c.sha)}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      selectCommit(c.sha)
-                      openCommitMenu(c, { x: e.clientX, y: e.clientY })
-                    }}
-                    title={[c.subject, refTitle, c.shortSha, author].filter(Boolean).join('\n')}
-                  >
-                    <GraphCell
-                      node={node}
-                      maxLane={maxLane}
-                      isHead={c.sha === headSha}
-                      width={graphWidth}
-                    />
-                    <div className="cell-ellipsis history-desc">
-                      {c.sha === headSha && <RefPill tone="success">HEAD</RefPill>}
-                      {c.refs.length > 0 && (
-                        <span className="ref-count muted" title={refTitle}>
-                          {c.refs.length} ref{c.refs.length === 1 ? '' : 's'}
-                        </span>
-                      )}
-                      {c.subject}
-                    </div>
-                    <div className="cell-ellipsis muted" title={c.authoredAt}>
-                      {formatRelativeDate(c.authoredAt)}
-                    </div>
-                    <div className="cell-ellipsis muted" title={author}>
-                      {author}
-                    </div>
-                  </div>
-                )
-              })}
+              {commits.slice(startIndex, endIndex).map((c) => (
+                <HistoryRow
+                  key={c.sha}
+                  commit={c}
+                  node={graphBySha.get(c.sha)}
+                  maxLane={maxLane}
+                  isHead={c.sha === headSha}
+                  selected={selectedSha === c.sha}
+                  graphWidth={graphWidth}
+                  cols={cols}
+                  rowHeight={ROW_HEIGHT}
+                  onSelect={selectCommit}
+                  onOpenMenu={onOpenMenu}
+                />
+              ))}
             </div>
           </div>
         )}

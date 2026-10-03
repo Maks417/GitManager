@@ -11,7 +11,12 @@ import type {
   Repository
 } from '@shared/ipc'
 import { HISTORY_PAGE_SIZE } from '@shared/layout-defaults'
-import { decorateCommitsWithColors, layoutCommitGraph } from '@history-core/layout'
+import {
+  appendLayoutCommitGraph,
+  decorateCommitsWithColors,
+  layoutCommitGraphWithCheckpoint,
+  type LayoutCheckpoint
+} from '@history-core/layout'
 import { mergeTipPage } from '@history-core/tip-merge'
 import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
@@ -64,6 +69,9 @@ interface HistoryList {
   key: string
   commits: Commit[]
   graph: GraphNode[]
+  /** Lane wait map after `graph`, so load-more can append without a full relayout. */
+  layoutCheckpoint: LayoutCheckpoint
+  maxLane: number
   headSha: string | null
   nextCursor: string | null
   branchFilter: string[] | null
@@ -107,6 +115,7 @@ export function useHistory({
   commits: Commit[]
   graph: GraphNode[]
   graphBySha: Map<string, GraphNode>
+  maxLane: number
   headSha: string | null
   nextCursor: string | null
   historyLoadingMore: boolean
@@ -203,10 +212,14 @@ export function useHistory({
             if (seq !== loadSeqRef.current) return undefined
             if (reveal) loadSeqRef.current++
             appliedSearchRef.current = searchText
+            // Prefer the worker graph for display, but always derive a checkpoint so load-more can append.
+            const laidOut = layoutCommitGraphWithCheckpoint(page.commits)
             writeList({
               key,
               commits: page.commits,
-              graph: page.graph,
+              graph: page.graph.length === page.commits.length ? page.graph : laidOut.nodes,
+              layoutCheckpoint: laidOut.checkpoint,
+              maxLane: laidOut.maxLane,
               headSha: page.headSha,
               nextCursor: page.nextCursor,
               branchFilter: page.branches ?? null,
@@ -253,14 +266,15 @@ export function useHistory({
         // A refresh replaced the list meanwhile: this page's offset no longer applies.
         if (!isCurrentRepo(repoPath) || listRef.current !== loaded) return
         const seen = new Set(loaded.commits.map((c) => c.sha))
-        const commits = decorateCommitsWithColors([
-          ...loaded.commits,
-          ...page.commits.filter((c) => !seen.has(c.sha))
-        ])
+        const appended = page.commits.filter((c) => !seen.has(c.sha))
+        const commits = decorateCommitsWithColors([...loaded.commits, ...appended])
+        const laidOut = appendLayoutCommitGraph(loaded.layoutCheckpoint, appended)
         writeList({
           ...loaded,
           commits,
-          graph: layoutCommitGraph(commits),
+          graph: [...loaded.graph, ...laidOut.nodes],
+          layoutCheckpoint: laidOut.checkpoint,
+          maxLane: Math.max(loaded.maxLane, laidOut.maxLane),
           headSha: page.headSha,
           nextCursor: page.nextCursor
         })
@@ -294,10 +308,14 @@ export function useHistory({
         // null when history was rewritten (amend, rebase, reset, pruned branches): replace, don't splice.
         const spliced = mergeTipPage(loaded, page.commits, page.nextCursor !== null)
         const commits = decorateCommitsWithColors(spliced ?? page.commits)
+        // Tip splice/rewrite can change the prefix topology, so always relayout from scratch.
+        const laidOut = layoutCommitGraphWithCheckpoint(commits)
         writeList({
           key,
           commits,
-          graph: layoutCommitGraph(commits),
+          graph: laidOut.nodes,
+          layoutCheckpoint: laidOut.checkpoint,
+          maxLane: laidOut.maxLane,
           headSha: page.headSha,
           branchFilter: page.branches ?? null,
           notice: page.notice ?? null,
@@ -358,6 +376,7 @@ export function useHistory({
     commits: shown?.commits ?? NO_COMMITS,
     graph,
     graphBySha,
+    maxLane: shown?.maxLane ?? 0,
     headSha: shown?.headSha ?? null,
     nextCursor: shown?.nextCursor ?? null,
     historyLoadingMore,

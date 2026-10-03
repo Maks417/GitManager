@@ -8,6 +8,7 @@ import type {
   RemoteBranchInfo,
   RepoRemoveOptions,
   Repository,
+  RepoSessionSnapshot,
   RepoWatchEvent,
   RepoWatchState,
   SequencerOp,
@@ -18,6 +19,11 @@ import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
 import { createLatestGate } from '../logic/latest-gate'
+import {
+  createRepoRefreshScheduler,
+  shouldRefreshHistoryTip,
+  type RepoRefreshScope
+} from '../logic/repo-refresh-scheduler'
 import type { HistoryRefreshMode, Selection, ViewMode } from './selection'
 import { useLatestRef } from './useLatestRef'
 
@@ -36,6 +42,13 @@ type UseRepoSessionArgs = {
   setViewMode: React.Dispatch<React.SetStateAction<ViewMode>>
   liveStatusWatch: boolean | undefined
   onConflictsDetected: () => void
+}
+
+function sameRemotes(a: Repository['remotes'], b: Repository['remotes']): boolean {
+  return (
+    a.length === b.length &&
+    a.every((remote, index) => remote.name === b[index]?.name && remote.url === b[index]?.url)
+  )
 }
 
 export function useRepoSession({
@@ -101,6 +114,8 @@ export function useRepoSession({
   const reposRef = useLatestRef(repos)
   const onConflictsDetectedRef = useLatestRef(onConflictsDetected)
   const conflictStateRef = useRef<{ path: string; conflicted: boolean } | null>(null)
+  const historyFingerprintRef = useRef<string | null>(null)
+  const [watchScheduler] = useState(createRepoRefreshScheduler)
   // Refreshes overlap (watcher events, Git actions) and finish in any order. Only the newest may apply:
   // an older response would put back branches or status from before the latest change.
   const [metaGate] = useState(createLatestGate)
@@ -138,87 +153,101 @@ export function useRepoSession({
     [onConflictsDetectedRef]
   )
 
+  const applyRepository = useCallback((repo: Repository, fresh: Repository): void => {
+    setActiveRepo((prev) => {
+      if (!prev || !sameRepoPath(prev.path, repo.path)) return prev
+      if (
+        prev.id === fresh.id &&
+        prev.path === fresh.path &&
+        prev.currentBranch === fresh.currentBranch &&
+        prev.name === fresh.name &&
+        (prev.worktreeOf ?? null) === (fresh.worktreeOf ?? null) &&
+        sameRemotes(prev.remotes, fresh.remotes)
+      ) {
+        return prev
+      }
+      return fresh
+    })
+    setRepos((prev) => {
+      let replaced = false
+      const next = prev.map((r) => {
+        if (r.id === fresh.id || r.id === repo.id || r.path.toLowerCase() === fresh.path.toLowerCase()) {
+          replaced = true
+          return fresh
+        }
+        return r
+      })
+      const seen = new Set<string>()
+      const deduped = next.filter((r) => {
+        const key = r.path.toLowerCase()
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      return replaced ? deduped : [fresh, ...deduped]
+    })
+  }, [])
+
+  const applySnapshot = useCallback(
+    (
+      repo: Repository,
+      snapshot: RepoSessionSnapshot,
+      opts: { metaToken?: number; statusToken: number; applyMeta: boolean }
+    ): Repository => {
+      if (!sameRepoPath(activeRepoRef.current?.path, repo.path)) return repo
+      if (statusGate.isLatest(opts.statusToken)) {
+        setStatus(snapshot.status)
+        noteConflicts(repo.path, snapshot.status)
+      }
+      if (!opts.applyMeta) return repo
+      if (opts.metaToken !== undefined && !metaGate.isLatest(opts.metaToken)) return repo
+      if (snapshot.branches) setBranches(snapshot.branches)
+      if (snapshot.remoteBranches) setRemoteBranches(snapshot.remoteBranches)
+      if (snapshot.identity) setIdentity(snapshot.identity)
+      if (snapshot.rebaseInProgress !== undefined) setRebaseInProgress(snapshot.rebaseInProgress)
+      if (snapshot.mergeInProgress !== undefined) setMergeInProgress(snapshot.mergeInProgress)
+      if (snapshot.sequencerOp !== undefined) setSequencerOp(snapshot.sequencerOp)
+      if (snapshot.historyFingerprint) historyFingerprintRef.current = snapshot.historyFingerprint
+      const fresh = snapshot.repository ?? repo
+      if (snapshot.repository) applyRepository(repo, fresh)
+      return fresh
+    },
+    [activeRepoRef, applyRepository, metaGate, noteConflicts, statusGate]
+  )
+
   /** Work-tree edits only change status; branches, identity and history stay as they are. */
   const refreshStatus = useCallback(
     async (repo: Repository): Promise<void> => {
       const token = statusGate.begin()
-      const entries = await window.gitManager.repo.status(repo.path)
-      if (!statusGate.isLatest(token) || !sameRepoPath(activeRepoRef.current?.path, repo.path)) return
-      setStatus(entries)
-      noteConflicts(repo.path, entries)
+      const snapshot = await window.gitManager.repo.refresh({
+        repoPath: repo.path,
+        scope: 'status',
+        persistRepository: false,
+        baseRepository: repo
+      })
+      applySnapshot(repo, snapshot, { statusToken: token, applyMeta: false })
     },
-    [activeRepoRef, noteConflicts, statusGate]
+    [applySnapshot, statusGate]
   )
 
   const refreshRepoMeta = useCallback(
-    async (repo: Repository): Promise<Repository> => {
+    async (repo: Repository, opts?: { persist?: boolean }): Promise<Repository> => {
       const metaToken = metaGate.begin()
       const statusToken = statusGate.begin()
-      const [b, remoteB, s, fresh, id, rebasing, merging, sequencer] = await Promise.all([
-        window.gitManager.repo.branches(repo.path),
-        window.gitManager.repo.remoteBranches(repo.path),
-        window.gitManager.repo.status(repo.path),
-        window.gitManager.repo.get(repo.id),
-        window.gitManager.git.getIdentity(repo.path),
-        window.gitManager.git.rebaseInProgress(repo.path),
-        window.gitManager.git.mergeInProgress(repo.path),
-        window.gitManager.git.sequencerOp(repo.path)
-      ])
+      const snapshot = await window.gitManager.repo.refresh({
+        repoPath: repo.path,
+        scope: 'meta',
+        persistRepository: opts?.persist !== false,
+        baseRepository: repo
+      })
       // The user may have switched repositories while these requests ran. Never apply another
-      // repository's branches or status, and never switch the app back to it. A newer refresh of this
-      // repository that started meanwhile applies its own, fresher results instead.
+      // repository's branches or status, and never switch the app back to it.
       if (!sameRepoPath(activeRepoRef.current?.path, repo.path) || !metaGate.isLatest(metaToken)) {
-        return fresh ?? repo
+        return snapshot.repository ?? repo
       }
-      setBranches(b)
-      setRemoteBranches(remoteB)
-      setIdentity(id)
-      setRebaseInProgress(rebasing)
-      setMergeInProgress(merging)
-      setSequencerOp(sequencer)
-      if (statusGate.isLatest(statusToken)) {
-        setStatus(s)
-        noteConflicts(repo.path, s)
-      }
-      if (fresh) {
-        setActiveRepo((prev) => {
-          if (!prev || !sameRepoPath(prev.path, repo.path)) return prev
-          if (
-            prev.id === fresh.id &&
-            prev.path === fresh.path &&
-            prev.currentBranch === fresh.currentBranch &&
-            prev.name === fresh.name
-          ) {
-            return prev
-          }
-          return fresh
-        })
-        setRepos((prev) => {
-          let replaced = false
-          const next = prev.map((r) => {
-            if (
-              r.id === fresh.id ||
-              r.id === repo.id ||
-              r.path.toLowerCase() === fresh.path.toLowerCase()
-            ) {
-              replaced = true
-              return fresh
-            }
-            return r
-          })
-          const seen = new Set<string>()
-          const deduped = next.filter((r) => {
-            const key = r.path.toLowerCase()
-            if (seen.has(key)) return false
-            seen.add(key)
-            return true
-          })
-          return replaced ? deduped : [fresh, ...deduped]
-        })
-      }
-      return fresh ?? repo
+      return applySnapshot(repo, snapshot, { metaToken, statusToken, applyMeta: true })
     },
-    [activeRepoRef, noteConflicts, metaGate, statusGate]
+    [activeRepoRef, applySnapshot, metaGate, statusGate]
   )
 
   const afterGitMutation = useCallback(
@@ -322,6 +351,36 @@ export function useRepoSession({
       return
     }
 
+    historyFingerprintRef.current = null
+    watchScheduler.reset()
+
+    const runWatchRefresh = async (scope: RepoRefreshScope, generation: number): Promise<void> => {
+      const repo = activeRepoRef.current
+      if (!repo || repo.path !== repoPath) {
+        watchScheduler.reset()
+        return
+      }
+      try {
+        if (scope === 'meta') {
+          const previousFingerprint = historyFingerprintRef.current
+          const fresh = await refreshRepoMeta(repo, { persist: false })
+          if (
+            sameRepoPath(activeRepoRef.current?.path, repoPath) &&
+            shouldRefreshHistoryTip(previousFingerprint, historyFingerprintRef.current)
+          ) {
+            await historyFnsRef.current?.refreshHistoryTip(fresh)
+          }
+        } else {
+          await refreshStatus(repo)
+        }
+      } catch (err) {
+        if (sameRepoPath(activeRepoRef.current?.path, repoPath)) setError(toErrorMessage(err))
+      } finally {
+        const next = watchScheduler.complete(generation)
+        if (next.run) void runWatchRefresh(next.scope, next.generation)
+      }
+    }
+
     // The state also arrives as an event, but a reloaded window whose watch kept running gets none.
     window.gitManager.repo.watch(repoPath).then(setWatchState, () => undefined)
     const off = window.gitManager.repo.onChanged((raw) => {
@@ -332,23 +391,26 @@ export function useRepoSession({
       if (left !== right) return
       const repo = activeRepoRef.current
       if (!repo || repo.path !== repoPath) return
-      void (async () => {
-        if (event.kind === 'git-meta') {
-          const fresh = await refreshRepoMeta(repo)
-          await historyFnsRef.current?.refreshHistoryTip(fresh)
-        } else {
-          await refreshStatus(repo)
-        }
-      })().catch((err) => {
-        if (sameRepoPath(activeRepoRef.current?.path, repoPath)) setError(toErrorMessage(err))
-      })
+      const scope: RepoRefreshScope = event.kind === 'git-meta' ? 'meta' : 'status'
+      const scheduled = watchScheduler.request(scope)
+      if (scheduled.run) void runWatchRefresh(scheduled.scope, scheduled.generation)
     })
 
     return () => {
       off()
+      watchScheduler.reset()
       void window.gitManager.repo.unwatch()
     }
-  }, [activeRepo?.path, activeRepoRef, liveStatusWatch, refreshRepoMeta, refreshStatus, historyFnsRef, setError])
+  }, [
+    activeRepo?.path,
+    activeRepoRef,
+    liveStatusWatch,
+    refreshRepoMeta,
+    refreshStatus,
+    historyFnsRef,
+    setError,
+    watchScheduler
+  ])
 
   return {
     repos,

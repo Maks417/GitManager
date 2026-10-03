@@ -1,11 +1,16 @@
-import { createContext, useMemo } from 'react'
+import { createContext, memo, useMemo } from 'react'
 import type React from 'react'
 import { useWorkingTree } from '../hooks/useWorkingTree'
 import { useAppStatusActions } from './AppStatusProvider'
 import { useRequiredContext } from './context'
 import { useHistoryState } from './HistoryProvider'
 import { useSession, useStatus } from './RepoSessionProvider'
-import { useSelection, useSelectionActions } from './SelectionProvider'
+import {
+  useSelectionActions,
+  useSelectionCore,
+  useSelectionDetail,
+  useSelectionFocus
+} from './SelectionProvider'
 
 export interface WorkingTreeActions {
   selectWorkingCopy: () => void
@@ -15,9 +20,22 @@ export interface WorkingTreeActions {
 
 const WorkingTreeActionsContext = createContext<WorkingTreeActions | null>(null)
 
-/** Loads commit detail and diffs for the selection, and switches between history and changes. */
+const MemoChildren = memo(function MemoChildren({
+  children
+}: {
+  children: React.ReactNode
+}): React.JSX.Element {
+  return <>{children}</>
+})
+
+/**
+ * Loads commit detail and diffs for the selection, and switches between history and changes.
+ * Children are memoized so status/focus churn in this provider does not re-render Git actions.
+ */
 export function WorkingTreeProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const selection = useSelection()
+  const core = useSelectionCore()
+  const detail = useSelectionDetail()
+  const focus = useSelectionFocus()
   const selectionActions = useSelectionActions()
   const { activeRepo } = useSession()
   const { status } = useStatus()
@@ -25,7 +43,9 @@ export function WorkingTreeProvider({ children }: { children: React.ReactNode })
   const { setError } = useAppStatusActions()
 
   const { selectWorkingCopy, selectCommit, goHistory } = useWorkingTree({
-    ...selection,
+    ...core,
+    ...detail,
+    ...focus,
     ...selectionActions,
     activeRepo,
     status,
@@ -39,7 +59,11 @@ export function WorkingTreeProvider({ children }: { children: React.ReactNode })
     [selectWorkingCopy, selectCommit, goHistory]
   )
 
-  return <WorkingTreeActionsContext.Provider value={actions}>{children}</WorkingTreeActionsContext.Provider>
+  return (
+    <WorkingTreeActionsContext.Provider value={actions}>
+      <MemoChildren>{children}</MemoChildren>
+    </WorkingTreeActionsContext.Provider>
+  )
 }
 
 export const useWorkingTreeActions = (): WorkingTreeActions =>

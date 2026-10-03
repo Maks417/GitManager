@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type React from 'react'
 import type { GraphNode } from '@shared/ipc'
 import { LANE_COLORS } from '@shared/theme'
@@ -9,7 +10,7 @@ interface Props {
   width: number
 }
 
-export function GraphCell({ node, maxLane, isHead, width }: Props): React.JSX.Element {
+function GraphCellInner({ node, maxLane, isHead, width }: Props): React.JSX.Element {
   const h = 28
   const pad = 8
   // Spread lanes across the column when it is wider than the minimum density.
@@ -83,3 +84,5 @@ export function GraphCell({ node, maxLane, isHead, width }: Props): React.JSX.El
     </svg>
   )
 }
+
+export const GraphCell = memo(GraphCellInner)

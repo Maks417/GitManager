@@ -566,6 +566,35 @@ export const GitIdentitySchema = z.object({
 })
 export type GitIdentity = z.infer<typeof GitIdentitySchema>
 
+/** Live refresh of status only, or of branches/identity/operation flags too. */
+export const RepoRefreshScopeSchema = z.enum(['status', 'meta'])
+export type RepoRefreshScope = z.infer<typeof RepoRefreshScopeSchema>
+
+export const RepoRefreshRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  scope: RepoRefreshScopeSchema,
+  /** When true, fully inspect the repository (and the main process may persist it). */
+  persistRepository: z.boolean().default(false),
+  /** Previous repository record; used to keep remotes/worktreeOf without a full inspect. */
+  baseRepository: RepositorySchema.optional()
+})
+export type RepoRefreshRequest = z.infer<typeof RepoRefreshRequestSchema>
+
+export const RepoSessionSnapshotSchema = z.object({
+  status: z.array(StatusEntrySchema),
+  repository: RepositorySchema.optional(),
+  branches: z.array(BranchInfoSchema).optional(),
+  remoteBranches: z.array(RemoteBranchInfoSchema).optional(),
+  identity: GitIdentitySchema.optional(),
+  rebaseInProgress: z.boolean().optional(),
+  mergeInProgress: z.boolean().optional(),
+  sequencerOp: SequencerOpSchema.nullable().optional(),
+  headSha: z.string().nullable().optional(),
+  /** Changes when HEAD, refs or in-progress operations change; gates tip history refresh. */
+  historyFingerprint: z.string().optional()
+})
+export type RepoSessionSnapshot = z.infer<typeof RepoSessionSnapshotSchema>
+
 export const GitProbeResultSchema = z.object({
   available: z.boolean(),
   version: z.string().nullable(),

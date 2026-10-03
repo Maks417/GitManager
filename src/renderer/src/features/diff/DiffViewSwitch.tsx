@@ -1,11 +1,11 @@
 import type React from 'react'
 import { Columns2, TextAlignJustify } from 'lucide-react'
 import { SegmentedControl } from '../../components/ui'
-import { useLayout } from '../../state/LayoutProvider'
+import { useLayoutPrefsState } from '../../state/LayoutProvider'
 
 /** Inline or side-by-side layout for every file diff, saved as `AppPreferences.diffView`. */
 export function DiffViewSwitch(): React.JSX.Element {
-  const { diffView, setDiffView } = useLayout()
+  const { diffView, setDiffView } = useLayoutPrefsState()
   return (
     <SegmentedControl
       ariaLabel="Diff view"

@@ -23,7 +23,7 @@ import { useConfirm } from '../state/ConfirmProvider'
 import { useDialogActions } from '../state/DialogsProvider'
 import { useGitActions, useRemoteOp } from '../state/GitActionsProvider'
 import { useHistoryActions } from '../state/HistoryProvider'
-import { useLayout } from '../state/LayoutProvider'
+import { useLayoutPrefsState } from '../state/LayoutProvider'
 import { useActiveRepo, useSession } from '../state/RepoSessionProvider'
 
 // Double-clicking a row checks the branch out; clicks on its buttons must not.
@@ -43,7 +43,7 @@ export function RepoSidebar(): React.JSX.Element {
     toggleSidebar,
     toggleBranches,
     toggleRemoteBranches
-  } = useLayout()
+  } = useLayoutPrefsState()
   const { openDialog } = useDialogActions()
   const confirm = useConfirm()
   const {

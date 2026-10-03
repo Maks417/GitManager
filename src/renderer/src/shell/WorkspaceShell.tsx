@@ -6,9 +6,13 @@ import { WorkingTreeDetailPane } from '../features/changes/WorkingTreeDetailPane
 import { CommitDetailPane } from '../features/commit-detail/CommitDetailPane'
 import { HistoryGraph } from '../features/history-graph/HistoryGraph'
 import { useAppStatus } from '../state/AppStatusProvider'
-import { useLayout } from '../state/LayoutProvider'
+import {
+  useLayoutActions,
+  useLayoutChrome,
+  useLayoutPrefsState
+} from '../state/LayoutProvider'
 import { useActiveRepo } from '../state/RepoSessionProvider'
-import { useSelection } from '../state/SelectionProvider'
+import { useSelectionCore } from '../state/SelectionProvider'
 import { RepoSidebar } from './RepoSidebar'
 import { WatchNotice } from './WatchNotice'
 
@@ -16,19 +20,17 @@ import { WatchNotice } from './WatchNotice'
 export function WorkspaceShell(): React.JSX.Element {
   const { error } = useAppStatus()
   const activeRepo = useActiveRepo()
-  const { viewMode, selection } = useSelection()
+  const { viewMode, selection } = useSelectionCore()
+  const { detailDock, sidebarCollapsed, toggleDock } = useLayoutPrefsState()
+  const { persistLayout } = useLayoutActions()
   const {
-    detailDock,
-    sidebarCollapsed,
     sidebarWidth,
     setSidebarWidth,
     inspectorHeight,
     setInspectorHeight,
     detailWidth,
-    setDetailWidth,
-    persistLayout,
-    toggleDock
-  } = useLayout()
+    setDetailWidth
+  } = useLayoutChrome()
 
   const showInspector = viewMode === 'history' && selection?.kind === 'commit'
 

@@ -29,7 +29,15 @@ import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { OperationBar } from '../../components/OperationBar'
 import { Splitter } from '../../components/Splitter'
-import { Button, FileStatusDot, isMenuKey, menuPointFor, RefPill, SegmentedControl } from '../../components/ui'
+import {
+  Button,
+  FileStatusDot,
+  IconButton,
+  isMenuKey,
+  menuPointFor,
+  RefPill,
+  SegmentedControl
+} from '../../components/ui'
 import type { DiffSide } from '../../hooks/selection'
 import { CONFIRM_DISCARD, confirmDiscardPart, confirmDropStash } from '../../lib/copy'
 import { toErrorMessage } from '../../lib/errors'
@@ -41,9 +49,17 @@ import { useFileMenu, type FileTarget } from '../../state/FileMenuProvider'
 import { useDialogActions } from '../../state/DialogsProvider'
 import { useGitActions } from '../../state/GitActionsProvider'
 import { useHistoryState } from '../../state/HistoryProvider'
-import { useLayout } from '../../state/LayoutProvider'
+import {
+  useLayoutActions,
+  useLayoutPaneFiles,
+  useLayoutPrefsState
+} from '../../state/LayoutProvider'
 import { useActiveRepo, useSession, useSessionActions, useStatus } from '../../state/RepoSessionProvider'
-import { useSelection, useSelectionActions } from '../../state/SelectionProvider'
+import {
+  useSelectionActions,
+  useSelectionDiffContent,
+  useSelectionFocus
+} from '../../state/SelectionProvider'
 import { useWorkingTreeActions } from '../../state/WorkingTreeProvider'
 
 function formatIdentity(id: GitIdentity | null | undefined): string {
@@ -64,7 +80,8 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const { status } = useStatus()
   const { identity, rebaseInProgress, mergeInProgress, sequencerOp } = useSession()
   const { afterGitMutation } = useSessionActions()
-  const { focusedStatusPath: focusedPath, diffSide, diff, diffLoading } = useSelection()
+  const { focusedStatusPath: focusedPath, diffSide } = useSelectionFocus()
+  const { diff, diffLoading } = useSelectionDiffContent()
   const { setFocusedStatusPath, setDiffSide } = useSelectionActions()
   const { headSha } = useHistoryState()
   const { setError: onError } = useAppStatusActions()
@@ -72,8 +89,9 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const { openDialog } = useDialogActions()
   const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep, runRemote, resolveRemoteOutcome } =
     useGitActions()
-  const { changesFilesWidth: filesWidth, setChangesFilesWidth, persistLayout, diffView, syntaxHighlighting } =
-    useLayout()
+  const { diffView, syntaxHighlighting } = useLayoutPrefsState()
+  const { persistLayout } = useLayoutActions()
+  const { changesFilesWidth: filesWidth, setChangesFilesWidth } = useLayoutPaneFiles()
   const confirm = useConfirm()
   const { openFileMenu } = useFileMenu()
   const canAmend = Boolean(headSha)
@@ -86,6 +104,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const [checked, setChecked] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [stashes, setStashes] = useState<StashEntry[]>([])
+  const [stashesExpanded, setStashesExpanded] = useState(false)
   const [stagedExpanded, setStagedExpanded] = useState(true)
   const [changesExpanded, setChangesExpanded] = useState(true)
 
@@ -342,77 +361,87 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
     />
   ) : null
 
+  const stashActionLabel =
+    status.length === 0
+      ? 'Nothing to stash'
+      : !canAmend
+        ? 'Cannot stash before the first commit'
+        : 'Stash including untracked'
+
   const stashPanel = (
     <div className="stash-panel">
-      <div className="stash-panel-header">
-        <span className="panel-title stash-title">Stashes</span>
-        <Button
-          icon={<Archive size={16} strokeWidth={1.75} />}
+      <div className="stash-panel-header panel-disclosure-row">
+        <button
+          type="button"
+          className="panel-title panel-disclosure"
+          onClick={() => setStashesExpanded((v) => !v)}
+          aria-expanded={stashesExpanded}
+          title={stashesExpanded ? 'Collapse Stashes' : 'Expand Stashes'}
+        >
+          <span>
+            Stashes{stashes.length > 0 ? ` (${stashes.length})` : ''}
+          </span>
+          <span className="muted">
+            {stashesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </span>
+        </button>
+        <IconButton
+          label={stashActionLabel}
           disabled={busy || status.length === 0 || !canAmend}
-          hint={
-            status.length === 0
-              ? 'Nothing to stash'
-              : !canAmend
-                ? 'Cannot stash before the first commit'
-                : 'Stash including untracked'
-          }
-          title={
-            status.length === 0
-              ? 'Nothing to stash'
-              : !canAmend
-                ? 'Cannot stash before the first commit'
-                : 'Stash including untracked'
-          }
           onClick={() => void run(() => window.gitManager.git.stash(repoPath))}
         >
-          Stash
-        </Button>
+          <Archive size={16} strokeWidth={1.75} />
+        </IconButton>
       </div>
-      {stashes.length === 0 ? (
-        <p className="muted text-sm stash-empty">No stashes</p>
-      ) : (
-        <ul className="stash-list">
-          {stashes.map((s) => (
-            <li key={s.reflogSelector}>
-              <div className="cell-ellipsis" title={s.message}>
-                <code>{s.reflogSelector}</code> {s.message}
-              </div>
-              <div className="stash-row-actions">
-                <Button
-                  icon={<Play size={14} strokeWidth={1.75} />}
-                  disabled={busy}
-                  hint="Apply stash (keep entry)"
-                  title="Apply stash (keep entry)"
-                  onClick={() => void run(() => window.gitManager.git.stashApply(repoPath, s.reflogSelector))}
-                >
-                  Apply
-                </Button>
-                <Button
-                  icon={<ArrowUpFromLine size={14} strokeWidth={1.75} />}
-                  disabled={busy}
-                  hint="Pop stash (apply and drop)"
-                  title="Pop stash (apply and drop)"
-                  onClick={() => void run(() => window.gitManager.git.stashPop(repoPath, s.reflogSelector))}
-                >
-                  Pop
-                </Button>
-                <Button
-                  icon={<Trash2 size={14} strokeWidth={1.75} />}
-                  disabled={busy}
-                  hint={`Drop ${s.reflogSelector}`}
-                  title={`Drop ${s.reflogSelector}`}
-                  onClick={() =>
-                    void confirm(confirmDropStash(s.reflogSelector)).then((ok) => {
-                      if (ok) void run(() => window.gitManager.git.stashDrop(repoPath, s.reflogSelector))
-                    })
-                  }
-                >
-                  Drop
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
+      {stashesExpanded && (
+        <div className="stash-panel-body">
+          {stashes.length === 0 ? (
+            <p className="muted text-sm stash-empty">No stashes</p>
+          ) : (
+            <ul className="stash-list" aria-label="Stashes">
+              {stashes.map((s) => (
+                <li key={s.reflogSelector}>
+                  <div className="cell-ellipsis" title={s.message}>
+                    <code>{s.reflogSelector}</code> {s.message}
+                  </div>
+                  <div className="stash-row-actions">
+                    <Button
+                      icon={<Play size={14} strokeWidth={1.75} />}
+                      disabled={busy}
+                      hint="Apply stash (keep entry)"
+                      title="Apply stash (keep entry)"
+                      onClick={() => void run(() => window.gitManager.git.stashApply(repoPath, s.reflogSelector))}
+                    >
+                      Apply
+                    </Button>
+                    <Button
+                      icon={<ArrowUpFromLine size={14} strokeWidth={1.75} />}
+                      disabled={busy}
+                      hint="Pop stash (apply and drop)"
+                      title="Pop stash (apply and drop)"
+                      onClick={() => void run(() => window.gitManager.git.stashPop(repoPath, s.reflogSelector))}
+                    >
+                      Pop
+                    </Button>
+                    <Button
+                      icon={<Trash2 size={14} strokeWidth={1.75} />}
+                      disabled={busy}
+                      hint={`Drop ${s.reflogSelector}`}
+                      title={`Drop ${s.reflogSelector}`}
+                      onClick={() =>
+                        void confirm(confirmDropStash(s.reflogSelector)).then((ok) => {
+                          if (ok) void run(() => window.gitManager.git.stashDrop(repoPath, s.reflogSelector))
+                        })
+                      }
+                    >
+                      Drop
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   )

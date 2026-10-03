@@ -5,7 +5,7 @@ import { Banner, Button, FileStatusDot, Modal } from '../../components/ui'
 import { toErrorMessage } from '../../lib/errors'
 import { formatRelativeDate } from '../../lib/format'
 import { nextListIndex } from '../../logic/list-nav'
-import { useLayout } from '../../state/LayoutProvider'
+import { useLayoutPrefsState } from '../../state/LayoutProvider'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
@@ -29,7 +29,7 @@ const optionId = (index: number): string => `file-history-${index}`
 
 /** Every commit that changed a file, across renames, with the file's diff in the selected one. */
 export function FileHistoryModal({ repoPath, path, onClose, onShowInHistory, onBlame }: Props): React.JSX.Element {
-  const { diffView, syntaxHighlighting } = useLayout()
+  const { diffView, syntaxHighlighting } = useLayoutPrefsState()
   const [entries, setEntries] = useState<FileHistoryEntry[]>([])
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(true)

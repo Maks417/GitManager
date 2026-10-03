@@ -27,6 +27,7 @@ import type {
   RemoteOpRequest,
   RemoteOpResult,
   RemoteRepo,
+  RepoRefreshRequest,
   RepoRemovalInfo,
   ResetMode,
   SequencerOp,
@@ -35,6 +36,7 @@ import type {
   RepoRemoveOptions,
   RepoRemoveResult,
   Repository,
+  RepoSessionSnapshot,
   RepoWatchEvent,
   RepoWatchState,
   SetGitIdentityRequest,
@@ -60,6 +62,8 @@ export interface GitManagerApi {
     /** Progress arrives through `git.onProgress`; `git.cancelOperation(opId)` stops it and removes the folder. */
     clone: (request: CloneRequest) => Promise<CloneResult>
     get: (id: string) => Promise<Repository | null>
+    /** One coalesced status/meta refresh for the live-watch hot path. */
+    refresh: (request: RepoRefreshRequest) => Promise<RepoSessionSnapshot>
     status: (repoPath: string) => Promise<StatusEntry[]>
     branches: (repoPath: string) => Promise<BranchInfo[]>
     remoteBranches: (repoPath: string) => Promise<RemoteBranchInfo[]>

@@ -8,6 +8,8 @@ export {
   getGitDirs
 } from './ops/repo'
 
+export { refreshRepoSession } from './ops/session-snapshot'
+
 export {
   loadHistory,
   getCommitDetail,

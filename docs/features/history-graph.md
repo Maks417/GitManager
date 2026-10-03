@@ -37,7 +37,9 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 - History paging uses portable argv (`shell: false`, `LC_ALL=C`) so Apple Xcode CLT Git and Homebrew Git behave like Git for Windows.
 - Minimum practical Git: **2.20+** (common on current Apple CLT and Homebrew). Features used: `log --date-order --decorate=full --skip --exclude --stdin`, `--fixed-strings --regexp-ignore-case`, `for-each-ref`, `diff-tree -z -M --root`, `cat-file -s`, `status --porcelain=v2 -z`.
 - Git ops run in an Electron `utilityProcess` worker, with in-process fallback if the worker cannot start.
-- The history list is window-virtualized (fixed 34px rows) so multi-page loads stay responsive on Retina displays.
+- The history list is window-virtualized (fixed 34px rows) so multi-page loads stay responsive on Retina displays. Scroll updates batch on animation frames and only re-render when the visible row window changes.
+- Load-more appends graph lanes from a saved checkpoint in O(page size); tip splice/rewrite still relayouts the full list because the prefix can change. Later pages omit a page-local graph from the worker.
+- History list consumers subscribe only to selection core (selected SHA) and history-column layout, so diff loads and sidebar drags do not repaint the graph.
 
 ## Key modules & files
 

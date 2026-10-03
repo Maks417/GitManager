@@ -20,9 +20,9 @@ import { nextListIndex } from '../logic/list-nav'
 import { useAppStatus } from '../state/AppStatusProvider'
 import { useDialogActions } from '../state/DialogsProvider'
 import { useGitActions, useRemoteOp, type RemoteOpState } from '../state/GitActionsProvider'
-import { useLayout } from '../state/LayoutProvider'
+import { useLayoutPrefsState } from '../state/LayoutProvider'
 import { useSession, useStatus } from '../state/RepoSessionProvider'
-import { useSelection } from '../state/SelectionProvider'
+import { useSelectionCore } from '../state/SelectionProvider'
 import { useWorkingTreeActions } from '../state/WorkingTreeProvider'
 import { HistorySearchBox } from './HistorySearchBox'
 
@@ -40,8 +40,8 @@ export function AppToolbar(): React.JSX.Element {
   const { busy } = useAppStatus()
   const { activeRepo, currentBranch } = useSession()
   const { status, conflictCount } = useStatus()
-  const { viewMode } = useSelection()
-  const { prefs, setThemePref } = useLayout()
+  const { viewMode } = useSelectionCore()
+  const { prefs, setThemePref } = useLayoutPrefsState()
   const { goHistory, selectWorkingCopy } = useWorkingTreeActions()
   const { openDialog } = useDialogActions()
   const { runSync, cancelRemote } = useGitActions()

@@ -9,7 +9,7 @@ import { formatRelativeDate } from '../../lib/format'
 import type * as monaco from '../../lib/monaco-api'
 import { syntaxLanguageFor } from '../../lib/syntax'
 import { monacoThemeFor, useResolvedTheme } from '../../lib/theme'
-import { useLayout } from '../../state/LayoutProvider'
+import { useLayoutPrefsState } from '../../state/LayoutProvider'
 
 interface Props {
   repoPath: string
@@ -52,7 +52,7 @@ function commitLabel(commit: BlameCommit): string {
  * names its commit in the bar above; from there: show it in History, or blame the file as it was before it.
  */
 export function BlameModal({ repoPath, path, rev, onClose, onShowInHistory, onFileHistory }: Props): React.JSX.Element {
-  const { syntaxHighlighting } = useLayout()
+  const { syntaxHighlighting } = useLayoutPrefsState()
   const theme = monacoThemeFor(useResolvedTheme())
   // Earlier targets, for Back after "Blame before this change".
   const [trail, setTrail] = useState<BlameTarget[]>([])

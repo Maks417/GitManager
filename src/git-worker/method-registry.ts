@@ -40,6 +40,7 @@ import {
   getEnclosingWorkTree,
   inspectRepoForRemoval,
   inspectRepository,
+  refreshRepoSession,
   isMergeInProgress,
   isRebaseInProgress,
   listConflictFiles,
@@ -69,6 +70,7 @@ import {
 
 export const GIT_METHODS = {
   inspectRepository,
+  refreshRepoSession,
   createRepository,
   getDefaultBranchName,
   getEnclosingWorkTree,

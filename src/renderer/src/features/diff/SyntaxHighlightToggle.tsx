@@ -1,11 +1,11 @@
 import type React from 'react'
 import { Palette } from 'lucide-react'
 import { IconButton } from '../../components/ui'
-import { useLayout } from '../../state/LayoutProvider'
+import { useLayoutPrefsState } from '../../state/LayoutProvider'
 
 /** Syntax colors on or off for every file diff and the merge editor, saved as `AppPreferences.syntaxHighlighting`. */
 export function SyntaxHighlightToggle(): React.JSX.Element {
-  const { syntaxHighlighting, setSyntaxHighlighting } = useLayout()
+  const { syntaxHighlighting, setSyntaxHighlighting } = useLayoutPrefsState()
   return (
     <IconButton
       label="Syntax colors"

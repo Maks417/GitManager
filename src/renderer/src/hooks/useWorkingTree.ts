@@ -9,6 +9,7 @@ import type {
 } from '@shared/ipc'
 import { isSha } from '@shared/sha'
 import { toErrorMessage } from '../lib/errors'
+import { workingTreeDiffDelayMs } from '../logic/working-tree-diff-refresh'
 import { defaultSideFor, type DiffSide, type Selection, type ViewMode } from './selection'
 import { useLatestRef } from './useLatestRef'
 
@@ -17,6 +18,9 @@ import { useLatestRef } from './useLatestRef'
  * commit list does not run Git for every commit it passes.
  */
 const DETAIL_DELAY_MS = 120
+
+/** Status-driven reloads of the same focused file coalesce into one working-tree diff request. */
+const WORKING_TREE_DIFF_REFRESH_MS = 150
 
 /** Selection / detail / diff state (call before session + history). */
 export function useWorkingTreeState(): {
@@ -70,13 +74,12 @@ export function useWorkingTreeState(): {
   }
 }
 
-type UseWorkingTreeArgs = ReturnType<typeof useWorkingTreeState> & {
+type UseWorkingTreeArgs = Omit<ReturnType<typeof useWorkingTreeState>, 'diff' | 'diffLoading'> & {
   activeRepo: Repository | null
   status: StatusEntry[]
   commits: Commit[]
   headSha: string | null
   setError: (msg: string | null) => void
-  setDiffLoading: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 /**
@@ -254,12 +257,14 @@ export function useWorkingTree({
       return
     }
     const key = `${repoPath}\0${focusedStatusPath}\0${diffSide}`
+    const delayMs = workingTreeDiffDelayMs(shownDiffKeyRef.current, key, WORKING_TREE_DIFF_REFRESH_MS)
     let cancelled = false
-    if (shownDiffKeyRef.current !== key) {
+    // New file/side: clear immediately. Same key: keep the last diff while the debounced reload runs.
+    if (delayMs === 0) {
       setDiffLoading(true)
       setDiff(null)
     }
-    void (async () => {
+    const load = async (): Promise<void> => {
       try {
         const d = await window.gitManager.history.workingTreeDiff({
           repoPath,
@@ -274,11 +279,16 @@ export function useWorkingTree({
       } finally {
         if (!cancelled) setDiffLoading(false)
       }
-    })()
+    }
+    // `status` is a dependency on purpose: every status refresh reloads the focused file's diff
+    // (debounced above when the key is unchanged).
+    const timer = setTimeout(() => {
+      void load()
+    }, delayMs)
     return () => {
       cancelled = true
+      clearTimeout(timer)
     }
-    // `status` is a dependency on purpose: every status refresh reloads the focused file's diff.
   }, [
     repoPath,
     selectionKind,

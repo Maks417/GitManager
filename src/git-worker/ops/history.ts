@@ -284,7 +284,8 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
   }
 
   const decorated = decorateCommitsWithColors(commits)
-  const graph = layoutCommitGraph(decorated)
+  // Later pages are laid out on the renderer from a checkpoint; a page-local graph is not continuous.
+  const graph = skip > 0 ? [] : layoutCommitGraph(decorated)
   const nextCursor = decorated.length >= pageSize ? decorated[decorated.length - 1]?.sha ?? null : null
 
   return {
