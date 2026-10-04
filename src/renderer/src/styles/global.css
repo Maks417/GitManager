@@ -1215,6 +1215,34 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   font-size: var(--text-xs);
 }
 
+.history-tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 50%;
+}
+
+.history-tags .history-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 160px;
+  margin-right: 0;
+  flex: 1 1 0;
+  color: var(--accent);
+}
+
+.history-tag svg {
+  flex-shrink: 0;
+}
+
+.history-subject {
+  min-width: 0;
+  flex: 1;
+}
+
 .cell-ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;

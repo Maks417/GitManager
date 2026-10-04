@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import type React from 'react'
+import { Tag } from 'lucide-react'
 import type { Commit, GraphNode } from '@shared/ipc'
 import { RefPill } from '../../components/ui'
 import { formatRelativeDate } from '../../lib/format'
@@ -40,6 +41,9 @@ function HistoryRowInner({
   onOpenMenu
 }: Props): React.JSX.Element {
   const refTitle = commit.refs.length > 0 ? commit.refs.map((r) => r.name).join(', ') : undefined
+  const tags = commit.refs.filter((r) => r.type === 'tag')
+  const otherRefs = commit.refs.filter((r) => r.type !== 'tag')
+  const tagTitle = tags.map((r) => r.name).join(', ')
   const author = formatAuthor(commit)
   return (
     <div
@@ -60,12 +64,25 @@ function HistoryRowInner({
       <GraphCell node={node} maxLane={maxLane} isHead={isHead} width={graphWidth} />
       <div className="cell-ellipsis history-desc">
         {isHead && <RefPill tone="success">HEAD</RefPill>}
-        {commit.refs.length > 0 && (
-          <span className="ref-count muted" title={refTitle}>
-            {commit.refs.length} ref{commit.refs.length === 1 ? '' : 's'}
+        {tags.length > 0 && (
+          <span className="history-tags" role="group" aria-label={`Tags: ${tagTitle}`} title={tagTitle}>
+            {tags.slice(0, 2).map((tag) => (
+              <RefPill key={tag.name} className="history-tag" title={`Tag: ${tag.name}`}>
+                <Tag size={12} strokeWidth={1.75} aria-hidden="true" />
+                <span className="cell-ellipsis">{tag.name}</span>
+              </RefPill>
+            ))}
+            {tags.length > 2 && (
+              <span className="ref-count muted" title={tagTitle}>+{tags.length - 2} tags</span>
+            )}
           </span>
         )}
-        {commit.subject}
+        {otherRefs.length > 0 && (
+          <span className="ref-count muted" title={otherRefs.map((r) => r.name).join(', ')}>
+            {otherRefs.length} ref{otherRefs.length === 1 ? '' : 's'}
+          </span>
+        )}
+        <span className="cell-ellipsis history-subject">{commit.subject}</span>
       </div>
       <div className="cell-ellipsis muted" title={commit.authoredAt}>
         {formatRelativeDate(commit.authoredAt)}

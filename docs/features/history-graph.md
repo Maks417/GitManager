@@ -17,6 +17,8 @@ History-first view of commits: a multi-lane topology graph, searchable log, and 
 9. **Compare…** reviews two branches, tags or commits as exact snapshots or changes since their common ancestor ([Reference comparison](reference-comparison.md)). A commit's actions menu has **Compare with HEAD…**.
 10. **Recovery…** lists saved backups and recent HEAD history. Recovery refs are excluded from the normal all-branches graph ([Recovery](recovery.md)).
 
+Lightweight and annotated tags appear as named badges with a tag icon beside the commit message. Rows show up to two tag badges and a `+N tags` count for additional tags; hover the badges or count for full names. Long names truncate to keep the message readable. Other references retain their compact count, with names on hover. Both All branches and Current branch show tags attached to their displayed commits.
+
 ## Keyboard
 
 | Key | Where | Does |
