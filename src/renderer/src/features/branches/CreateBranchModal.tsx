@@ -8,11 +8,12 @@ interface Props {
   onCreate: (name: string, checkout: boolean) => Promise<void>
   /** Shown under the title, e.g. the commit the branch starts at. */
   lead?: React.ReactNode
+  initialCheckout?: boolean
 }
 
-export function CreateBranchModal({ onClose, onCreate, lead }: Props): React.JSX.Element {
+export function CreateBranchModal({ onClose, onCreate, lead, initialCheckout = true }: Props): React.JSX.Element {
   const [name, setName] = useState('')
-  const [checkout, setCheckout] = useState(true)
+  const [checkout, setCheckout] = useState(initialCheckout)
   const { busy, error, setError, run } = useAsyncAction()
 
   const submit = (): void => {

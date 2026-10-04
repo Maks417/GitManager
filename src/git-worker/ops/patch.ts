@@ -8,6 +8,7 @@ import { createHash } from 'crypto'
 import type { ApplyPartialRequest, DiffHunk, HunkSet } from '@shared/ipc'
 import { runGit } from '../git-runner'
 import { resolveRepoPath } from './guards'
+import { saveWorktreeRecovery } from './recovery'
 
 export type PatchLineKind = 'context' | 'add' | 'del'
 
@@ -254,6 +255,10 @@ export async function applyPartial(repoPath: string, request: ApplyPartialReques
   }
   const patch = buildPartialPatch(parsed, isSelected, action !== 'stage')
   if (!patch) throw new Error('No changed lines are selected.')
+
+  if (action === 'discard') {
+    await saveWorktreeRecovery(repoPath, `Before discarding lines in ${path}`)
+  }
 
   const args = ['apply', '--whitespace=nowarn']
   if (action !== 'discard') args.push('--cached')

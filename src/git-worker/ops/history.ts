@@ -46,7 +46,7 @@ function parseRefs(decorate: string): CommitRef[] {
   return decorate
     .split(', ')
     .map((p) => p.trim())
-    .filter(Boolean)
+    .filter((name) => name && !name.startsWith('refs/git-manager/recovery/'))
     .map((name): CommitRef => {
       if (name === 'HEAD') return { name, type: 'head' }
       if (name.startsWith('HEAD -> ')) return { name: `HEAD → ${shortRefName(name.slice(8))}`, type: 'head' }
@@ -236,8 +236,8 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
     }
     args.push(query.branch)
   } else {
-    // Stash entries are refs too, but they are not history.
-    args.push('--exclude=refs/stash', '--all')
+    // Stashes and saved recovery snapshots are not branch history.
+    args.push('--exclude=refs/stash', '--exclude=refs/git-manager/recovery/*', '--all')
   }
   if (query.path) args.push('--', query.path)
 
@@ -492,8 +492,19 @@ export async function getFileDiff(
   const parents = tokens.slice(1)
   const parent = parents[parentIndex]
 
-  const oldSpec = parent ? `${parent}:${oldPath || path}` : null
-  const newSpec = `${sha}:${path}`
+  return getTreeFileDiff(repoPath, parent ?? null, sha, path, oldPath)
+}
+
+/** Read the same bounded text/image previews for any two immutable snapshots. */
+export async function getTreeFileDiff(
+  repoPath: string, baseSha: string | null, targetSha: string, path: string, oldPath?: string
+): Promise<DiffResult> {
+  if (baseSha) assertSha(baseSha)
+  assertSha(targetSha)
+  resolveRepoPath(repoPath, path)
+  if (oldPath) resolveRepoPath(repoPath, oldPath)
+  const oldSpec = baseSha ? `${baseSha}:${oldPath || path}` : null
+  const newSpec = `${targetSha}:${path}`
   const [oldSide, newSide, image] = await Promise.all([
     oldSpec ? readGitBlobText(repoPath, oldSpec) : { text: '', binary: false },
     readGitBlobText(repoPath, newSpec),

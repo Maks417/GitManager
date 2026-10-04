@@ -40,6 +40,7 @@ import {
 } from '../../components/ui'
 import type { DiffSide } from '../../hooks/selection'
 import { CONFIRM_DISCARD, confirmDiscardPart, confirmDropStash } from '../../lib/copy'
+import { loadCommitDraft, saveCommitDraft } from '../../logic/commit-drafts'
 import { toErrorMessage } from '../../lib/errors'
 import { statusKindFor } from '../../logic/file-status'
 import { nextListIndex } from '../../logic/list-nav'
@@ -96,7 +97,11 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const { openFileMenu } = useFileMenu()
   const canAmend = Boolean(headSha)
 
-  const [message, setMessage] = useState('')
+  const [message, setMessageState] = useState(() => loadCommitDraft(repoPath))
+  const setMessage = (next: string): void => {
+    saveCommitDraft(repoPath, next)
+    setMessageState(next)
+  }
   const [amendChecked, setAmend] = useState(false)
   // Nothing can be amended before the first commit.
   const amend = amendChecked && canAmend

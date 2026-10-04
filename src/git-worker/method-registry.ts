@@ -3,6 +3,9 @@
  * Used by both utilityProcess handlers and the inline client fallback.
  */
 import {
+  getRemotes, saveRemote, removeRemote, setUpstream,
+  compareRefs, getComparisonDiff,
+  getRecoveryEntries, restoreRecovery, deleteRecovery, publishBranch,
   applyPartial,
   getBlame,
   getFileHistory,
@@ -69,6 +72,9 @@ import {
 } from './operations'
 
 export const GIT_METHODS = {
+  getRemotes, saveRemote, removeRemote, setUpstream,
+  compareRefs, getComparisonDiff,
+  getRecoveryEntries, restoreRecovery, deleteRecovery, publishBranch,
   inspectRepository,
   refreshRepoSession,
   createRepository,
@@ -137,7 +143,7 @@ export const GIT_METHODS = {
 export type GitMethodName = keyof typeof GIT_METHODS
 
 /** Operations that take `{ signal, onProgress }` as their last argument: they report progress and can be cancelled. */
-export const CANCELLABLE_GIT_METHODS = ['fetchRemote', 'pullRemote', 'pushRemote', 'forcePushRemote', 'pushTag', 'cloneRepository'] as const
+export const CANCELLABLE_GIT_METHODS = ['fetchRemote', 'pullRemote', 'pushRemote', 'forcePushRemote', 'publishBranch', 'pushTag', 'cloneRepository'] as const
 export type CancellableGitMethod = (typeof CANCELLABLE_GIT_METHODS)[number]
 
 export function getGitMethod(method: string): ((...args: never[]) => unknown) | undefined {

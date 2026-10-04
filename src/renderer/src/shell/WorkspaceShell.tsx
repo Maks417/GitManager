@@ -127,7 +127,7 @@ export function WorkspaceShell(): React.JSX.Element {
         <section className="changes-pane" data-pane="main">
           {error && <Banner>{error}</Banner>}
           <WatchNotice />
-          {/* Keyed by repository: a commit message or checked files never carry over to another one. */}
+          {/* Each repository restores its own saved draft; file selection stays local to this view. */}
           <WorkingTreeDetailPane key={activeRepo.path} />
         </section>
       )}

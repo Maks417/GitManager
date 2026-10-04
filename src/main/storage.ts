@@ -12,6 +12,7 @@ import {
 } from '@shared/ipc'
 import { readJsonFile, writeJsonFileAtomic } from './json-store'
 import { decodeSecret, encodeSecret } from './secrets'
+import { WindowStateSchema, type WindowState } from './window-state'
 
 function dataDir(): string {
   const dir = join(app.getPath('userData'), 'state')
@@ -52,6 +53,15 @@ export function loadRepositories(): Repository[] {
 
 export function saveRepositories(repos: Repository[]): void {
   writeJsonFileAtomic(join(dataDir(), 'repositories.json'), repos)
+}
+
+export function loadWindowState(): WindowState {
+  const raw = readJsonFile<unknown>(join(dataDir(), 'window.json'), {})
+  return WindowStateSchema.parse(isPlainObject(raw) ? raw : {})
+}
+
+export function saveWindowState(state: WindowState): void {
+  writeJsonFileAtomic(join(dataDir(), 'window.json'), WindowStateSchema.parse(state))
 }
 
 const StoredAccountSchema = ProviderAccountSchema.extend({

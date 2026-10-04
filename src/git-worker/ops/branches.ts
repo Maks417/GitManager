@@ -6,6 +6,8 @@ import { throttleProgress } from '../progress'
 import { listConflictFiles } from './merge'
 import { assertRevision } from './guards'
 import { currentBranchName, gitOk, runGit } from './shared'
+import { assertRemoteName } from './remotes'
+import { saveCommitRecovery } from './recovery'
 
 /** Network operations fail after this long without any output from Git: a stalled network or a silent prompt. */
 export const NETWORK_IDLE_TIMEOUT_MS = 5 * 60_000
@@ -188,6 +190,27 @@ export async function forcePushRemote(repoPath: string, ctx: RemoteOpContext = {
   return pushBranch(repoPath, true, ctx)
 }
 
+/** Publish the checked-out branch to an explicit remote/branch and remember its upstream. */
+export async function publishBranch(
+  repoPath: string, remote: string, targetBranch: string, ctx: RemoteOpContext = {}
+): Promise<RemoteOpResult> {
+  assertRemoteName(remote)
+  assertRevision(targetBranch, 'destination branch')
+  const check = await runGit({ cwd: repoPath, args: ['check-ref-format', `refs/heads/${targetBranch}`] })
+  if (check.code !== 0) throw new Error('Enter a valid destination branch name.')
+  const branch = await currentBranchName(repoPath)
+  if (!branch) throw new Error('Check out a branch before publishing (HEAD is detached).')
+  try {
+    const result = await runNetwork(repoPath, ['push', '--progress', '--set-upstream', remote, `HEAD:refs/heads/${targetBranch}`], ctx)
+    if (result.code !== 0) throw new Error(friendlyPushError(result.stderr || result.stdout))
+  } catch (err) {
+    if (err instanceof GitCancelledError) return { outcome: 'cancelled' }
+    throw err
+  }
+  await assertPushLanded(repoPath, branch)
+  return { outcome: 'done' }
+}
+
 async function pushBranch(repoPath: string, force: boolean, ctx: RemoteOpContext): Promise<RemoteOpResult> {
   const branch = await currentBranchName(repoPath)
   if (!branch) throw new Error('Check out a branch before pushing (HEAD is detached).')
@@ -318,6 +341,8 @@ async function rebaseResult(
 }
 
 export async function rebaseOnto(repoPath: string, upstream: string): Promise<{ conflicts: string[] }> {
+  assertRevision(upstream)
+  await saveCommitRecovery(repoPath, `Before rebase onto ${upstream}`)
   const result = await runGit({ cwd: repoPath, args: ['rebase', assertRevision(upstream)] })
   return rebaseResult(repoPath, result)
 }
@@ -361,5 +386,9 @@ export async function deleteBranch(repoPath: string, name: string, force = false
   const branches = await getBranches(repoPath)
   const current = branches.find((b) => b.current)
   if (current?.name === name) throw new Error('Cannot delete the current branch')
+  const deleted = branches.find((branch) => branch.name === name)
+  if (deleted?.sha) {
+    await saveCommitRecovery(repoPath, `Before deleting branch ${name}`, deleted.sha)
+  }
   await gitOk(repoPath, ['branch', force ? '-D' : '-d', name])
 }

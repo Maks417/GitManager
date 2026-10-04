@@ -2,9 +2,13 @@
 
 ## Purpose
 
+After creating or opening a local repository, use [Remotes & publishing](remotes-and-publishing.md) to add a remote URL and publish its branch to an existing server repository.
+
 Keep a list of local repositories the user works with: add existing folders, create new repositories, clone from a URL or a host listing, and remove entries from the app, optionally moving the repository folder to the Trash.
 
 ## User flow
+
+On launch, the app restores its last maximized/full-screen mode before showing the window. Saved repositories load behind a neutral **Opening repositories…** view, then the first saved repository opens. The welcome screen with Add/New/Clone appears only after the saved list has loaded successfully and is empty. **View → Toggle Full Screen**, or F11, switches full-screen mode.
 
 1. Welcome screen or File menu: **Add local repository**, **New repository** (File → New Repository…, Ctrl+N or ⌘N) or **Clone repository**.
 2. Add uses a native folder dialog; a folder inside a work tree adds that work tree's root.
@@ -20,6 +24,8 @@ Keep a list of local repositories the user works with: add existing folders, cre
 |---|---|
 | App coordinator | [`src/renderer/src/App.tsx`](../../src/renderer/src/App.tsx) |
 | Welcome / sidebar | [`src/renderer/src/shell/WelcomeScreen.tsx`](../../src/renderer/src/shell/WelcomeScreen.tsx), [`RepoSidebar.tsx`](../../src/renderer/src/shell/RepoSidebar.tsx) |
+| Startup loading and retry | [`StartupScreen.tsx`](../../src/renderer/src/shell/StartupScreen.tsx), [`startup-view.ts`](../../src/renderer/src/logic/startup-view.ts) |
+| Window mode restoration | [`window-state.ts`](../../src/main/window-state.ts), [`index.ts`](../../src/main/index.ts) |
 | Repo session hook | [`src/renderer/src/hooks/useRepoSession.ts`](../../src/renderer/src/hooks/useRepoSession.ts) |
 | New repository dialog | [`src/renderer/src/features/repositories/NewRepoModal.tsx`](../../src/renderer/src/features/repositories/NewRepoModal.tsx) |
 | Clone dialog | [`src/renderer/src/features/clone/CloneModal.tsx`](../../src/renderer/src/features/clone/CloneModal.tsx) |
@@ -35,6 +41,7 @@ Keep a list of local repositories the user works with: add existing folders, cre
 ## Data touched
 
 - `Repository` list in `repositories.json`
+- Maximized/full-screen flags in `userData/state/window.json`; minimizing does not replace the saved maximized mode
 - On-disk `.git` via init/clone; README.md and the first commit of a new repository
 - The main repository's record of a removed worktree (`.git/worktrees/<id>`)
 - Optional `RemoteRepo` URLs when cloning from Accounts
@@ -51,7 +58,8 @@ Keep a list of local repositories the user works with: add existing folders, cre
 - Moving a folder to the Trash is refused for filesystem roots, the home folder or any folder containing it, the app's data and install folders, and anything that is not a Git repository root ([`repo-removal.ts`](../../src/main/repo-removal.ts)). Only git processes running inside that repository are cancelled first.
 - Moving a main repository to the Trash while linked worktrees still use it warns that they will stop working, and asks for the repository name.
 - A linked worktree records its main repository while its folder exists (`Repository.worktreeOf`), so its record can still be removed after the folder is gone. Only that worktree's record goes: `git worktree prune` would drop every missing worktree, but other worktrees' folders may only be unavailable for now (an unmounted drive, say). The record stays while the worktree is locked, or while its detached HEAD holds commits that no branch, tag or remote contains, since those commits would be lost with it; the dialog then says what to run. Either way the repository is off the list.
-- Missing system Git: startup calls `git.probe` ([`probeGit`](../../src/git-worker/git-runner.ts)). When unavailable, the welcome screen shows an install banner, **Add local repository**, **New repository** and **Clone repository** stay disabled, and a button opens https://git-scm.com/downloads. Spawn `ENOENT` (and macOS Xcode CLT stub failures) map to the same install message. Accounts remain usable without the Git CLI.
+- Startup errors show a failure message with **Retry**, rather than treating an unread repository list as empty. Removing the last repository returns to the welcome screen.
+- Missing system Git: startup calls `git.probe` ([`probeGit`](../../src/git-worker/git-runner.ts)). Saved repositories stay on file; an install prompt with **Retry** appears instead of repository setup. If the saved list is empty, the welcome screen shows the install banner, **Add local repository**, **New repository** and **Clone repository** stay disabled, and a button opens https://git-scm.com/downloads. Spawn `ENOENT` (and macOS Xcode CLT stub failures) map to the same install message. Accounts remain usable without the Git CLI.
 
 ## Diagram
 

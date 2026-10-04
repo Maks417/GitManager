@@ -18,7 +18,7 @@ export const CONFIRM_ABORT_MERGE: ConfirmRequest = {
 export const CONFIRM_DISCARD: ConfirmRequest = {
   title: 'Discard changes',
   message:
-    'Discard changes in the selected files?\n\nModified files go back to their staged or committed version. Untracked files are moved to the Trash.',
+    'Discard changes in the selected files?\n\nModified files go back to their staged or committed version. A tracked-file backup is saved in Repository → Recovery. Untracked files are moved to the Trash.',
   confirmLabel: 'Discard',
   danger: true
 }
@@ -27,7 +27,7 @@ export const confirmDiscardPart = (what: 'hunk' | 'lines', path: string): Confir
   title: what === 'hunk' ? 'Discard hunk' : 'Discard lines',
   message: `Discard the ${what === 'hunk' ? 'selected hunk' : 'selected changed lines'} in ${path}?
 
-Those lines go back to their staged or committed version. This cannot be undone.`,
+Those lines go back to their staged or committed version. A tracked-file backup is saved in Repository → Recovery.`,
   confirmLabel: 'Discard',
   danger: true
 })

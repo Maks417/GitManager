@@ -5,6 +5,7 @@ import { ContextMenu, type MenuItem } from '../components/ui'
 import { CreateBranchModal } from '../features/branches/CreateBranchModal'
 import { ResetModal } from '../features/commit-actions/ResetModal'
 import { TagModal } from '../features/commit-actions/TagModal'
+import { CompareModal } from '../features/comparison/CompareModal'
 import {
   confirmCheckoutCommit,
   confirmCherryPick,
@@ -25,7 +26,7 @@ export interface CommitMenu {
   openCommitMenu: (commit: Commit, point: { x: number; y: number }) => void
 }
 
-type CommitDialog = { kind: 'branch' | 'tag' | 'reset'; commit: Commit } | null
+type CommitDialog = { kind: 'branch' | 'tag' | 'reset' | 'compare'; commit: Commit } | null
 
 const CommitMenuContext = createContext<CommitMenu | null>(null)
 
@@ -71,6 +72,7 @@ export function CommitMenuProvider({ children }: { children: React.ReactNode }):
         disabled: busy || isHead,
         onSelect: afterConfirm(confirmCheckoutCommit(short), () => void actions.checkoutBranch(commit.sha))
       },
+      { label: 'Compare with HEAD…', disabled: !headSha, onSelect: () => setDialog({ kind: 'compare', commit }) },
       { label: 'New branch here…', separatorBefore: true, onSelect: () => setDialog({ kind: 'branch', commit }) },
       { label: 'New tag here…', onSelect: () => setDialog({ kind: 'tag', commit }) },
       {
@@ -171,6 +173,7 @@ export function CommitMenuProvider({ children }: { children: React.ReactNode }):
           onCreate={(name, checkout) => actions.createBranch(name, checkout, dialog.commit.sha)}
         />
       )}
+      {dialog?.kind === 'compare' && activeRepo && <CompareModal repoPath={activeRepo.path} refs={[]} initialBase={dialog.commit.sha} initialTarget={headSha ?? 'HEAD'} snapshots onClose={closeDialog} />}
       {dialog?.kind === 'tag' && (
         <TagModal
           commit={dialog.commit}

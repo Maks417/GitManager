@@ -5,6 +5,8 @@ import { AppDialogs } from './shell/AppDialogs'
 import { AppToolbar } from './shell/AppToolbar'
 import { WelcomeScreen } from './shell/WelcomeScreen'
 import { WorkspaceShell } from './shell/WorkspaceShell'
+import { StartupScreen } from './shell/StartupScreen'
+import { startupView } from './logic/startup-view'
 import { AppProviders } from './state/AppProviders'
 import { useSession } from './state/RepoSessionProvider'
 
@@ -29,6 +31,8 @@ function GlobalCommands(): null {
 }
 
 function MainView(): React.JSX.Element {
-  const { activeRepo } = useSession()
-  return activeRepo ? <WorkspaceShell /> : <WelcomeScreen />
+  const { activeRepo, repos, startupStatus } = useSession()
+  const view = startupView(Boolean(activeRepo), repos.length, startupStatus)
+  if (view === 'workspace') return <WorkspaceShell />
+  return view === 'welcome' ? <WelcomeScreen /> : <StartupScreen />
 }

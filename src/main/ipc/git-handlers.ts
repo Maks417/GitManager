@@ -1,5 +1,7 @@
 import { ipcMain, shell } from 'electron'
 import {
+  SaveRemoteRequestSchema,
+  SetUpstreamRequestSchema,
   ApplyPartialRequestSchema,
   IpcChannels,
   RemoteOpRequestSchema,
@@ -26,6 +28,36 @@ const optionalString = z.string().optional()
 const optionalBool = z.boolean().optional()
 
 export function registerGitHandlers(): void {
+  ipcMain.handle(IpcChannels.git.remotes, async (event, repoPath: unknown) => {
+    assertSender(event)
+    return git.getRemotes(parseRepoPath(repoPath))
+  })
+  ipcMain.handle(IpcChannels.git.saveRemote, async (event, raw: unknown) => {
+    assertSender(event)
+    const request = SaveRemoteRequestSchema.parse(raw)
+    await git.saveRemote(parseRepoPath(request.repoPath), request)
+  })
+  ipcMain.handle(IpcChannels.git.removeRemote, async (event, repoPath: unknown, name: unknown) => {
+    assertSender(event)
+    await git.removeRemote(parseRepoPath(repoPath), NonEmptyStringSchema.parse(name))
+  })
+  ipcMain.handle(IpcChannels.git.setUpstream, async (event, raw: unknown) => {
+    assertSender(event)
+    const request = SetUpstreamRequestSchema.parse(raw)
+    await git.setUpstream(parseRepoPath(request.repoPath), request)
+  })
+  ipcMain.handle(IpcChannels.git.recovery, async (event, repoPath: unknown) => {
+    assertSender(event)
+    return git.getRecoveryEntries(parseRepoPath(repoPath))
+  })
+  ipcMain.handle(IpcChannels.git.restoreRecovery, async (event, repoPath: unknown, id: unknown) => {
+    assertSender(event)
+    await git.restoreRecovery(parseRepoPath(repoPath), NonEmptyStringSchema.parse(id))
+  })
+  ipcMain.handle(IpcChannels.git.deleteRecovery, async (event, repoPath: unknown, id: unknown) => {
+    assertSender(event)
+    await git.deleteRecovery(parseRepoPath(repoPath), NonEmptyStringSchema.parse(id))
+  })
   ipcMain.handle(IpcChannels.git.probe, async (event) => {
     assertSender(event)
     return probeGit()

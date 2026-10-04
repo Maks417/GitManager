@@ -50,7 +50,7 @@ export interface GitActions {
   cancelRemote: () => void
   // These throw, so the dialog or pane that started them can show the error in place.
   /** Fetch, pull or push with toolbar progress; resolves `cancelled` when stopped. */
-  runRemote: (kind: RemoteOpKind, options?: { force?: boolean }) => Promise<RemoteOpResult>
+  runRemote: (kind: RemoteOpKind, options?: { force?: boolean; remote?: string; targetBranch?: string }) => Promise<RemoteOpResult>
   /** At HEAD, or at `startPoint` (a commit picked in History). */
   createBranch: (name: string, checkout: boolean, startPoint?: string) => Promise<void>
   createTag: (name: string, sha: string, message?: string) => Promise<void>
@@ -169,7 +169,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
   )
 
   const runRemote = useCallback(
-    async (kind: RemoteOpKind, options: { force?: boolean } = {}): Promise<RemoteOpResult> => {
+    async (kind: RemoteOpKind, options: { force?: boolean; remote?: string; targetBranch?: string } = {}): Promise<RemoteOpResult> => {
       const repo = getActiveRepo()
       if (!repo) throw new Error('No repository is open.')
       const running = remoteOpRef.current
@@ -177,7 +177,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       const opId = crypto.randomUUID()
       publishRemoteOp({ opId, kind, repoName: repo.name, phase: null, percent: null, cancellable: true, cancelling: false })
       try {
-        return await window.gitManager.git[kind]({ repoPath: repo.path, opId, ...(options.force && { force: true }) })
+        return await window.gitManager.git[kind]({ repoPath: repo.path, opId, ...options })
       } finally {
         if (remoteOpRef.current?.opId === opId) publishRemoteOp(null)
       }

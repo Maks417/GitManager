@@ -283,6 +283,66 @@ export const BranchInfoSchema = z.object({
 })
 export type BranchInfo = z.infer<typeof BranchInfoSchema>
 
+export const RemoteConfigSchema = z.object({
+  name: z.string(),
+  fetchUrl: z.string(),
+  pushUrl: z.string()
+})
+export type RemoteConfig = z.infer<typeof RemoteConfigSchema>
+
+export const SaveRemoteRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  name: z.string().trim().min(1),
+  url: z.string().trim().min(1),
+  pushUrl: z.string().trim().optional(),
+  create: z.boolean()
+})
+export type SaveRemoteRequest = z.infer<typeof SaveRemoteRequestSchema>
+
+export const SetUpstreamRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  branch: z.string().min(1),
+  upstream: z.string().min(1).nullable()
+})
+export type SetUpstreamRequest = z.infer<typeof SetUpstreamRequestSchema>
+
+export const CompareRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  base: z.string().trim().min(1),
+  target: z.string().trim().min(1),
+  mergeBase: z.boolean().default(true)
+})
+export type CompareRequest = z.input<typeof CompareRequestSchema>
+
+export const ComparisonSchema = z.object({
+  baseSha: z.string(),
+  targetSha: z.string(),
+  files: z.array(FileChangeSchema),
+  additions: z.number(),
+  deletions: z.number(),
+  binaryFiles: z.number()
+})
+export type Comparison = z.infer<typeof ComparisonSchema>
+
+export const CompareDiffRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  baseSha: z.string().regex(SHA_RE),
+  targetSha: z.string().regex(SHA_RE),
+  path: z.string().min(1),
+  oldPath: z.string().min(1).optional()
+})
+export type CompareDiffRequest = z.infer<typeof CompareDiffRequestSchema>
+
+export const RecoveryEntrySchema = z.object({
+  id: z.string(),
+  sha: z.string(),
+  kind: z.enum(['commit', 'worktree']),
+  label: z.string(),
+  createdAt: z.string(),
+  saved: z.boolean()
+})
+export type RecoveryEntry = z.infer<typeof RecoveryEntrySchema>
+
 export const RemoteBranchInfoSchema = z.object({
   name: z.string(),
   remote: z.string(),
@@ -453,7 +513,10 @@ export const RemoteOpRequestSchema = z.object({
   repoPath: z.string().min(1),
   opId: OperationIdSchema,
   /** Push only: overwrite the remote branch, guarded by --force-with-lease. */
-  force: z.boolean().optional()
+  force: z.boolean().optional(),
+  /** Explicit publication destination; both fields must be supplied together. */
+  remote: z.string().min(1).optional(),
+  targetBranch: z.string().min(1).optional()
 })
 export type RemoteOpRequest = z.infer<typeof RemoteOpRequestSchema>
 

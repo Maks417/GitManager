@@ -6,6 +6,8 @@ Git Manager is an Electron desktop app (`electron-vite`) with a React renderer. 
 
 ## Components
 
+Remote configuration and publication are implemented in [remotes.ts](../src/git-worker/ops/remotes.ts) and [branches.ts](../src/git-worker/ops/branches.ts), using the existing validated IPC, exclusive mutation scheduler and progress/cancel transport. Reference comparison resolves inputs to commit ids in [comparison.ts](../src/git-worker/ops/comparison.ts), then shares the bounded blob/image reader with normal diffs. [Recovery](features/recovery.md) stores durable Git refs before destructive operations and exposes branch creation or tracked-change restoration. Draft messages use synchronous renderer [local storage](../src/renderer/src/logic/commit-drafts.ts) so unmounting a view cannot outrun a save.
+
 | Component | Responsibility | Key files |
 |---|---|---|
 | Electron main | Window, CSP, menus, native theme and window background, updater, repo watcher | [`src/main/index.ts`](../src/main/index.ts), [`src/main/menu.ts`](../src/main/menu.ts) |
@@ -57,6 +59,10 @@ flowchart LR
 
 ## Data flow
 
+### Startup
+
+The main process reads `window.json`, restores maximized/full-screen mode before showing its first window, and saves mode changes and the state at close ([`window-state.ts`](../src/main/window-state.ts)). Renderer startup remains `loading` until preferences, accounts, updater state, Git availability and the saved repository list have loaded. [`startup-view.ts`](../src/renderer/src/logic/startup-view.ts) chooses the workspace for an active repository, the welcome screen for a confirmed empty list, or a neutral loading/error screen with retry. A startup failure never counts as an empty repository list.
+
 ### Open repo → History
 
 1. User opens or selects a repository; main validates the path via [`inspectRepository`](../src/git-worker/ops/repo.ts) and persists it in `repositories.json`.
@@ -99,4 +105,4 @@ flowchart LR
 | Network operations | Fetch, pull, push and clone stream Git's `--progress` from the git worker to the window that started them (`git:on-progress`) and stop on `git:cancel-operation` ([`remote-ops.ts`](../src/main/remote-ops.ts)). The git-worker methods that take a cancel signal and a progress callback are listed in `CANCELLABLE_GIT_METHODS` ([`method-registry.ts`](../src/git-worker/method-registry.ts)). The runner starts them in their own process group (`taskkill /T` on Windows), so cancelling also stops Git's helpers. A stopped operation settles when Git has exited, or after 5 seconds at most, so a cancelled clone's folder is free to remove. Operations fail after 5 minutes without output ([`git-runner.ts`](../src/git-worker/git-runner.ts), [`progress.ts`](../src/git-worker/progress.ts)). The renderer runs one fetch, pull or push at a time |
 | Dialogs | Confirmations are in-app dialogs from `useConfirm()` ([`ConfirmProvider`](../src/renderer/src/state/ConfirmProvider.tsx)), shown one at a time. Every dialog registers on a stack ([`Modal`](../src/renderer/src/components/ui/Modal.tsx)): Escape and the Tab focus trap apply to the top dialog, focus returns to the element that opened it, and only a press that starts and ends on the backdrop closes it. The merge editor closes only through its own buttons |
 | Keyboard | Lists keep focus on the list and move the active row (`aria-activedescendant`: commits, commit files, changes) or share one Tab stop between rows (sidebar, [`useRovingList`](../src/renderer/src/hooks/useRovingList.ts)); key handling is pure ([`list-nav.ts`](../src/renderer/src/logic/list-nav.ts), [`resize-keys.ts`](../src/renderer/src/logic/resize-keys.ts)). F6 cycles the panes marked `data-pane` ([`usePaneCycling`](../src/renderer/src/hooks/usePaneCycling.ts)). Tab leaves read-only Monaco editors ([`monaco-keys.ts`](../src/renderer/src/lib/monaco-keys.ts)) |
-| Packaging | Windows NSIS + macOS DMG primary; Linux AppImage also defined in [`electron-builder.yml`](../electron-builder.yml). The renderer bundle is minified ([`electron.vite.config.ts`](../electron.vite.config.ts)): electron-vite leaves it unminified, and the page keeps the source of every script it loads in memory |
+| Packaging | Windows x64/arm64 NSIS + macOS arm64 DMG/ZIP required; Linux x64 AppImage/DEB optional in the release workflow. [`electron-builder.yml`](../electron-builder.yml) includes only production `out/main`, `out/preload` and `out/renderer` bundles plus runtime dependencies, so temporary profiles elsewhere in `out/` are excluded. The renderer bundle is minified ([`electron.vite.config.ts`](../electron.vite.config.ts)): electron-vite leaves it unminified, and the page keeps the source of every script it loads in memory. [Release preparation](releases.md) covers validation and publication; [`release.yml`](../.github/workflows/release.yml) uses versioned notes from `docs/releases/` |

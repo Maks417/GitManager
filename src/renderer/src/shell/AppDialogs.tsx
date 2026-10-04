@@ -9,6 +9,9 @@ import { MergeEditorModal } from '../features/merge-editor/MergeEditorModal'
 import { NewRepoModal } from '../features/repositories/NewRepoModal'
 import { RemoveRepoDialog } from '../features/repositories/RemoveRepoDialog'
 import { UpdatesModal } from '../features/updates/UpdatesModal'
+import { RemotesModal } from '../features/remotes/RemotesModal'
+import { CompareModal } from '../features/comparison/CompareModal'
+import { RecoveryModal } from '../features/recovery/RecoveryModal'
 import { CLONE_URL_SESSION_KEY } from '../lib/copy'
 import { useAppStatus, useAppStatusActions } from '../state/AppStatusProvider'
 import { useDialogActions, useDialogState } from '../state/DialogsProvider'
@@ -24,6 +27,7 @@ export function AppDialogs(): React.JSX.Element {
   const {
     activeRepo,
     branches,
+    remoteBranches,
     currentBranch,
     repoPendingRemove,
     repoRemoveBusy,
@@ -44,6 +48,9 @@ export function AppDialogs(): React.JSX.Element {
 
   return (
     <>
+      {open.remotes && activeRepo && <RemotesModal key={activeRepo.path} repo={activeRepo} branches={branches} remoteBranches={remoteBranches} onClose={() => closeDialog('remotes')} />}
+      {open.compare && activeRepo && <CompareModal key={activeRepo.path} repoPath={activeRepo.path} refs={[...branches.map((branch) => branch.name), ...remoteBranches.map((branch) => branch.name)]} onClose={() => closeDialog('compare')} />}
+      {open.recovery && activeRepo && <RecoveryModal key={activeRepo.path} repoPath={activeRepo.path} onClose={() => closeDialog('recovery')} />}
       {repoPendingRemove && (
         <RemoveRepoDialog
           repo={repoPendingRemove}

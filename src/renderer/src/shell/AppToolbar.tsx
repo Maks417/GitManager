@@ -229,6 +229,9 @@ export function AppToolbar(): React.JSX.Element {
                 <ArrowUpFromLine size={16} strokeWidth={1.75} />
                 Push
               </button>
+              <button type="button" role="menuitem" className="btn-icon" disabled={busy} onClick={() => { setSyncMenuOpen(false); openDialog('remotes') }}>
+                Remotes & publishing…
+              </button>
             </div>
           )}
         </div>

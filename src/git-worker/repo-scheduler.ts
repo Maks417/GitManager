@@ -24,6 +24,16 @@ const GLOBAL_READ: GitMethodMeta = { lane: 'read', priority: 1, repoArgIndex: -1
 
 /** Exhaustive lane/priority metadata for every git-worker RPC method. */
 export const GIT_METHOD_META: Record<GitMethodName, GitMethodMeta> = {
+  getRemotes: READ,
+  saveRemote: MUTATE,
+  removeRemote: MUTATE,
+  setUpstream: MUTATE,
+  compareRefs: READ,
+  getComparisonDiff: READ,
+  getRecoveryEntries: READ,
+  restoreRecovery: MUTATE,
+  deleteRecovery: MUTATE,
+  publishBranch: MUTATE_NETWORK,
   inspectRepository: READ,
   refreshRepoSession: READ_BG,
   createRepository: { lane: 'mutate', priority: 0, repoArgIndex: -1 },

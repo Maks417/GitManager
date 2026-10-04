@@ -1,6 +1,7 @@
 import type { StatusEntry } from '@shared/ipc'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
 import { gitOk, resolveHeadSha, runGit } from './shared'
+import { saveCommitRecovery, saveWorktreeRecovery } from './recovery'
 
 /**
  * More new files than this and each new folder is listed as one `folder/` entry instead, as `git status` shows
@@ -137,6 +138,9 @@ export async function unstagePaths(repoPath: string, paths: string[]): Promise<v
 
 /** Restore tracked files in the work tree from the index (Discard for tracked changes). */
 export async function restoreWorktree(repoPath: string, paths: string[]): Promise<void> {
+  if (paths.length) {
+    await saveWorktreeRecovery(repoPath, 'Before discarding tracked files')
+  }
   await gitForPaths(repoPath, ['restore', '--worktree'], paths)
 }
 
@@ -185,6 +189,9 @@ export function friendlyCommitError(raw: string, amend = false): string {
 }
 
 export async function commit(repoPath: string, message: string, amend = false): Promise<string> {
+  if (amend) {
+    await saveCommitRecovery(repoPath, 'Before amending the last commit')
+  }
   const args = ['commit', '-m', message]
   if (amend) args.push('--amend')
   try {

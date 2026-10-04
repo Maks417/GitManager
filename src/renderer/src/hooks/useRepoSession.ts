@@ -19,6 +19,7 @@ import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
 import { createLatestGate } from '../logic/latest-gate'
+import type { StartupStatus } from '../logic/startup-view'
 import {
   createRepoRefreshScheduler,
   shouldRefreshHistoryTip,
@@ -63,6 +64,8 @@ export function useRepoSession({
   onConflictsDetected
 }: UseRepoSessionArgs): {
   repos: Repository[]
+  startupStatus: StartupStatus
+  retryStartup: () => void
   activeRepo: Repository | null
   setActiveRepo: React.Dispatch<React.SetStateAction<Repository | null>>
   /** The active repository at call time, for actions that outlive the render they were created in. */
@@ -96,6 +99,8 @@ export function useRepoSession({
   removeRepoFromList: (repo: Repository, options?: RepoRemoveOptions) => Promise<void>
 } {
   const [repos, setRepos] = useState<Repository[]>([])
+  const [startupStatus, setStartupStatus] = useState<StartupStatus>('loading')
+  const [bootAttempt, setBootAttempt] = useState(0)
   const [activeRepo, setActiveRepo] = useState<Repository | null>(null)
   const [branches, setBranches] = useState<BranchInfo[]>([])
   const [remoteBranches, setRemoteBranches] = useState<RemoteBranchInfo[]>([])
@@ -127,6 +132,11 @@ export function useRepoSession({
     watchState?.mode === 'polling' && sameRepoPath(watchState.repoPath, activeRepo?.path) ? watchState.reason : null
 
   const getActiveRepo = useCallback((): Repository | null => activeRepoRef.current, [activeRepoRef])
+  const retryStartup = useCallback((): void => {
+    setError(null)
+    setStartupStatus('loading')
+    setBootAttempt((attempt) => attempt + 1)
+  }, [setError])
 
   const refreshRepos = useCallback(
     async (opts?: { activateFirst?: boolean }) => {
@@ -315,27 +325,31 @@ export function useRepoSession({
   )
 
   useEffect(() => {
-    if (!window.gitManager) {
-      setError('App bridge failed to load. Restart the app after a clean npm install.')
-      return
-    }
     let cancelled = false
-    Promise.all([
-      window.gitManager.prefs.get(),
-      window.gitManager.providers.listAccounts(),
-      window.gitManager.updater.status(),
-      window.gitManager.git.probe()
-    ])
-      .then((loaded) => (cancelled ? undefined : finishBoot(loaded)))
-      .catch((err) => {
-        if (!cancelled) setError(toErrorMessage(err))
-      })
-    const off = window.gitManager.updater.onStatus(setUpdateStatus)
+    const start = async (): Promise<void> => {
+      if (!window.gitManager) throw new Error('App bridge failed to load. Restart the app after a clean npm install.')
+      const loaded = await Promise.all([
+        window.gitManager.prefs.get(),
+        window.gitManager.providers.listAccounts(),
+        window.gitManager.updater.status(),
+        window.gitManager.git.probe()
+      ])
+      if (cancelled) return
+      await finishBoot(loaded)
+      if (!cancelled) setStartupStatus('ready')
+    }
+    void start().catch((err) => {
+      if (!cancelled) {
+        setError(toErrorMessage(err))
+        setStartupStatus('failed')
+      }
+    })
+    const off = window.gitManager?.updater.onStatus(setUpdateStatus)
     return () => {
       cancelled = true
-      off()
+      off?.()
     }
-  }, [setError, setUpdateStatus])
+  }, [setError, setUpdateStatus, bootAttempt])
 
   // The main process says when watching falls back to polling, e.g. at Linux's inotify limit.
   useEffect(() => {
@@ -414,6 +428,8 @@ export function useRepoSession({
 
   return {
     repos,
+    startupStatus,
+    retryStartup,
     activeRepo,
     setActiveRepo,
     getActiveRepo,

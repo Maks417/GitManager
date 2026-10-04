@@ -1,6 +1,8 @@
 import { ipcMain } from 'electron'
 import { z } from 'zod'
 import {
+  CompareRequestSchema,
+  CompareDiffRequestSchema,
   DiffRequestSchema,
   HistoryQuerySchema,
   IpcChannels,
@@ -11,6 +13,16 @@ import { assertSender } from './assert-sender'
 import { NonEmptyStringSchema, parseRef, parseRepoPath } from './parse'
 
 export function registerHistoryHandlers(): void {
+  ipcMain.handle(IpcChannels.history.compare, async (event, raw: unknown) => {
+    assertSender(event)
+    const request = CompareRequestSchema.parse(raw)
+    return git.compareRefs(parseRepoPath(request.repoPath), request)
+  })
+  ipcMain.handle(IpcChannels.history.compareDiff, async (event, raw: unknown) => {
+    assertSender(event)
+    const request = CompareDiffRequestSchema.parse(raw)
+    return git.getComparisonDiff(parseRepoPath(request.repoPath), request)
+  })
   ipcMain.handle(IpcChannels.history.load, async (event, raw: unknown) => {
     assertSender(event)
     return git.loadHistory(HistoryQuerySchema.parse(raw))

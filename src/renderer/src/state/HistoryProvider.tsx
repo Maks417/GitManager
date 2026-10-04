@@ -48,6 +48,8 @@ export interface HistoryActions {
    * cannot reach it, the history of `branch` is shown instead, if given.
    */
   revealCommit: (sha: string, branch?: string) => Promise<void>
+  /** Open an immutable commit even when no branch reaches it, using a SHA search. */
+  inspectCommit: (sha: string) => Promise<void>
   /** The list calls this once it has scrolled to a reveal request. */
   finishReveal: (seq: number) => void
   searchInputRef: React.RefObject<HTMLInputElement | null>
@@ -131,6 +133,15 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
     },
     [selectionRef, setViewMode, setSelection, setFocusedStatusPath, setDiff]
   )
+
+  const inspectCommit = useCallback(async (sha: string): Promise<void> => {
+    const repo = getActiveRepo()
+    if (!repo) return
+    const page = await loadHistory(repo, sha)
+    if (!page?.commits.some((commit) => commit.sha === sha)) return
+    setSearch(sha)
+    showCommit(sha)
+  }, [getActiveRepo, loadHistory, showCommit])
 
   const revealCommit = useCallback(
     async (sha: string, branch?: string): Promise<void> => {
@@ -217,10 +228,11 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
       submitSearch,
       showBranchHistory,
       revealCommit,
+      inspectCommit,
       finishReveal,
       searchInputRef
     }),
-    [loadHistory, loadMoreHistory, refreshHistoryTip, submitSearch, showBranchHistory, revealCommit, finishReveal]
+    [loadHistory, loadMoreHistory, refreshHistoryTip, submitSearch, showBranchHistory, revealCommit, inspectCommit, finishReveal]
   )
 
   return (

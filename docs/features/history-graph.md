@@ -14,6 +14,8 @@ History-first view of commits: a multi-lane topology graph, searchable log, and 
 6. Preference `historyFilter` can limit to the current branch (branch pages use portable `git log --skip`). An applied `branch:` search replaces that filter.
 7. Click a commit → detail pane lists files and loads the commit body; pick a file → its diff, inline or side by side as in Changes ([Diff view](working-tree.md#diff-view); blob size probed, text capped for Monaco).
 8. Working-copy row / Changes mode shows the working tree. Going back to History selects the commit that was selected before when it is still listed (otherwise the newest), without loading its details again.
+9. **Compare…** reviews two branches, tags or commits as exact snapshots or changes since their common ancestor ([Reference comparison](reference-comparison.md)). A commit's actions menu has **Compare with HEAD…**.
+10. **Recovery…** lists saved backups and recent HEAD history. Recovery refs are excluded from the normal all-branches graph ([Recovery](recovery.md)).
 
 ## Keyboard
 

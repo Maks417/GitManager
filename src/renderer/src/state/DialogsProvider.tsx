@@ -10,6 +10,9 @@ export type DialogName =
   | 'updates'
   | 'about'
   | 'identity'
+  | 'remotes'
+  | 'compare'
+  | 'recovery'
   | 'createBranch'
   | 'mergePick'
   | 'rebasePick'
@@ -29,6 +32,9 @@ const ALL_CLOSED: DialogState = {
   updates: false,
   about: false,
   identity: false,
+  remotes: false,
+  compare: false,
+  recovery: false,
   createBranch: false,
   mergePick: false,
   rebasePick: false,

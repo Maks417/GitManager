@@ -36,8 +36,15 @@ jobs:
           existing="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
             --jq ".[] | select(.tagName == \"$GITHUB_REF_NAME\") | .tagName")"
           if [ -z "$existing" ]; then
+            notes_file="docs/releases/${GITHUB_REF_NAME#v}.md"
+            args=(--draft --verify-tag --title "$GITHUB_REF_NAME")
+            if [ -f "$notes_file" ]; then
+              args+=(--notes-file "$notes_file")
+            else
+              args+=(--generate-notes)
+            fi
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --draft --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+              "${args[@]}"
           fi
 
   build:
@@ -113,8 +120,8 @@ jobs:
             release/latest*.yml
 
   publish:
-    # Make the release public only once every platform uploaded its installers and update feed,
-    # so auto-update never sees a release without its latest.yml / latest-mac.yml.
+    # Make the release public after the required Windows and macOS jobs upload installers and
+    # update feeds. Linux remains optional, as configured on the build job above.
     needs: build
     runs-on: ubuntu-latest
     steps:

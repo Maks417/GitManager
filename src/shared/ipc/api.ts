@@ -1,4 +1,6 @@
 import type {
+  CompareRequest, CompareDiffRequest, Comparison,
+  RemoteConfig, SaveRemoteRequest, SetUpstreamRequest, RecoveryEntry,
   AppInfo,
   BlameResult,
   FileHistoryPage,
@@ -80,6 +82,8 @@ export interface GitManagerApi {
     worktreeInfo: (id: string) => Promise<WorktreeInfo>
   }
   history: {
+    compare: (request: CompareRequest) => Promise<Comparison>
+    compareDiff: (request: CompareDiffRequest) => Promise<DiffResult>
     load: (query: HistoryQuery) => Promise<HistoryPage>
     commitDetail: (repoPath: string, sha: string) => Promise<CommitDetail>
     fileDiff: (request: DiffRequest) => Promise<DiffResult>
@@ -90,6 +94,13 @@ export interface GitManagerApi {
     blame: (repoPath: string, path: string, rev?: string) => Promise<BlameResult>
   }
   git: {
+    remotes: (repoPath: string) => Promise<RemoteConfig[]>
+    saveRemote: (request: SaveRemoteRequest) => Promise<void>
+    removeRemote: (repoPath: string, name: string) => Promise<void>
+    setUpstream: (request: SetUpstreamRequest) => Promise<void>
+    recovery: (repoPath: string) => Promise<RecoveryEntry[]>
+    restoreRecovery: (repoPath: string, id: string) => Promise<void>
+    deleteRecovery: (repoPath: string, id: string) => Promise<void>
     probe: () => Promise<GitProbeResult>
     stage: (repoPath: string, paths: string[]) => Promise<void>
     unstage: (repoPath: string, paths: string[]) => Promise<void>

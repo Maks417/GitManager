@@ -11,6 +11,8 @@ Start at the root [README](../README.md).
 | [Architecture](architecture.md) | How the parts fit together |
 | [Domain model](domain-model.md) | Entities, relationships, invariants |
 | [Brandbook & design system](brandbook.md) | Ink & Ember brand, colors, typography, tokens, components |
+| [Release preparation](releases.md) | Versioning, checks, publication and withdrawal |
+| [1.2.0 release notes](releases/1.2.0.md) | New features and fixes in 1.2.0 |
 
 ### Features
 
@@ -20,6 +22,9 @@ Start at the root [README](../README.md).
 | History graph | [history-graph](features/history-graph.md) |
 | Working tree & commits | [working-tree](features/working-tree.md) |
 | Branches & sync | [branches-and-sync](features/branches-and-sync.md) |
+| Remotes & publishing | [remotes-and-publishing](features/remotes-and-publishing.md) |
+| Reference comparison | [reference-comparison](features/reference-comparison.md) |
+| Recovery | [recovery](features/recovery.md) |
 | Merge editor | [merge-editor](features/merge-editor.md) |
 | Host accounts | [host-accounts](features/host-accounts.md) |
 | Auto-updates | [auto-updates](features/auto-updates.md) |

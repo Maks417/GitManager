@@ -9,6 +9,7 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 1. Switch to **Changes** (or select the working-copy row).
 2. Browse staged / unstaged / untracked lists; open a file for its staged or unstaged Monaco diff, inline or side by side ([Diff view](#diff-view)).
 3. Stage paths, write a message, Commit (optional Amend).
+   Messages save per repository while typing and restore after switching views, switching repositories or restarting. A successful commit clears its draft, including when a following push fails. Failed commits keep the draft. Push/amend checkboxes are not persisted.
 4. Stash panel (collapsed by default): expand to apply / pop / drop entries; the Stash action stays available in the header.
 5. Identity modal: set `user.name` / `user.email` at local or global scope.
 
@@ -22,6 +23,10 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 A file's diff shows its changes inline, in one file. **Side by side** in the bar above the diff shows the old and the new file next to each other instead, and **Inline** switches back; View → Toggle Side-by-Side Diff does the same. The choice applies to every diff, here and in the History inspector, and is saved as `AppPreferences.diffView` (`inline` by default). Side by side keeps both panes however narrow the diff is. A file with both staged and unstaged changes also has **Unstaged** / **Staged** in that bar.
 
 Diffs show syntax colors for the file's language: any of the ~80 Monarch grammars Monaco ships (C#, Java, Kotlin, Go, TypeScript, C/C++, XML project files and more), chosen by file name and extension. The palette button next to **Inline** turns them off and on for every diff and the merge editor, without reloading the open diff; View → Toggle Syntax Colors does the same. The choice is saved as `AppPreferences.syntaxHighlighting` (on by default). Text over 1 MB is always shown plain: Monaco colors on the main thread, and diffs never get that long (their text is capped).
+
+## Partial staging and discard
+
+The text diff exposes **Stage hunk** / **Unstage hunk** and actions for selected changed lines. Unstaged text also offers **Discard hunk** / **Discard lines**, with confirmation and a [Recovery](recovery.md) backup first. If the diff changed since it loaded, reload it before applying a selection. Binary files, whole-file additions/deletions, very large diffs and unsupported encodings use whole-file actions. Supported image types have before/after previews.
 
 ## Live status
 
@@ -67,6 +72,7 @@ When the operating system refuses to watch more files — Linux's inotify limit 
 - Each file has a status dot for its section, coloured as in the [Brandbook](../brandbook.md#file-status): Staged shows the index change and Changes the work-tree change, so a file added and then edited again is green under Staged and amber under Changes. Hover a dot for the status; a rename or copy also names the path it came from.
 - A file moved outside Git is listed as a deleted file plus a new one until both are staged; only then does Git report a rename.
 - Discard restores tracked files from the index and moves untracked files and folders to the Trash; conflicted paths are refused. Discarding and dropping a stash ask first, in an in-app dialog.
+  Tracked discard, including hunks or lines, first saves an index/work-tree snapshot in [Recovery](recovery.md). If a snapshot cannot be saved, discard stops. Before the first commit, unstage new files to discard them to the Trash.
 - Staging, unstaging and discarding many paths is split into batches that fit on one command line.
 - Commit + push: when the push fails, the commit is kept, the form is cleared, and the error says the push failed.
 - Conflicted paths surface in status and typically open the merge editor from the shell.

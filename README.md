@@ -62,8 +62,12 @@
 | Feature | What it does |
 |---|---|
 | **History-first graph** | Large commit topology with search, branch filter, and inline or side-by-side diffs |
-| **Working tree** | Stage, unstage, discard, and commit with a clear Changes view |
-| **Branches & sync** | Create/switch branches, fetch, pull, push against remotes |
+| **Working tree** | Stage whole files, hunks or lines; commit with a message draft saved per repository |
+| **Branches & sync** | Create/switch branches, merge/rebase, fetch, pull and push; configure remotes and choose publication destinations |
+| **Reference comparison** | Compare branches, tags or commits as exact snapshots or changes since their common ancestor |
+| **Recovery** | Restore tracked-change backups and create branches from saved commits or recent HEAD history |
+| **Commit actions** | Cherry-pick, revert, reset, create/delete tags and push tags from the commit actions menu |
+| **File history & blame** | Follow a file across renames and see which commits introduced its lines |
 | **Merge editor** | VS Code–style conflict resolution with Monaco |
 | **Host accounts** | GitHub, GitLab (including self-managed instances), and Bitbucket for browsing and cloning |
 | **New repository** | Create a repository with its initial branch and a first README commit |
@@ -97,7 +101,7 @@ The app probes for Git at startup and guides you to install it if missing.
 
 ## Connect host accounts
 
-Use **Host accounts** from the welcome screen, or **Accounts** in the app menu, to link GitHub, GitLab (GitLab.com or your own instance), or Bitbucket. The app stores the token in OS secure storage and lists remote repos so you can clone them (HTTPS or SSH).
+Use **Host accounts** from the welcome screen, or **Accounts** in the app menu, to link GitHub, GitLab (GitLab.com or your own instance), or Bitbucket. The app uses OS secure storage when available and marks accounts whose tokens were stored without OS encryption. It lists remote repos so you can clone them (HTTPS or SSH).
 
 1. Open **Host accounts**.
 2. Choose a provider.
@@ -117,6 +121,8 @@ More detail: [`docs/features/host-accounts.md`](docs/features/host-accounts.md).
 
 ## Search history
 
+To review a whole feature branch, use **Compare…** above History, enter a base and target, and leave **Changes since common ancestor** checked. Uncheck it to compare exact snapshots. A commit's actions menu also offers **Compare with HEAD…**. [Reference comparison](docs/features/reference-comparison.md) explains the modes.
+
 Type in the search box above the history and press Enter. Search runs in Git across all branches, unless you narrow it:
 
 | Search | Finds |
@@ -132,11 +138,22 @@ While you type, matching branches are suggested: <kbd>↑</kbd> / <kbd>↓</kbd>
 
 More detail: [`docs/features/history-graph.md`](docs/features/history-graph.md).
 
+## Publish and recover work
+
+**Repository → Remotes & Publishing…** adds or edits remote URLs, changes branch tracking and publishes the current branch to a selected remote/destination branch. The server repository must already exist. Fetch to load its branches before choosing an upstream. See [Remotes & publishing](docs/features/remotes-and-publishing.md).
+
+Commit messages restore after switching views or repositories and after restarting. Successful commits clear their draft; failed commits keep it.
+
+**Repository → Recovery…** (also above History) lists previous commits and tracked-change snapshots saved before amend, reset, rebase, branch deletion and tracked discard. Create a branch to recover a commit. Restore a snapshot onto a clean working tree/index to recover staged and unstaged edits. Untracked files discarded from Changes are in the Trash. See [Recovery](docs/features/recovery.md) for limits and retention.
+
 ## Keyboard
+
+The app remembers its last maximized/full-screen mode. On startup, it opens saved repositories directly; repository setup appears when the saved list is empty.
 
 | Key | Does |
 |---|---|
 | <kbd>F6</kbd> / <kbd>Shift</kbd>+<kbd>F6</kbd> | Move between the sidebar, history or changes, the inspector, and the search box |
+| <kbd>F11</kbd> | Toggle full-screen mode (also in the View menu) |
 | <kbd>↑</kbd> / <kbd>↓</kbd>, <kbd>PageUp</kbd> / <kbd>PageDown</kbd>, <kbd>Home</kbd> / <kbd>End</kbd> | Move through commits, changed files, repositories and branches |
 | <kbd>Enter</kbd> | Commit list: go to the commit's files. Sidebar: open the repository or check out the branch |
 | <kbd>Esc</kbd> | Commit files: back to the commit list. Menus and suggestions: close them |
@@ -179,7 +196,7 @@ npm run dist:mac
 npm run dist:linux
 ```
 
-Pushing a `v*` tag that matches `package.json` runs [`.github/workflows/release.yml`](.github/workflows/release.yml): it builds all three platforms and publishes the release with the built-in `GITHUB_TOKEN`. Signing is optional: add `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD` and `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` for a notarized macOS build, or `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` for Windows. Without them macOS builds are ad-hoc signed. The website in [`site/`](site/) deploys through [`.github/workflows/pages.yml`](.github/workflows/pages.yml).
+Pushing a `v*` tag that matches `package.json` runs [`.github/workflows/release.yml`](.github/workflows/release.yml): it builds all three platforms and publishes the release with the built-in `GITHUB_TOKEN` after the required Windows and macOS jobs succeed; Linux is optional. Release notes come from `docs/releases/<version>.md` when present. Signing is optional: add `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD` and `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` for a notarized macOS build, or `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` for Windows. Without them macOS builds are ad-hoc signed. See [release preparation](docs/releases.md) and the [1.2.0 release notes](docs/releases/1.2.0.md). The website in [`site/`](site/) deploys through [`.github/workflows/pages.yml`](.github/workflows/pages.yml).
 
 ## Architecture
 
@@ -238,6 +255,9 @@ Full write-up: [`docs/architecture.md`](docs/architecture.md).
 | [History graph](docs/features/history-graph.md) | Topology UI |
 | [Working tree](docs/features/working-tree.md) | Changes & commits |
 | [Branches & sync](docs/features/branches-and-sync.md) | Branch ops and remotes |
+| [Remotes & publishing](docs/features/remotes-and-publishing.md) | Remote URLs, upstreams and publication destinations |
+| [Reference comparison](docs/features/reference-comparison.md) | Exact snapshots and feature-branch review |
+| [Recovery](docs/features/recovery.md) | Saved commits, tracked-change snapshots and reflog |
 | [Merge editor](docs/features/merge-editor.md) | Conflict resolution |
 | [Host accounts](docs/features/host-accounts.md) | GitHub / GitLab / Bitbucket |
 | [Auto-updates](docs/features/auto-updates.md) | Release updates |

@@ -9,6 +9,7 @@ import { nextListIndex } from '../../logic/list-nav'
 import { virtualWindow } from '../../logic/virtual-window'
 import { useAppStatus } from '../../state/AppStatusProvider'
 import { useCommitMenu } from '../../state/CommitMenuProvider'
+import { useDialogActions } from '../../state/DialogsProvider'
 import { useHistoryActions, useHistoryState } from '../../state/HistoryProvider'
 import { useLayoutActions, useLayoutHistoryColumns, useLayoutPrefsState } from '../../state/LayoutProvider'
 import { useSession } from '../../state/RepoSessionProvider'
@@ -39,6 +40,7 @@ export function HistoryGraph(): React.JSX.Element {
   const { selectedSha } = useSelectionCore()
   const { selectCommit } = useWorkingTreeActions()
   const { openCommitMenu } = useCommitMenu()
+  const { openDialog } = useDialogActions()
   // Column widths live in the layout state, which a drag updates live and saves when it ends.
   const { prefs, setHistoryFilter } = useLayoutPrefsState()
   const { persistLayout } = useLayoutActions()
@@ -219,6 +221,8 @@ export function HistoryGraph(): React.JSX.Element {
           </span>
         )}
         <div className="spacer" />
+        <Button disabled={busy || !headSha} onClick={() => openDialog('compare')}>Compare…</Button>
+        <Button disabled={busy} onClick={() => openDialog('recovery')}>Recovery…</Button>
         <select
           value={filter}
           onChange={(e) => setHistoryFilter(e.target.value as 'all' | 'current')}

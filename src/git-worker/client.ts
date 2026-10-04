@@ -259,6 +259,15 @@ function wrap<K extends GitMethodName>(method: K) {
 }
 
 export const inspectRepository = wrap('inspectRepository')
+export const getRemotes = wrap('getRemotes')
+export const saveRemote = wrap('saveRemote')
+export const removeRemote = wrap('removeRemote')
+export const setUpstream = wrap('setUpstream')
+export const compareRefs = wrap('compareRefs')
+export const getComparisonDiff = wrap('getComparisonDiff')
+export const getRecoveryEntries = wrap('getRecoveryEntries')
+export const restoreRecovery = wrap('restoreRecovery')
+export const deleteRecovery = wrap('deleteRecovery')
 export const refreshRepoSession = wrap('refreshRepoSession')
 export const createRepository = wrap('createRepository')
 export const getDefaultBranchName = wrap('getDefaultBranchName')

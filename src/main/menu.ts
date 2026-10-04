@@ -100,12 +100,18 @@ export function buildAppMenu(): void {
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },
-        { role: 'zoomOut' }
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
       ]
     },
     {
       label: 'Repository',
       submenu: [
+        { label: 'Remotes & Publishing…', click: () => sendMenu(MenuChannels.remotes) },
+        { label: 'Compare References…', click: () => sendMenu(MenuChannels.compare) },
+        { label: 'Recovery…', click: () => sendMenu(MenuChannels.recovery) },
+        { type: 'separator' },
         {
           label: 'Fetch',
           accelerator: 'CmdOrCtrl+Shift+F',

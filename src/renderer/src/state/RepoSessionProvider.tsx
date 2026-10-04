@@ -13,6 +13,7 @@ type SessionBundle = ReturnType<typeof useRepoSession>
 export type SessionState = Pick<
   SessionBundle,
   | 'repos'
+  | 'startupStatus'
   | 'activeRepo'
   | 'branches'
   | 'remoteBranches'
@@ -46,6 +47,7 @@ export type SessionActions = Pick<
   | 'setRepoRemoveError'
   | 'setRepoRemoveWarning'
   | 'refreshRepos'
+  | 'retryStartup'
   | 'refreshRepoMeta'
   | 'afterGitMutation'
   | 'removeRepoFromList'
@@ -70,6 +72,8 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
 
   const {
     repos,
+    startupStatus,
+    retryStartup,
     activeRepo,
     branches,
     remoteBranches,
@@ -112,6 +116,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
   const state = useMemo<SessionState>(
     () => ({
       repos,
+      startupStatus,
       activeRepo,
       branches,
       remoteBranches,
@@ -130,6 +135,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
     }),
     [
       repos,
+      startupStatus,
       activeRepo,
       branches,
       remoteBranches,
@@ -163,6 +169,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
       setRepoRemoveError,
       setRepoRemoveWarning,
       refreshRepos,
+      retryStartup,
       refreshRepoMeta,
       afterGitMutation,
       removeRepoFromList,
@@ -177,6 +184,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
       setRepoRemoveError,
       setRepoRemoveWarning,
       refreshRepos,
+      retryStartup,
       refreshRepoMeta,
       afterGitMutation,
       removeRepoFromList

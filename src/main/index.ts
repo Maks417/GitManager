@@ -4,9 +4,10 @@ import { join } from 'path'
 import { getDevServerUrl, getRendererEntryFile, isTrustedAppUrl } from './app-url'
 import { registerIpcHandlers } from './ipc'
 import { buildAppMenu } from './menu'
-import { loadPreferences } from './storage'
+import { loadPreferences, loadWindowState, saveWindowState } from './storage'
 import { applyThemePreference, applyWindowThemeBackground, resolvedWindowBackground } from './theme'
 import { maybeCheckOnStartup } from './updater'
+import { restoreWindowState, trackWindowState } from './window-state'
 
 function resolveAppIcon(): string | undefined {
   const candidates = app.isPackaged
@@ -20,7 +21,7 @@ function resolveAppIcon(): string | undefined {
   return candidates.find((p) => existsSync(p))
 }
 
-/** Block Chromium chrome shortcuts (DevTools, fullscreen, reload). Zoom stays available via View. */
+/** Block Chromium chrome shortcuts; F11 toggles the app window's fullscreen mode. */
 function blockChromiumShortcuts(win: BrowserWindow): void {
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return
@@ -39,6 +40,7 @@ function blockChromiumShortcuts(win: BrowserWindow): void {
 
     if (key === 'f11') {
       event.preventDefault()
+      if (!input.isAutoRepeat) win.setFullScreen(!win.isFullScreen())
       return
     }
 
@@ -58,6 +60,7 @@ function blockChromiumShortcuts(win: BrowserWindow): void {
 
 function createWindow(): void {
   const icon = resolveAppIcon()
+  const windowState = loadWindowState()
   const mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -67,7 +70,7 @@ function createWindow(): void {
     title: 'Git Manager',
     backgroundColor: resolvedWindowBackground(),
     ...(icon ? { icon } : {}),
-    fullscreenable: false,
+    fullscreenable: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -79,7 +82,11 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow.show())
+  mainWindow.once('ready-to-show', () => {
+    restoreWindowState(mainWindow, windowState)
+    trackWindowState(mainWindow, saveWindowState)
+    mainWindow.show()
+  })
   blockChromiumShortcuts(mainWindow)
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))

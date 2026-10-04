@@ -88,3 +88,8 @@ export { inspectRepoForRemoval } from './ops/removal'
 export { getWatchFingerprint } from './ops/watch'
 
 export { getWorktreeInfo, pruneWorktree } from './ops/worktrees'
+
+export { getRemotes, saveRemote, removeRemote, setUpstream } from './ops/remotes'
+export { compareRefs, getComparisonDiff } from './ops/comparison'
+export { getRecoveryEntries, restoreRecovery, deleteRecovery } from './ops/recovery'
+export { publishBranch } from './ops/branches'

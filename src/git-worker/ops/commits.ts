@@ -3,6 +3,7 @@ import type { ResetMode, SequencerOp, SequencerStep } from '@shared/ipc'
 import { listConflictFiles } from './merge'
 import { assertRevision, assertSha } from './guards'
 import { gitOk, runGit } from './shared'
+import { saveCommitRecovery, saveWorktreeRecovery } from './recovery'
 
 /** Git's own message when a step fails without conflicts; conflicts are returned instead, for the merge editor. */
 async function conflictsOrThrow(
@@ -74,6 +75,9 @@ export async function countCommitsAfter(repoPath: string, sha: string): Promise<
 
 export async function resetToCommit(repoPath: string, sha: string, mode: ResetMode): Promise<void> {
   assertSha(sha)
+  await gitOk(repoPath, ['cat-file', '-e', `${sha}^{commit}`])
+  await saveCommitRecovery(repoPath, `Before ${mode} reset`)
+  if (mode === 'hard') await saveWorktreeRecovery(repoPath, 'Before hard reset: tracked changes')
   await gitOk(repoPath, ['reset', `--${mode}`, sha, '--'])
 }
 

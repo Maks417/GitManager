@@ -16,6 +16,9 @@
 | StatusEntry | Working-tree / index status line | `path`, index/worktree letters, `staged`, `unstaged`, `untracked`, `conflicted`, optional `oldPath` (rename source) |
 | BranchInfo | Local branch + upstream divergence | `name`, `current`, `upstream`, `ahead`, `behind`, `sha` (tip; null before the first commit) |
 | RemoteBranchInfo | Remote-tracking branch | `name`, `remote`, `shortName`, `sha` |
+| RemoteConfig | Remote URLs in the configuration dialog | `name`, `fetchUrl`, `pushUrl` |
+| Comparison | File changes between resolved snapshots | `baseSha`, `targetSha`, `files`, `additions`, `deletions`, `binaryFiles` |
+| RecoveryEntry | Saved backup or recent HEAD reflog entry | `id`, `sha`, `kind` (`commit` or `worktree`), `label`, `createdAt`, `saved` |
 | StashEntry | Stash reflog entry | `index`, `message`, `reflogSelector` |
 | ConflictFile | Path with unmerged stages | `path`, `hasBase`, `hasOurs`, `hasTheirs` |
 | MergeSides | Three-way content + work-tree result | `path`, `base`, `ours`, `theirs`, `result`, `binary`, `tooLarge` |
@@ -37,9 +40,9 @@
 | AppPreferences | UI layout and behavior prefs | theme, dock, diff view, column widths, filters, live watch, etc. |
 | RepoWatchEvent | Live FS watch notification | `repoPath`, `kind` (`worktree` \| `git-meta`) |
 | RepoWatchState | How the watched repository is kept up to date | `repoPath`, `mode` (`live` \| `polling`), `reason` (why it is polled) |
-| RemoteOpRequest | Start a fetch, pull or push | `repoPath`, `opId` (chosen by the renderer) |
+| RemoteOpRequest | Start a fetch, pull or push | `repoPath`, `opId`, optional `force`; paired `remote` and `targetBranch` for explicit publication |
 | GitProgress | Progress of a running fetch, pull, push or clone | `opId`, `repoPath` (the new folder, for a clone), `kind`, `phase`, `percent`, `cancellable` |
-| RemoteOpResult | How a fetch, pull or push ended | `outcome` (`done` \| `cancelled`) |
+| RemoteOpResult | How a fetch, pull or push ended | `outcome` (`done` \| `cancelled` \| `rejected` \| `diverged`), optional `branch` / `upstream` |
 | UpdateStatus | Auto-update progress | checking / available / downloaded / version / error / progress |
 
 Schemas: [`src/shared/ipc/schemas.ts`](../src/shared/ipc/schemas.ts). Conflict regions: [`src/merge-core/conflict.ts`](../src/merge-core/conflict.ts).
@@ -50,6 +53,9 @@ Schemas: [`src/shared/ipc/schemas.ts`](../src/shared/ipc/schemas.ts). Conflict r
 erDiagram
   Repository ||--o{ BranchInfo : has
   Repository ||--o{ RemoteBranchInfo : tracks
+  Repository ||--o{ RemoteConfig : configures
+  Repository ||--o{ Comparison : compares
+  Repository ||--o{ RecoveryEntry : recovers
   Repository ||--o{ Commit : history
   Repository ||--o{ StatusEntry : workingTree
   Repository ||--o{ StashEntry : stashes
@@ -77,9 +83,12 @@ erDiagram
 |---|---|
 | `repositories.json` | Saved `Repository[]` |
 | `preferences.json` | `AppPreferences` |
+| `window.json` | Last maximized/full-screen mode, owned by the main process |
 | `accounts.json` | Provider accounts (with `baseUrl` for a self-managed GitLab) + `tokenEnc`, `tokenScheme` and (Bitbucket) `authUser` — none of those three exposed over IPC |
 
 Git objects themselves live on disk under each repository’s `.git`; the app does not mirror the object database.
+
+Commit drafts use Chromium local storage under `git-manager:commit-draft:<repository path>`, with an in-memory fallback if storage fails. Saved recovery backups use Git refs under `refs/git-manager/recovery/` and the normal object database; they are shared across linked worktrees.
 
 ## Preference notes
 

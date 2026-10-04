@@ -90,7 +90,8 @@ export function ResetModal({ commit, repoPath, branch, changedFiles, onClose, on
       {losses.length > 0 && (
         <Banner tone={mode === 'hard' ? 'warning' : 'info'}>
           {losses.join('; ').replace(/^./, (c) => c.toUpperCase())}.
-          {commitsAfter ? ' Those commits stay in the reflog, and on any other branch or tag that has them.' : ''}
+          {commitsAfter ? ' The previous commit is saved in Repository → Recovery.' : ''}
+          {mode === 'hard' && changedFiles > 0 ? ' Tracked changes are backed up there before reset; untracked files are not included.' : ''}
         </Banner>
       )}
     </Modal>

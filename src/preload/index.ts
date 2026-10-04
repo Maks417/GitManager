@@ -33,6 +33,8 @@ const api = {
     worktreeInfo: (id: string) => ipcRenderer.invoke(IpcChannels.repo.worktreeInfo, id)
   },
   history: {
+    compare: (request: unknown) => ipcRenderer.invoke(IpcChannels.history.compare, request),
+    compareDiff: (request: unknown) => ipcRenderer.invoke(IpcChannels.history.compareDiff, request),
     load: (query: unknown) => ipcRenderer.invoke(IpcChannels.history.load, query),
     commitDetail: (repoPath: string, sha: string) =>
       ipcRenderer.invoke(IpcChannels.history.commitDetail, repoPath, sha),
@@ -45,6 +47,13 @@ const api = {
       ipcRenderer.invoke(IpcChannels.history.blame, repoPath, path, rev)
   },
   git: {
+    remotes: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.remotes, repoPath),
+    saveRemote: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.saveRemote, request),
+    removeRemote: (repoPath: string, name: string) => ipcRenderer.invoke(IpcChannels.git.removeRemote, repoPath, name),
+    setUpstream: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.setUpstream, request),
+    recovery: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.recovery, repoPath),
+    restoreRecovery: (repoPath: string, id: string) => ipcRenderer.invoke(IpcChannels.git.restoreRecovery, repoPath, id),
+    deleteRecovery: (repoPath: string, id: string) => ipcRenderer.invoke(IpcChannels.git.deleteRecovery, repoPath, id),
     probe: () => ipcRenderer.invoke(IpcChannels.git.probe),
     stage: (repoPath: string, paths: string[]) => ipcRenderer.invoke(IpcChannels.git.stage, repoPath, paths),
     unstage: (repoPath: string, paths: string[]) => ipcRenderer.invoke(IpcChannels.git.unstage, repoPath, paths),
