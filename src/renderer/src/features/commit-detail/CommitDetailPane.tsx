@@ -123,7 +123,7 @@ export function CommitDetailPane(): React.JSX.Element {
                 })
               }
             >
-              Merge into current…
+              Merge into current
             </Button>
             <Button
               variant="ghost"
@@ -137,7 +137,7 @@ export function CommitDetailPane(): React.JSX.Element {
                 })
               }
             >
-              Rebase onto…
+              Rebase onto
             </Button>
             <Button
               variant="ghost"
@@ -150,7 +150,7 @@ export function CommitDetailPane(): React.JSX.Element {
                 openCommitMenu(commit, { x: r.left, y: r.bottom + 4 })
               }}
             >
-              More…
+              More
             </Button>
           </div>
         </div>

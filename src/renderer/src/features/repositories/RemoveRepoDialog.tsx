@@ -103,7 +103,7 @@ export function RemoveRepoDialog({ repo, busy, error, warning, onCancel, onConfi
                 disabled={!canConfirm}
                 onClick={() => onConfirm({ deleteFiles: trashing, pruneWorktree: canPrune && pruneRecord })}
               >
-                {busy ? 'Working…' : trashing ? 'Move to Trash' : 'Remove from list'}
+                {busy ? 'Working' : trashing ? 'Move to Trash' : 'Remove from list'}
               </Button>
             </>
           )}

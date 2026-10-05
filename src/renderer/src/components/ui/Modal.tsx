@@ -27,6 +27,8 @@ interface ModalProps {
   bodyClassName?: string
   /** When false, Escape and clicks on the backdrop leave the dialog open; it closes via its own buttons. */
   dismissible?: boolean
+  /** Used if the opening control was temporarily unmounted (e.g. Sync during a network operation). */
+  returnFocusFallback?: string
 }
 
 export function Modal({
@@ -39,7 +41,8 @@ export function Modal({
   className = '',
   style,
   bodyClassName = '',
-  dismissible = true
+  dismissible = true,
+  returnFocusFallback
 }: ModalProps): React.JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null)
   const [id] = useState(() => Symbol(title))
@@ -70,8 +73,9 @@ export function Modal({
       modalStack.remove(id)
       // Hand focus back to what opened the dialog, if it is still on the page.
       if (returnFocusTo?.isConnected) returnFocusTo.focus()
+      else if (returnFocusFallback) document.querySelector<HTMLElement>(returnFocusFallback)?.focus()
     }
-  }, [id, returnFocusTo])
+  }, [id, returnFocusTo, returnFocusFallback])
 
   const trapTab = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     // Editors that use Tab themselves (Monaco inserting a tab) prevent the default first.

@@ -221,8 +221,8 @@ export function HistoryGraph(): React.JSX.Element {
           </span>
         )}
         <div className="spacer" />
-        <Button disabled={busy || !headSha} onClick={() => openDialog('compare')}>Compare…</Button>
-        <Button disabled={busy} onClick={() => openDialog('recovery')}>Recovery…</Button>
+        <Button disabled={busy || !headSha} onClick={() => openDialog('compare')}>Compare</Button>
+        <Button disabled={busy} onClick={() => openDialog('recovery')}>Recovery</Button>
         <select
           value={filter}
           onChange={(e) => setHistoryFilter(e.target.value as 'all' | 'current')}

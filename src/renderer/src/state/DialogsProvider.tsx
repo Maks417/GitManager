@@ -18,11 +18,19 @@ export type DialogName =
   | 'rebasePick'
   | 'mergeEditor'
 
-export type DialogState = Record<DialogName, boolean>
+export interface BranchDialogTarget {
+  kind: 'tracking' | 'publish'
+  repoPath: string
+  branchName: string
+}
+
+export type DialogState = Record<DialogName, boolean> & { branchDialog: BranchDialogTarget | null }
 
 export interface DialogActions {
   openDialog: (name: DialogName) => void
   closeDialog: (name: DialogName) => void
+  openBranchDialog: (target: BranchDialogTarget) => void
+  closeBranchDialog: () => void
 }
 
 const ALL_CLOSED: DialogState = {
@@ -38,7 +46,8 @@ const ALL_CLOSED: DialogState = {
   createBranch: false,
   mergePick: false,
   rebasePick: false,
-  mergeEditor: false
+  mergeEditor: false,
+  branchDialog: null
 }
 
 const DialogStateContext = createContext<DialogState | null>(null)
@@ -50,7 +59,9 @@ export function DialogsProvider({ children }: { children: React.ReactNode }): Re
   const actions = useMemo<DialogActions>(
     () => ({
       openDialog: (name) => setOpen((prev) => (prev[name] ? prev : { ...prev, [name]: true })),
-      closeDialog: (name) => setOpen((prev) => (prev[name] ? { ...prev, [name]: false } : prev))
+      closeDialog: (name) => setOpen((prev) => (prev[name] ? { ...prev, [name]: false } : prev)),
+      openBranchDialog: (target) => setOpen((prev) => ({ ...prev, branchDialog: target })),
+      closeBranchDialog: () => setOpen((prev) => prev.branchDialog ? { ...prev, branchDialog: null } : prev)
     }),
     []
   )

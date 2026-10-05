@@ -7,9 +7,9 @@ Operate on branches and remotes: checkout (local and remote-tracking), create/de
 ## User flow
 
 1. Sidebar shows the current branch and expandable local / remote branch lists with ahead/behind. Every branch can show only its own history or jump to its tip in the history ([History graph](history-graph.md)). The repository list and each branch list are one Tab stop: ↑ / ↓, Home and End move between rows, and Enter opens the repository or checks out the branch.
-2. Create branch modal; checkout by double-clicking a branch (or pressing Enter on it); checkout a remote branch via `git:checkout-remote-branch`; delete after confirming, with a second dialog to force delete when Git refuses.
+2. Create branch modal; checkout by double-clicking anywhere in a branch row except its action buttons (or pressing Enter on it); checkout a remote branch via `git:checkout-remote-branch`; delete after confirming, with a second dialog to force delete when Git refuses. Action hints stay within the branch row for both mouse hover and keyboard focus.
 3. Sync menu: Fetch, Pull, Push. It opens with its first item focused; ↑ / ↓ go round the items, and Escape closes it and returns focus to Sync.
-   **Remotes & publishing…** manages URLs, upstreams and explicit publication destinations ([Remotes & publishing](remotes-and-publishing.md)).
+   A branch without an upstream opens **Publish branch** for destination review. A tracked branch also offers **Push to**. URLs are managed through **Repository → Manage Remotes**; upstreams through the branch’s **⋯ → Tracking** ([Remotes & publishing](remotes-and-publishing.md)).
 4. Merge / Rebase open a branch picker; conflicts open the merge editor.
 5. While rebasing, Continue / Skip commit / Abort are available from the merge editor and the Changes pane. While merging (`MERGE_HEAD` exists), Abort merge is available in both, and committing from Changes concludes the merge.
 
@@ -40,7 +40,7 @@ Operate on branches and remotes: checkout (local and remote-tracking), create/de
 - One fetch, pull or push runs at a time. Starting another meanwhile (from the menu, say) names the one still running instead.
 - A fetch, pull or push that produces no output for 5 minutes (a stalled network, or a sign-in or passphrase prompt nobody can answer) is stopped with a message saying so.
 - Pull fetches the branch's remote, then fast-forwards to its upstream. Only the fetch can be cancelled: updating files cannot be interrupted safely. A branch without an upstream, and a branch that has diverged from it, get their own messages.
-- Push publishes a branch without an upstream to `origin` (or the only remote) and sets tracking. A rejected push offers Pull or an explicitly chosen force push using `--force-with-lease` and, on Git 2.30+, `--force-if-includes`. A diverged pull offers merge or rebase.
+- Every user-facing Push entry point reviews a branch’s first publication, including commit-and-push. The review defaults to `origin` (or the only remote) and sets tracking on success. A rejected ordinary push offers Pull or an explicitly chosen force push using `--force-with-lease` and, on Git 2.30+, `--force-if-includes`. Explicit destination pushes keep rejection errors in their dialog. A diverged pull offers merge or rebase.
 - Rebase and branch deletion preserve previous tip commits in [Recovery](recovery.md). Reset and amend also save previous commits; hard reset saves tracked edits.
 - After Git reports a successful push, the app checks that the upstream now has the branch's commits (`git rev-list --count @{upstream}..HEAD`). When some are missing, the push is reported as failed, and the message points to `push.default` and `remote.<name>.push`. A remote with its own `push` refspec (Gerrit's `refs/for/*`, say) sends commits elsewhere on purpose, so it is not checked.
 - Checkout runs `git checkout <ref> --`, so a name that is not a ref fails instead of restoring same-named files.

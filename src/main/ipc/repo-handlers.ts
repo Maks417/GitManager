@@ -162,7 +162,7 @@ export function registerRepoHandlers(): void {
     assertSender(event)
     const request = CloneRequestSchema.parse(raw)
     if (!isAbsolute(request.targetDir)) {
-      throw new Error('Enter the full path of the parent folder, or choose it with Browse….')
+      throw new Error('Enter the full path of the parent folder, or choose it with Browse.')
     }
     const target = join(request.targetDir, repoNameFromUrl(request.url))
     const result = await runCloneOperation(event.sender, { opId: request.opId, url: request.url, target })

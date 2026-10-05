@@ -53,7 +53,7 @@ export function RecoveryModal({ repoPath, onClose }: Props): React.JSX.Element {
             <div className="remote-config-description"><strong>{entry.label}</strong><div className="muted text-xs"><span className="sha">{entry.sha.slice(0, 7)}</span> · {entry.createdAt ? formatRelativeDate(entry.createdAt) : ''} · {entry.saved ? entry.kind === 'worktree' ? 'Tracked-file backup' : 'Saved commit' : 'HEAD history'}</div></div>
             <div className="row-inline">
               {entry.kind === 'commit' ? <>
-                <Button disabled={blocked} onClick={() => setBranchAt(entry)}>Create branch…</Button>
+                <Button disabled={blocked} onClick={() => setBranchAt(entry)}>Create branch</Button>
                 <Button disabled={busy} onClick={() => { onClose(); void inspectCommit(entry.sha) }}>Show commit</Button>
               </> : <Button disabled={blocked} onClick={() => {
                 void confirm({ title: 'Restore tracked changes', message: 'Apply this backup to the current branch, including its staged changes? Your working tree must be clean. The backup is kept, and Git may report conflicts when the branch has changed.', confirmLabel: 'Restore' }).then((ok) => {

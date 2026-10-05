@@ -38,7 +38,7 @@ export function CreateBranchModal({ onClose, onCreate, lead, initialCheckout = t
             Cancel
           </Button>
           <Button variant="primary" disabled={busy || !name.trim()} onClick={submit}>
-            {busy ? 'Creating…' : 'Create'}
+            {busy ? 'Creating' : 'Create'}
           </Button>
         </div>
       }

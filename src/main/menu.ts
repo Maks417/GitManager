@@ -35,23 +35,23 @@ export function buildAppMenu(): void {
       label: 'File',
       submenu: [
         {
-          label: 'New Repository…',
+          label: 'New Repository',
           accelerator: 'CmdOrCtrl+N',
           click: () => sendMenu(MenuChannels.newRepo)
         },
         {
-          label: 'Add Local Repository…',
+          label: 'Add Local Repository',
           accelerator: 'CmdOrCtrl+O',
           click: () => sendMenu(MenuChannels.addRepo)
         },
         {
-          label: 'Clone Repository…',
+          label: 'Clone Repository',
           accelerator: 'CmdOrCtrl+Shift+O',
           click: () => sendMenu(MenuChannels.cloneRepo)
         },
         { type: 'separator' },
         {
-          label: 'Accounts…',
+          label: 'Accounts',
           click: () => sendMenu(MenuChannels.accounts)
         },
         { type: 'separator' },
@@ -108,9 +108,9 @@ export function buildAppMenu(): void {
     {
       label: 'Repository',
       submenu: [
-        { label: 'Remotes & Publishing…', click: () => sendMenu(MenuChannels.remotes) },
-        { label: 'Compare References…', click: () => sendMenu(MenuChannels.compare) },
-        { label: 'Recovery…', click: () => sendMenu(MenuChannels.recovery) },
+        { label: 'Manage Remotes', click: () => sendMenu(MenuChannels.remotes) },
+        { label: 'Compare References', click: () => sendMenu(MenuChannels.compare) },
+        { label: 'Recovery', click: () => sendMenu(MenuChannels.recovery) },
         { type: 'separator' },
         {
           label: 'Fetch',
@@ -130,20 +130,20 @@ export function buildAppMenu(): void {
         },
         { type: 'separator' },
         {
-          label: 'New Branch…',
+          label: 'New Branch',
           click: () => sendMenu(MenuChannels.createBranch)
         },
         {
-          label: 'Merge…',
+          label: 'Merge',
           click: () => sendMenu(MenuChannels.merge)
         },
         {
-          label: 'Rebase onto…',
+          label: 'Rebase onto',
           click: () => sendMenu(MenuChannels.rebase)
         },
         { type: 'separator' },
         {
-          label: 'Git Identity…',
+          label: 'Git Identity',
           click: () => sendMenu(MenuChannels.identity)
         }
       ]
@@ -153,7 +153,7 @@ export function buildAppMenu(): void {
       label: 'Help',
       submenu: [
         {
-          label: 'Check for Updates…',
+          label: 'Check for Updates',
           click: () => {
             void checkForUpdates()
             sendMenu(MenuChannels.updates)

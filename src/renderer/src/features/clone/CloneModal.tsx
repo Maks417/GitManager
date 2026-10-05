@@ -107,7 +107,7 @@ export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
             <Button onClick={onClose}>Cancel</Button>
           )}
           <Button variant="primary" disabled={cloning} onClick={() => void start()}>
-            {cloning ? 'Cloning…' : 'Clone'}
+            {cloning ? 'Cloning' : 'Clone'}
           </Button>
         </div>
       }
@@ -130,7 +130,7 @@ export function CloneModal({ onClose, onCloned }: Props): React.JSX.Element {
             onChange={(e) => setTargetDir(e.target.value)}
           />
           <Button disabled={cloning} onClick={() => void pickDir()}>
-            Browse…
+            Browse
           </Button>
         </div>
       </Field>

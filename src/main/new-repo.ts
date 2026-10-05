@@ -11,7 +11,7 @@ export function describeNewRepoTarget(parentDir: string, name: string): { path: 
   if (nameProblem) return { path: null, problem: nameProblem }
   if (!parentDir) return { path: null, problem: 'Choose the location to create the repository in.' }
   if (!isAbsolute(parentDir)) {
-    return { path: null, problem: 'Enter the full path of the location, or choose it with Browse….' }
+    return { path: null, problem: 'Enter the full path of the location, or choose it with Browse.' }
   }
   const path = join(parentDir, name)
   try {

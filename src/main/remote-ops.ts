@@ -44,11 +44,11 @@ export function runRemoteOperation(
   kind: RemoteOpKind,
   request: RemoteOpRequest
 ): Promise<RemoteOpResult> {
-  if (request.remote !== undefined || request.targetBranch !== undefined) {
+  if (request.remote !== undefined || request.targetBranch !== undefined || request.setUpstream !== undefined || request.expectedBranch !== undefined) {
     if (kind !== 'push' || request.force || !request.remote || !request.targetBranch) {
       throw new Error('Publishing requires a remote and destination branch, without force push.')
     }
-    return runTracked(sender, request.opId, 'publishBranch', [request.repoPath, request.remote, request.targetBranch], { repoPath: request.repoPath, kind })
+    return runTracked(sender, request.opId, 'publishBranch', [request.repoPath, request.remote, request.targetBranch, request.setUpstream ?? true, request.expectedBranch], { repoPath: request.repoPath, kind })
   }
   const method = kind === 'push' && request.force ? 'forcePushRemote' : METHODS[kind]
   return runTracked(sender, request.opId, method, [request.repoPath], { repoPath: request.repoPath, kind })

@@ -35,7 +35,7 @@ export function TagModal({ commit, onClose, onCreate }: Props): React.JSX.Elemen
             Cancel
           </Button>
           <Button variant="primary" disabled={busy || !trimmed} onClick={submit}>
-            {busy ? 'Creating…' : 'Create tag'}
+            {busy ? 'Creating' : 'Create tag'}
           </Button>
         </div>
       }

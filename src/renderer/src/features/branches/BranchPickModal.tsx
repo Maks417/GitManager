@@ -55,7 +55,7 @@ export function BranchPickModal({
             disabled={busy || !selected || options.length === 0}
             onClick={submit}
           >
-            {busy ? 'Working…' : confirmVerb}
+            {busy ? 'Working' : confirmVerb}
           </Button>
         </div>
       }

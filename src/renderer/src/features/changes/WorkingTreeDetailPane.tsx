@@ -88,7 +88,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   const { setError: onError } = useAppStatusActions()
   const { goHistory } = useWorkingTreeActions()
   const { openDialog } = useDialogActions()
-  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep, runRemote, resolveRemoteOutcome } =
+  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep, pushCurrentBranch, resolveRemoteOutcome } =
     useGitActions()
   const { diffView, syntaxHighlighting } = useLayoutPrefsState()
   const { persistLayout } = useLayoutActions()
@@ -339,7 +339,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
         Committing as {formatIdentity(identity)}
       </div>
       <button type="button" className="ghost-btn" onClick={() => openDialog('identity')}>
-        Change…
+        Change
       </button>
     </div>
   )
@@ -687,7 +687,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
                 if (pushAfterCommit) {
                   try {
                     // Same path as Sync → Push: progress and Cancel in the toolbar.
-                    pushed = await runRemote('push')
+                    pushed = await pushCurrentBranch()
                   } catch (err) {
                     throw new Error(`Committed, but the push failed: ${toErrorMessage(err)}`)
                   }

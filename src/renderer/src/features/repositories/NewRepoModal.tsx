@@ -97,7 +97,7 @@ export function NewRepoModal({ onClose, onCreated, onSetIdentity }: Props): Reac
             <>
               <Button onClick={onClose}>Close</Button>
               <Button variant="primary" onClick={onSetIdentity}>
-                Set Git identity…
+                Set Git identity
               </Button>
             </>
           ) : (
@@ -106,7 +106,7 @@ export function NewRepoModal({ onClose, onCreated, onSetIdentity }: Props): Reac
                 Cancel
               </Button>
               <Button variant="primary" disabled={!canCreate} onClick={() => void create()}>
-                {busy ? 'Creating…' : 'Create repository'}
+                {busy ? 'Creating' : 'Create repository'}
               </Button>
             </>
           )}
@@ -137,7 +137,7 @@ export function NewRepoModal({ onClose, onCreated, onSetIdentity }: Props): Reac
             onChange={(e) => setParentDir(e.target.value)}
           />
           <Button disabled={busy || created} onClick={() => void pickDir()}>
-            Browse…
+            Browse
           </Button>
         </div>
       </Field>

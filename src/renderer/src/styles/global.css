@@ -904,6 +904,7 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
 }
 
 .branch-row-actions {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
@@ -1018,6 +1019,26 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   font-weight: var(--weight-semibold);
 }
 
+.branch-tracking {
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  justify-self: stretch;
+  font-size: var(--text-xs);
+}
+
+.branch-tracking:hover:not(:disabled) {
+  color: var(--text);
+  background: transparent;
+  text-decoration: underline;
+}
+
+.branch-publish {
+  justify-self: start;
+  margin-top: var(--space-2);
+}
+
 .repo-list,
 .branch-list,
 .file-list {
@@ -1095,16 +1116,31 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   height: 24px;
 }
 
-/* Keep row-action hints inside the row height so overflow:auto lists don't scroll. */
+/* Keep repository-action hints inside the row height so overflow:auto lists don't scroll. */
 .repo-row-actions .has-hint[data-hint]:hover:not(:disabled)::after,
-.repo-row-actions .has-hint[data-hint]:focus-visible:not(:disabled)::after,
-.branch-row-actions .has-hint[data-hint]:hover:not(:disabled)::after,
-.branch-row-actions .has-hint[data-hint]:focus-visible:not(:disabled)::after {
+.repo-row-actions .has-hint[data-hint]:focus-visible:not(:disabled)::after {
   top: 50%;
   left: auto;
   right: calc(100% + 6px);
   bottom: auto;
   transform: translateY(-50%);
+}
+
+/* Anchor branch-action hints to the row so the left edge and list viewport cannot clip them. */
+.branch-row-actions .has-hint {
+  position: static;
+}
+
+.branch-row-actions .has-hint[data-hint]:hover:not(:disabled)::after,
+.branch-row-actions .has-hint[data-hint]:focus-visible:not(:disabled)::after {
+  box-sizing: border-box;
+  top: 50%;
+  left: auto;
+  right: 0;
+  bottom: auto;
+  transform: translateY(-50%);
+  max-width: 100%;
+  white-space: normal;
 }
 
 .repo-branch-sub {
@@ -2367,13 +2403,23 @@ body.resizing-row * {
 }
 
 /* Repository setup, comparison and recovery use the existing modal/list vocabulary. */
-.remote-fields {
+.remote-modal h3, .remote-flow { overflow-wrap: anywhere; }
+.remote-flow .modal-lead { white-space: normal; overflow: visible; }
+.remote-flow .field { min-width: 0; }
+.remote-flow .field input, .remote-flow .field select { width: 100%; min-width: 0; }
+.remote-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--space-3);
 }
 
-.remote-fields input, .remote-fields select, .comparison-controls input { width: 100%; }
+.remote-form input, .comparison-controls input { width: 100%; }
+.remote-advanced summary { cursor: pointer; color: var(--text-muted); }
+.remote-advanced[open] summary { margin-bottom: var(--space-3); }
+.remote-form .modal-actions { margin-top: var(--space-1); }
+.remote-source { display: grid; gap: var(--space-1); overflow-wrap: anywhere; }
+.remote-destination { display: grid; gap: var(--space-1); }
+.remote-operation-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.remote-operation-status > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .remote-config-list { max-height: none; overflow: visible; }
 .remote-config-list li, .recovery-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); cursor: default; }
 .remote-config-description { flex: 1; min-width: 200px; }

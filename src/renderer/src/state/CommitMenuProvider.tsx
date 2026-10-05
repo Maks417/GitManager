@@ -72,36 +72,36 @@ export function CommitMenuProvider({ children }: { children: React.ReactNode }):
         disabled: busy || isHead,
         onSelect: afterConfirm(confirmCheckoutCommit(short), () => void actions.checkoutBranch(commit.sha))
       },
-      { label: 'Compare with HEAD…', disabled: !headSha, onSelect: () => setDialog({ kind: 'compare', commit }) },
-      { label: 'New branch here…', separatorBefore: true, onSelect: () => setDialog({ kind: 'branch', commit }) },
-      { label: 'New tag here…', onSelect: () => setDialog({ kind: 'tag', commit }) },
+      { label: 'Compare with HEAD', disabled: !headSha, onSelect: () => setDialog({ kind: 'compare', commit }) },
+      { label: 'New branch here', separatorBefore: true, onSelect: () => setDialog({ kind: 'branch', commit }) },
+      { label: 'New tag here', onSelect: () => setDialog({ kind: 'tag', commit }) },
       {
-        label: `Merge into ${onto}…`,
+        label: `Merge into ${onto}`,
         separatorBefore: true,
         disabled: blocked || isHead,
         onSelect: afterConfirm(confirmMerge(short), () => void actions.runMergeOrRebase('merge', commit.sha))
       },
       {
-        label: `Rebase ${onto} onto this…`,
+        label: `Rebase ${onto} onto this`,
         disabled: blocked || isHead,
         onSelect: afterConfirm(confirmRebase(short), () => void actions.runMergeOrRebase('rebase', commit.sha))
       },
       {
-        label: `Cherry-pick onto ${onto}…`,
+        label: `Cherry-pick onto ${onto}`,
         disabled: blocked || isHead,
         onSelect: afterConfirm(confirmCherryPick(short, commit.subject, onto), () =>
           void actions.runMergeOrRebase('cherryPick', commit.sha)
         )
       },
       {
-        label: 'Revert…',
+        label: 'Revert',
         disabled: blocked,
         onSelect: afterConfirm(confirmRevert(short, commit.subject, onto), () =>
           void actions.runMergeOrRebase('revert', commit.sha)
         )
       },
       {
-        label: `Reset ${onto} to here…`,
+        label: `Reset ${onto} to here`,
         danger: true,
         disabled: blocked || isHead,
         onSelect: () => setDialog({ kind: 'reset', commit })
@@ -117,7 +117,7 @@ export function CommitMenuProvider({ children }: { children: React.ReactNode }):
         })
       }
       items.push({
-        label: `Delete tag ${tag}…`,
+        label: `Delete tag ${tag}`,
         danger: true,
         separatorBefore: index === 0 && !hasRemote,
         disabled: busy,
@@ -125,7 +125,7 @@ export function CommitMenuProvider({ children }: { children: React.ReactNode }):
       })
       if (hasRemote) {
         items.push({
-          label: `Delete tag ${tag} on remote…`,
+          label: `Delete tag ${tag} on remote`,
           danger: true,
           disabled: busy,
           onSelect: afterConfirm(confirmDeleteTag(tag, true), () => void actions.pushTag(tag, true))

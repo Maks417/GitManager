@@ -62,7 +62,7 @@ export function ConfirmDialog({
             disabled={busy}
             onClick={() => onConfirm({ checked })}
           >
-            {busy ? 'Working…' : actionLabel}
+            {busy ? 'Working' : actionLabel}
           </Button>
         </div>
       }

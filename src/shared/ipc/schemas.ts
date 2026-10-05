@@ -516,7 +516,11 @@ export const RemoteOpRequestSchema = z.object({
   force: z.boolean().optional(),
   /** Explicit publication destination; both fields must be supplied together. */
   remote: z.string().min(1).optional(),
-  targetBranch: z.string().min(1).optional()
+  targetBranch: z.string().min(1).optional(),
+  /** Explicit push only: defaults to true for existing callers. */
+  setUpstream: z.boolean().optional(),
+  /** Explicit push only: refuse if the checked-out branch changed after destination review. */
+  expectedBranch: z.string().min(1).optional()
 })
 export type RemoteOpRequest = z.infer<typeof RemoteOpRequestSchema>
 

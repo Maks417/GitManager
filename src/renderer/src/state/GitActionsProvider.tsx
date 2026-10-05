@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import type { RemoteOpKind, RemoteOpResult, Repository, ResetMode, SequencerStep } from '@shared/ipc'
+import type { RemoteOpKind, RemoteOpRequest, RemoteOpResult, Repository, ResetMode, SequencerStep } from '@shared/ipc'
 import { useLatestRef } from '../hooks/useLatestRef'
 import { choosePullOrForcePush, chooseMergeOrRebase, confirmForceDeleteBranch, GIT_MISSING_MESSAGE } from '../lib/copy'
 import { toErrorMessage } from '../lib/errors'
@@ -26,6 +26,8 @@ export interface RemoteOpState {
   cancelling: boolean
 }
 
+type RemoteOpOptions = Pick<RemoteOpRequest, 'force' | 'remote' | 'targetBranch' | 'setUpstream' | 'expectedBranch'>
+
 export interface GitActions {
   /** False, with the Git-missing banner shown, when the Git command-line tools are not installed. */
   requireGit: () => boolean
@@ -39,6 +41,8 @@ export interface GitActions {
    * a pull or a force push, and a diverged pull a merge or a rebase.
    */
   runSync: (kind: RemoteOpKind) => Promise<void>
+  /** Review a first publication; otherwise push immediately. Throws so callers can show local errors. */
+  pushCurrentBranch: () => Promise<RemoteOpResult | undefined>
   /** Offer the way forward after a rejected push or a diverged pull; does nothing for other outcomes. */
   resolveRemoteOutcome: (result: RemoteOpResult) => Promise<void>
   /** Merge, rebase, cherry-pick or revert, then refresh; conflicts open the merge editor. */
@@ -50,7 +54,7 @@ export interface GitActions {
   cancelRemote: () => void
   // These throw, so the dialog or pane that started them can show the error in place.
   /** Fetch, pull or push with toolbar progress; resolves `cancelled` when stopped. */
-  runRemote: (kind: RemoteOpKind, options?: { force?: boolean; remote?: string; targetBranch?: string }) => Promise<RemoteOpResult>
+  runRemote: (kind: RemoteOpKind, options?: RemoteOpOptions) => Promise<RemoteOpResult>
   /** At HEAD, or at `startPoint` (a commit picked in History). */
   createBranch: (name: string, checkout: boolean, startPoint?: string) => Promise<void>
   createTag: (name: string, sha: string, message?: string) => Promise<void>
@@ -99,7 +103,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
     afterGitMutation
   } = useSessionActions()
   const { setSelection, setViewMode } = useSelectionActions()
-  const { openDialog, closeDialog } = useDialogActions()
+  const { openDialog, closeDialog, openBranchDialog } = useDialogActions()
   const confirm = useConfirm()
   const choose = useChoose()
   // Guards read the latest value without re-creating every action whenever `busy` toggles.
@@ -169,7 +173,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
   )
 
   const runRemote = useCallback(
-    async (kind: RemoteOpKind, options: { force?: boolean; remote?: string; targetBranch?: string } = {}): Promise<RemoteOpResult> => {
+    async (kind: RemoteOpKind, options: RemoteOpOptions = {}): Promise<RemoteOpResult> => {
       const repo = getActiveRepo()
       if (!repo) throw new Error('No repository is open.')
       const running = remoteOpRef.current
@@ -192,6 +196,25 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
     void window.gitManager.git.cancelOperation(current.opId)
   }, [publishRemoteOp])
 
+  const pushCurrentBranch = useCallback(async (): Promise<RemoteOpResult | undefined> => {
+    const repo = getActiveRepo()
+    if (!repo) throw new Error('No repository is open.')
+    if (remoteOpRef.current) throw new Error(remoteOpRunningMessage(remoteOpRef.current))
+    // Read from Git, including a commit just created by the commit-and-push form.
+    const branch = (await window.gitManager.repo.branches(repo.path)).find((item) => item.current)
+    if (!sameRepoPath(getActiveRepo()?.path, repo.path)) return undefined
+    if (!branch) throw new Error('Check out a branch before pushing (HEAD is detached).')
+    if (!branch.sha) throw new Error('Create a commit before publishing this branch.')
+    if (!branch.upstream) {
+      // Ensure the dialog can resolve a branch just created outside the app or by the commit form.
+      await afterGitMutation({ history: 'tip' })
+      if (!sameRepoPath(getActiveRepo()?.path, repo.path)) return undefined
+      openBranchDialog({ kind: 'publish', repoPath: repo.path, branchName: branch.name })
+      return undefined
+    }
+    return runRemote('push')
+  }, [getActiveRepo, openBranchDialog, runRemote, afterGitMutation])
+
   /** One remote operation with the busy state and banner; resolves its result, or undefined after an error. */
   const syncOnce = useCallback(
     async (kind: RemoteOpKind, force = false): Promise<RemoteOpResult | undefined> => {
@@ -204,7 +227,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       return runWithBusy(
         async () => {
           try {
-            return await runRemote(kind, { force })
+            return kind === 'push' && !force ? await pushCurrentBranch() : await runRemote(kind, { force })
           } finally {
             // Also after a failure or cancel: a fetch stopped part way may still have updated some refs.
             // Refreshes whichever repository is active by now, never switching back.
@@ -214,7 +237,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
         { setBusy, setError }
       )
     },
-    [getActiveRepo, runRemote, afterGitMutation, setBusy, setError]
+    [getActiveRepo, runRemote, pushCurrentBranch, afterGitMutation, setBusy, setError]
   )
 
   const runMergeOrRebase = useCallback(
@@ -453,6 +476,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       selectRepo,
       requestRemoveRepo,
       runSync,
+      pushCurrentBranch,
       resolveRemoteOutcome,
       runMergeOrRebase,
       checkoutBranch,
@@ -479,6 +503,7 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       selectRepo,
       requestRemoveRepo,
       runSync,
+      pushCurrentBranch,
       resolveRemoteOutcome,
       runMergeOrRebase,
       checkoutBranch,

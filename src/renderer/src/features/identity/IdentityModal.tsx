@@ -70,7 +70,7 @@ export function IdentityModal({ repoPath, onClose, onSaved }: Props): React.JSX.
             disabled={busy || loading || !name.trim() || !email.trim()}
             onClick={save}
           >
-            {busy ? 'Saving…' : 'Save'}
+            {busy ? 'Saving' : 'Save'}
           </Button>
         </div>
       }

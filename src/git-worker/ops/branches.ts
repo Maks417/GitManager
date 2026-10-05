@@ -5,7 +5,7 @@ import { GitCancelledError, type GitRunResult } from '../git-runner'
 import { throttleProgress } from '../progress'
 import { listConflictFiles } from './merge'
 import { assertRevision } from './guards'
-import { currentBranchName, gitOk, runGit } from './shared'
+import { currentBranchName, gitOk, resolveHeadSha, runGit } from './shared'
 import { assertRemoteName } from './remotes'
 import { saveCommitRecovery } from './recovery'
 
@@ -190,9 +190,10 @@ export async function forcePushRemote(repoPath: string, ctx: RemoteOpContext = {
   return pushBranch(repoPath, true, ctx)
 }
 
-/** Publish the checked-out branch to an explicit remote/branch and remember its upstream. */
+/** Push the checked-out branch to an explicit destination, optionally remembering its upstream. */
 export async function publishBranch(
-  repoPath: string, remote: string, targetBranch: string, ctx: RemoteOpContext = {}
+  repoPath: string, remote: string, targetBranch: string, setTracking = true,
+  expectedBranch?: string, ctx: RemoteOpContext = {}
 ): Promise<RemoteOpResult> {
   assertRemoteName(remote)
   assertRevision(targetBranch, 'destination branch')
@@ -200,14 +201,19 @@ export async function publishBranch(
   if (check.code !== 0) throw new Error('Enter a valid destination branch name.')
   const branch = await currentBranchName(repoPath)
   if (!branch) throw new Error('Check out a branch before publishing (HEAD is detached).')
+  if (expectedBranch !== undefined && branch !== assertRevision(expectedBranch, 'source branch')) {
+    throw new Error('The current branch changed. Close this dialog and review the new branch before pushing.')
+  }
+  if (!await resolveHeadSha(repoPath)) throw new Error('Create a commit before publishing this branch.')
   try {
-    const result = await runNetwork(repoPath, ['push', '--progress', '--set-upstream', remote, `HEAD:refs/heads/${targetBranch}`], ctx)
+    const result = await runNetwork(repoPath, ['push', '--progress', ...(setTracking ? ['--set-upstream'] : []), remote, `refs/heads/${branch}:refs/heads/${targetBranch}`], ctx)
     if (result.code !== 0) throw new Error(friendlyPushError(result.stderr || result.stdout))
   } catch (err) {
     if (err instanceof GitCancelledError) return { outcome: 'cancelled' }
     throw err
   }
-  await assertPushLanded(repoPath, branch)
+  // The explicit refspec names the destination Git accepted. A retained upstream may still be ahead
+  // or behind, so the ordinary push's upstream-based check would report the wrong result here.
   return { outcome: 'done' }
 }
 

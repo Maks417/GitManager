@@ -67,7 +67,7 @@ export function ResetModal({ commit, repoPath, branch, changedFiles, onClose, on
               })
             }
           >
-            {busy ? 'Resetting…' : `Reset (${mode})`}
+            {busy ? 'Resetting' : `Reset (${mode})`}
           </Button>
         </div>
       }

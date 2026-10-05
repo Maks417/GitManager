@@ -69,7 +69,7 @@ export function CompareModal({ repoPath, refs, initialBase, initialTarget, snaps
         <Field label="Base"><Input value={base} list="comparison-refs" onChange={(e) => setBase(e.target.value)} placeholder="Branch, tag or commit" onKeyDown={(e) => { if (e.key === 'Enter' && !busy && base.trim() && target.trim()) compare() }} /></Field>
         <Field label="Target"><Input value={target} list="comparison-refs" onChange={(e) => setTarget(e.target.value)} placeholder="Branch, tag or commit" onKeyDown={(e) => { if (e.key === 'Enter' && !busy && base.trim() && target.trim()) compare() }} /></Field>
         <Button disabled={busy} onClick={() => { setBase(target); setTarget(base) }}>Swap</Button>
-        <Button variant="primary" disabled={busy || !base.trim() || !target.trim()} onClick={compare}>{busy ? 'Comparing…' : 'Compare'}</Button>
+        <Button variant="primary" disabled={busy || !base.trim() || !target.trim()} onClick={compare}>{busy ? 'Comparing' : 'Compare'}</Button>
       </div>
       <datalist id="comparison-refs">{[...new Set(['HEAD', ...refs])].map((ref) => <option key={ref} value={ref} />)}</datalist>
       <label className="row-inline text-sm"><input type="checkbox" checked={mergeBase} onChange={(e) => setMergeBase(e.target.checked)} />Changes since common ancestor</label>

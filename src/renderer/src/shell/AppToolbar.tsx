@@ -43,7 +43,7 @@ export function AppToolbar(): React.JSX.Element {
   const { viewMode } = useSelectionCore()
   const { prefs, setThemePref } = useLayoutPrefsState()
   const { goHistory, selectWorkingCopy } = useWorkingTreeActions()
-  const { openDialog } = useDialogActions()
+  const { openDialog, openBranchDialog } = useDialogActions()
   const { runSync, cancelRemote } = useGitActions()
   const remoteOp = useRemoteOp()
   const hasRepo = Boolean(activeRepo)
@@ -187,12 +187,13 @@ export function AppToolbar(): React.JSX.Element {
               <button
                 type="button"
                 role="menuitem"
-                disabled={busy}
+                disabled={busy || !activeRepo?.remotes.length}
                 className="btn-icon has-hint has-hint-above"
                 title="Fetch remotes"
                 data-hint="Fetch remotes"
                 onClick={() => {
                   setSyncMenuOpen(false)
+                  syncTriggerRef.current?.focus()
                   void runSync('fetch')
                 }}
               >
@@ -202,12 +203,13 @@ export function AppToolbar(): React.JSX.Element {
               <button
                 type="button"
                 role="menuitem"
-                disabled={busy}
+                disabled={busy || !currentBranch?.upstream}
                 className="btn-icon has-hint has-hint-above"
                 title="Pull from upstream"
                 data-hint="Pull from upstream"
                 onClick={() => {
                   setSyncMenuOpen(false)
+                  syncTriggerRef.current?.focus()
                   void runSync('pull')
                 }}
               >
@@ -219,19 +221,22 @@ export function AppToolbar(): React.JSX.Element {
                 role="menuitem"
                 disabled={busy}
                 className="btn-icon has-hint has-hint-above"
-                title="Push to upstream"
-                data-hint="Push to upstream"
+                title={currentBranch?.upstream ? 'Push to upstream' : 'Review where to publish this branch'}
+                data-hint={currentBranch?.upstream ? 'Push to upstream' : 'Review where to publish this branch'}
                 onClick={() => {
                   setSyncMenuOpen(false)
+                  syncTriggerRef.current?.focus()
                   void runSync('push')
                 }}
               >
                 <ArrowUpFromLine size={16} strokeWidth={1.75} />
-                Push
+                {currentBranch?.upstream ? 'Push' : 'Publish branch'}
               </button>
-              <button type="button" role="menuitem" className="btn-icon" disabled={busy} onClick={() => { setSyncMenuOpen(false); openDialog('remotes') }}>
-                Remotes & publishing…
-              </button>
+              {currentBranch?.upstream && <button type="button" role="menuitem" className="btn-icon" disabled={busy} onClick={() => {
+                setSyncMenuOpen(false)
+                syncTriggerRef.current?.focus()
+                if (activeRepo) openBranchDialog({ kind: 'publish', repoPath: activeRepo.path, branchName: currentBranch.name })
+              }}>Push to</button>}
             </div>
           )}
         </div>
