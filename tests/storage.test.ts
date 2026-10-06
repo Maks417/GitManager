@@ -66,6 +66,12 @@ describe('preferences schema', () => {
     expect(AppPreferencesSchema.parse({ syntaxHighlighting: 'no' }).syntaxHighlighting).toBe(true)
     expect(AppPreferencesSchema.parse({ syntaxHighlighting: false }).syntaxHighlighting).toBe(false)
   })
+
+  it('lays out the merge editor in columns unless stacked was chosen', () => {
+    expect(AppPreferencesSchema.parse({}).mergeEditorLayout).toBe('columns')
+    expect(AppPreferencesSchema.parse({ mergeEditorLayout: 'rows' }).mergeEditorLayout).toBe('columns')
+    expect(AppPreferencesSchema.parse({ mergeEditorLayout: 'stacked' }).mergeEditorLayout).toBe('stacked')
+  })
 })
 
 describe('token storage', () => {

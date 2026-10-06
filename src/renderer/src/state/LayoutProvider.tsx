@@ -15,6 +15,7 @@ export type LayoutPrefs = Pick<
   | 'detailDock'
   | 'diffView'
   | 'syntaxHighlighting'
+  | 'mergeEditorLayout'
   | 'toggleDock'
   | 'toggleDiffView'
   | 'toggleSidebar'
@@ -24,6 +25,7 @@ export type LayoutPrefs = Pick<
   | 'setHistoryFilter'
   | 'setDiffView'
   | 'setSyntaxHighlighting'
+  | 'setMergeEditorLayout'
 >
 
 export type LayoutActions = Pick<LayoutBundle, 'persistLayout' | 'hydrateFromPrefs'>
@@ -83,6 +85,7 @@ export function LayoutProvider({ children }: { children: React.ReactNode }): Rea
       detailDock: layout.detailDock,
       diffView: layout.diffView,
       syntaxHighlighting: layout.syntaxHighlighting,
+      mergeEditorLayout: layout.mergeEditorLayout,
       toggleDock: layout.toggleDock,
       toggleDiffView: layout.toggleDiffView,
       toggleSidebar: layout.toggleSidebar,
@@ -91,7 +94,8 @@ export function LayoutProvider({ children }: { children: React.ReactNode }): Rea
       setThemePref: layout.setThemePref,
       setHistoryFilter: layout.setHistoryFilter,
       setDiffView: layout.setDiffView,
-      setSyntaxHighlighting: layout.setSyntaxHighlighting
+      setSyntaxHighlighting: layout.setSyntaxHighlighting,
+      setMergeEditorLayout: layout.setMergeEditorLayout
     }),
     [
       layout.prefs,
@@ -102,6 +106,7 @@ export function LayoutProvider({ children }: { children: React.ReactNode }): Rea
       layout.detailDock,
       layout.diffView,
       layout.syntaxHighlighting,
+      layout.mergeEditorLayout,
       layout.toggleDock,
       layout.toggleDiffView,
       layout.toggleSidebar,
@@ -110,7 +115,8 @@ export function LayoutProvider({ children }: { children: React.ReactNode }): Rea
       layout.setThemePref,
       layout.setHistoryFilter,
       layout.setDiffView,
-      layout.setSyntaxHighlighting
+      layout.setSyntaxHighlighting,
+      layout.setMergeEditorLayout
     ]
   )
 

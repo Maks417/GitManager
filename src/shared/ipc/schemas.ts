@@ -360,12 +360,23 @@ export const ConflictFileSchema = z.object({
 })
 export type ConflictFile = z.infer<typeof ConflictFileSchema>
 
+/** 1-based lines `start` up to, not including, `end`; an empty range marks lines removed before `start`. */
+export const LineRangeSchema = z.object({ start: z.number(), end: z.number() })
+export type LineRange = z.infer<typeof LineRangeSchema>
+
+/** A block of lines one side of a merge changed: where it is in that side, and the base lines it replaced. */
+export const SideChangeSchema = z.object({ side: LineRangeSchema, base: LineRangeSchema })
+export type SideChange = z.infer<typeof SideChangeSchema>
+
 export const MergeSidesSchema = z.object({
   path: z.string(),
   base: z.string(),
   ours: z.string(),
   theirs: z.string(),
   result: z.string(),
+  /** Lines of ours and theirs that differ from base; empty without a base or for large files. */
+  oursChanges: z.array(SideChangeSchema).default([]),
+  theirsChanges: z.array(SideChangeSchema).default([]),
   /** Text panes are empty when a side is binary or too large; resolve by taking a whole side. */
   binary: z.boolean(),
   tooLarge: z.boolean()
@@ -446,6 +457,8 @@ export const AppPreferencesSchema = z.object({
   diffView: z.enum(['inline', 'side-by-side']).default('inline').catch('inline'),
   /** Syntax colors in file diffs and the merge editor, for files small enough to color. */
   syntaxHighlighting: z.boolean().default(true).catch(true),
+  /** Merge editor panes: ours, result and theirs in three columns, or ours and theirs above a full-width result. */
+  mergeEditorLayout: z.enum(['columns', 'stacked']).default('columns').catch('columns'),
   historyFilter: z.enum(['all', 'current']).default('all').catch('all'),
   sidebarCollapsed: z.boolean().default(false).catch(false),
   branchesExpanded: z.boolean().default(false).catch(false),

@@ -54,7 +54,7 @@
         <source media="(prefers-color-scheme: light)" srcset="docs/assets/screenshots/merge-editor-light.png" />
         <img src="docs/assets/screenshots/merge-editor-dark.png" alt="Merge editor with ours, the result and theirs side by side for a conflicted file" />
       </picture>
-      <p><strong>Merge editor</strong><br />Resolve conflicts region by region, with ours, the result and theirs side by side.</p>
+      <p><strong>Merge editor</strong><br />Jump from conflict to conflict and resolve each in place, with ours, the result and theirs colored and scrolling together.</p>
     </td>
   </tr>
 </table>
@@ -68,7 +68,7 @@
 | **Recovery** | Restore tracked-change backups and create branches from saved commits or recent HEAD history |
 | **Commit actions** | Cherry-pick, revert, reset, create/delete tags and push tags from the commit actions menu |
 | **File history & blame** | Follow a file across renames and see which commits introduced its lines |
-| **Merge editor** | VS Code–style conflict resolution with Monaco |
+| **Merge editor** | Three-way conflict resolution: colored conflicts and scrollbar marks, F7 navigation, inline accept actions, panes that scroll together, columns or stacked layout |
 | **Host accounts** | GitHub, GitLab (including self-managed instances), and Bitbucket for browsing and cloning |
 | **New repository** | Create a repository with its initial branch and a first README commit |
 | **Clone** | HTTPS or SSH from URL or linked host listings, with progress and cancel |

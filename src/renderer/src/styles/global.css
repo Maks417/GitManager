@@ -1818,11 +1818,12 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   gap: 6px;
 }
 
-.merge-editors {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr 1fr;
-  gap: var(--space-2);
-  min-height: 0;
+/* Merge editor. Ours is green and theirs blue in every pane, on the scrollbar too (RULER in merge-decorations.ts). */
+.merge-editor-modal {
+  --merge-ours: var(--success);
+  --merge-theirs: #5b8fd9;
+  --merge-base: var(--text-muted);
+  --merge-conflict: var(--danger);
 }
 
 /* The merge editor fills a fixed-height dialog: its editors take whatever height is left. */
@@ -1830,7 +1831,13 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: 10px;
+  min-height: 0;
+  gap: 6px;
+}
+
+.merge-editor-modal .modal-actions .spacer,
+.merge-toolbar .spacer {
+  flex: 1;
 }
 
 .merge-toolbar {
@@ -1838,16 +1845,202 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
-  padding: 8px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
+}
+
+.merge-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.merge-nav-status {
+  min-width: 112px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .conflict-list {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  padding: 8px 12px;
+  padding: 6px 12px;
 }
+
+.conflict-list button,
+.merge-file-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.merge-file-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: var(--text-xs);
+  line-height: 16px;
+  text-align: center;
+  color: var(--text-inverse);
+  background: var(--merge-conflict);
+}
+
+.merge-file-done {
+  color: var(--text-muted);
+}
+
+.merge-file-done svg {
+  flex: none;
+  color: var(--success);
+}
+
+.merge-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  gap: var(--space-2);
+}
+
+.merge-main.with-files {
+  grid-template-columns: minmax(160px, 240px) minmax(0, 1fr);
+}
+
+.merge-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.merge-file-list button {
+  justify-content: space-between;
+  text-align: left;
+}
+
+.merge-editors {
+  display: grid;
+  gap: var(--space-2);
+  min-height: 0;
+  min-width: 0;
+}
+
+.merge-editors.columns {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-areas: 'ours result theirs';
+}
+
+.merge-editors.columns.with-base {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-areas: 'ours base result theirs';
+}
+
+.merge-editors.stacked {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1.25fr);
+  grid-template-areas:
+    'ours theirs'
+    'result result';
+}
+
+.merge-editors.stacked.with-base {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas:
+    'ours base theirs'
+    'result result result';
+}
+
+.merge-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* @monaco-editor/react's wrapper sets a 100% height, which would push the editor below the pane's heading. */
+.merge-pane > section {
+  flex: 1;
+  min-height: 0;
+  height: auto !important;
+}
+
+.merge-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.merge-pane-changes {
+  margin-left: auto;
+}
+
+.merge-pane-state {
+  margin-left: auto;
+  color: var(--success);
+}
+
+.merge-pane-state.unresolved {
+  color: var(--merge-conflict);
+}
+
+.merge-swatch {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.merge-swatch-ours { background: var(--merge-ours); }
+.merge-swatch-theirs { background: var(--merge-theirs); }
+.merge-swatch-base { background: var(--merge-base); }
+.merge-swatch-result { background: var(--accent); }
+
+/* Decorations inside the editors */
+.merge-ours-line { background: color-mix(in srgb, var(--merge-ours) 12%, transparent); }
+.merge-theirs-line { background: color-mix(in srgb, var(--merge-theirs) 12%, transparent); }
+.merge-base-line { background: color-mix(in srgb, var(--merge-base) 10%, transparent); }
+.merge-marker-line { background: color-mix(in srgb, var(--merge-conflict) 10%, transparent); }
+.merge-ours-line.merge-active { background: color-mix(in srgb, var(--merge-ours) 24%, transparent); }
+.merge-theirs-line.merge-active { background: color-mix(in srgb, var(--merge-theirs) 24%, transparent); }
+.merge-base-line.merge-active { background: color-mix(in srgb, var(--merge-base) 18%, transparent); }
+.merge-marker-line.merge-active { background: color-mix(in srgb, var(--merge-conflict) 22%, transparent); }
+.merge-ours-changed { background: color-mix(in srgb, var(--merge-ours) 7%, transparent); }
+.merge-theirs-changed { background: color-mix(in srgb, var(--merge-theirs) 7%, transparent); }
+
+.merge-ours-gutter,
+.merge-theirs-gutter,
+.merge-base-gutter {
+  width: 3px !important;
+  margin-left: 2px;
+}
+
+.merge-ours-gutter { background: var(--merge-ours); }
+.merge-theirs-gutter { background: var(--merge-theirs); }
+.merge-base-gutter { background: var(--merge-base); }
+
+.merge-active-margin {
+  background: color-mix(in srgb, var(--merge-conflict) 18%, transparent);
+}
+
+/* A side with no lines at a spot: a rule where the lines would be. */
+.merge-ours-gap { --merge-gap: var(--merge-ours); }
+.merge-theirs-gap { --merge-gap: var(--merge-theirs); }
+.merge-conflict-gap { --merge-gap: var(--merge-conflict); }
+.merge-gap-above { box-shadow: inset 0 2px 0 var(--merge-gap); }
+.merge-gap-below { box-shadow: inset 0 -2px 0 var(--merge-gap); }
+.merge-conflict-gap.merge-active.merge-gap-above { box-shadow: inset 0 3px 0 var(--merge-gap); }
+.merge-conflict-gap.merge-active.merge-gap-below { box-shadow: inset 0 -3px 0 var(--merge-gap); }
+
+.merge-conflict-actions .merge-action-ours { color: var(--merge-ours); }
+.merge-conflict-actions .merge-action-theirs { color: var(--merge-theirs); }
 
 .error-banner,
 .banner {

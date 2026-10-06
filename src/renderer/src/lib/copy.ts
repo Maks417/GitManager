@@ -122,6 +122,19 @@ export const confirmResolveByDeleting = (path: string): ConfirmRequest => ({
   danger: true
 })
 
+export const confirmLeaveMergeEdits = (path: string): ConfirmRequest => ({
+  title: 'Unsaved resolution',
+  message: `${path} has changes that are not saved. Leave them and open another file?`,
+  confirmLabel: 'Leave changes',
+  danger: true
+})
+
+export const confirmResetMergeResult = (path: string): ConfirmRequest => ({
+  title: 'Start over',
+  message: `Put ${path} back the way Git merged it? Your resolutions in this file are undone (Ctrl+Z brings them back).`,
+  confirmLabel: 'Start over'
+})
+
 export const COMMIT_TOO_DEEP = 'That commit is more than 10,000 commits down the history, too far to jump to.'
 
 export const branchTipTooDeep = (branch: string): string =>

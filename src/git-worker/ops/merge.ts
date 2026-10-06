@@ -1,12 +1,14 @@
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname } from 'path'
-import type { ConflictFile, MergeSides } from '@shared/ipc'
+import type { ConflictFile, LineRange, MergeSides, SideChange } from '@shared/ipc'
 import { readGitShowCapped } from '../git-runner'
 import { readRepoFile, resolveRepoPath, resolveRepoPathForWrite } from './guards'
 import { gitOk } from './shared'
 
 /** Monaco can't usefully edit more than this; larger conflicts are resolved by taking a side. */
 const MAX_MERGE_BYTES = 8 * 1024 * 1024
+/** The renderer's syntax-color limit (HIGHLIGHT_MAX_CHARS); larger sides are shown without changed-line marks. */
+const MAX_CHANGE_MARK_CHARS = 1_000_000
 
 export async function listConflictFiles(repoPath: string): Promise<ConflictFile[]> {
   const out = await gitOk(repoPath, ['ls-files', '-u', '-z'])
@@ -30,11 +32,42 @@ async function readStage(
   repoPath: string,
   stage: 1 | 2 | 3,
   path: string
-): Promise<{ text: string; binary: boolean; tooLarge: boolean }> {
+): Promise<{ exists: boolean; text: string; binary: boolean; tooLarge: boolean }> {
   const shown = await readGitShowCapped(repoPath, `:${stage}:${path}`, MAX_MERGE_BYTES)
-  if (!shown.ok) return { text: '', binary: false, tooLarge: false }
+  if (!shown.ok) return { exists: false, text: '', binary: false, tooLarge: false }
   const tooLarge = shown.truncated || shown.buffer.length >= MAX_MERGE_BYTES
-  return { text: shown.binary ? '' : shown.buffer.toString('utf8'), binary: shown.binary, tooLarge }
+  return { exists: true, text: shown.binary ? '' : shown.buffer.toString('utf8'), binary: shown.binary, tooLarge }
+}
+
+const HUNK_HEADER_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/
+
+/** A hunk header's `start,count` as a range; with no lines, the header names the line before the gap. */
+function headerRange(start: string, count: string | undefined): LineRange {
+  const first = Number(start)
+  const lines = count === undefined ? 1 : Number(count)
+  return lines === 0 ? { start: first + 1, end: first + 1 } : { start: first, end: first + lines }
+}
+
+/**
+ * The blocks of stage `side` that differ from the base stage, from a zero-context diff of the two blobs. Removed lines
+ * become an empty range in the side, added lines an empty range in the base.
+ */
+async function changesFromBase(repoPath: string, side: 2 | 3, path: string): Promise<SideChange[]> {
+  const out = await gitOk(repoPath, [
+    'diff',
+    '--no-color',
+    '--no-ext-diff',
+    '--no-textconv',
+    '-U0',
+    `:1:${path}`,
+    `:${side}:${path}`
+  ])
+  const changes: SideChange[] = []
+  for (const line of out.split('\n')) {
+    const m = HUNK_HEADER_RE.exec(line)
+    if (m) changes.push({ base: headerRange(m[1], m[2]), side: headerRange(m[3], m[4]) })
+  }
+  return changes
 }
 
 export async function getMergeSides(repoPath: string, path: string): Promise<MergeSides> {
@@ -50,12 +83,21 @@ export async function getMergeSides(repoPath: string, path: string): Promise<Mer
   const binary = base.binary || ours.binary || theirs.binary || working.buffer.includes(0)
   const tooLarge = base.tooLarge || ours.tooLarge || theirs.tooLarge || working.truncated
   const editable = !binary && !tooLarge
+  // Marking changed lines is a guide, like syntax colors, and is left out for the same large files.
+  const marksChanges =
+    editable && base.exists && Math.max(base.text.length, ours.text.length, theirs.text.length) <= MAX_CHANGE_MARK_CHARS
+  const [oursChanges, theirsChanges] = await Promise.all([
+    marksChanges && ours.exists ? changesFromBase(repoPath, 2, path) : [],
+    marksChanges && theirs.exists ? changesFromBase(repoPath, 3, path) : []
+  ])
   return {
     path,
     base: editable ? base.text : '',
     ours: editable ? ours.text : '',
     theirs: editable ? theirs.text : '',
     result: editable && working.exists ? working.buffer.toString('utf8') : '',
+    oursChanges,
+    theirsChanges,
     binary,
     tooLarge
   }

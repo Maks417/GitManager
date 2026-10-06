@@ -29,6 +29,7 @@ export function useLayoutPrefs(): {
   detailDock: 'right' | 'bottom'
   diffView: AppPreferences['diffView']
   syntaxHighlighting: boolean
+  mergeEditorLayout: AppPreferences['mergeEditorLayout']
   persistLayout: (partial: Partial<AppPreferences>) => void
   hydrateFromPrefs: (p: AppPreferences) => void
   toggleDock: () => void
@@ -40,6 +41,7 @@ export function useLayoutPrefs(): {
   setHistoryFilter: (historyFilter: AppPreferences['historyFilter']) => void
   setDiffView: (diffView: AppPreferences['diffView']) => void
   setSyntaxHighlighting: (enabled: boolean) => void
+  setMergeEditorLayout: (layout: AppPreferences['mergeEditorLayout']) => void
 } {
   const [prefs, setPrefs] = useState<AppPreferences | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState<number>(LAYOUT_DEFAULTS.sidebarWidth)
@@ -67,6 +69,7 @@ export function useLayoutPrefs(): {
   const detailDock = prefs?.detailDock === 'right' ? 'right' : 'bottom'
   const diffView = prefs?.diffView === 'side-by-side' ? 'side-by-side' : 'inline'
   const syntaxHighlighting = prefs?.syntaxHighlighting !== false
+  const mergeEditorLayout = prefs?.mergeEditorLayout === 'stacked' ? 'stacked' : 'columns'
 
   const persistLayout = useCallback((partial: Partial<AppPreferences>): void => {
     void window.gitManager.prefs.set(partial).then(setPrefs)
@@ -143,6 +146,10 @@ export function useLayoutPrefs(): {
     void window.gitManager.prefs.set({ syntaxHighlighting: enabled }).then(setPrefs)
   }, [])
 
+  const setMergeEditorLayout = useCallback((layout: AppPreferences['mergeEditorLayout']): void => {
+    void window.gitManager.prefs.set({ mergeEditorLayout: layout }).then(setPrefs)
+  }, [])
+
   return {
     prefs,
     setPrefs,
@@ -168,6 +175,7 @@ export function useLayoutPrefs(): {
     detailDock,
     diffView,
     syntaxHighlighting,
+    mergeEditorLayout,
     persistLayout,
     hydrateFromPrefs,
     toggleDock,
@@ -178,6 +186,7 @@ export function useLayoutPrefs(): {
     setThemePref,
     setHistoryFilter,
     setDiffView,
-    setSyntaxHighlighting
+    setSyntaxHighlighting,
+    setMergeEditorLayout
   }
 }
