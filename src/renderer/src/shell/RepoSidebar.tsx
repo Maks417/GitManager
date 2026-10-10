@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import type React from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Ellipsis, ListFilter, Locate, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { confirmDeleteBranch, confirmMerge, confirmRebase } from '../lib/copy'
@@ -21,7 +21,7 @@ const stopRowEvents = {
 
 type SidebarMenu = { kind: 'local' | 'remote' | 'remotes'; name: string; x: number; y: number }
 
-export function RepoSidebar(): React.JSX.Element {
+export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
   const { busy } = useAppStatus()
   const activeRepo = useActiveRepo()
   const { repos, branches, remoteBranches, currentBranch, localBranchNames } = useSession()
@@ -168,4 +168,4 @@ export function RepoSidebar(): React.JSX.Element {
       )}
     </aside>
   )
-}
+})

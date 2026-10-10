@@ -8,7 +8,7 @@ import {
   type RemoteOpResult,
   type TagPushRequest
 } from '@shared/ipc'
-import { runCancellableOp } from '../git-worker/client'
+import { ensureCommitGraph, runCancellableOp } from '../git-worker/client'
 import type { CancellableGitMethod } from '../git-worker/method-registry'
 
 const METHODS = { fetch: 'fetchRemote', pull: 'pullRemote', push: 'pushRemote' } as const
@@ -51,7 +51,12 @@ export function runRemoteOperation(
     return runTracked(sender, request.opId, 'publishBranch', [request.repoPath, request.remote, request.targetBranch, request.setUpstream ?? true, request.expectedBranch], { repoPath: request.repoPath, kind })
   }
   const method = kind === 'push' && request.force ? 'forcePushRemote' : METHODS[kind]
-  return runTracked(sender, request.opId, method, [request.repoPath], { repoPath: request.repoPath, kind })
+  const result = runTracked<RemoteOpResult>(sender, request.opId, method, [request.repoPath], { repoPath: request.repoPath, kind })
+  if (kind !== 'push') {
+    // Fetched commits join the commit-graph, so history stays fast after large fetches.
+    void result.then(() => ensureCommitGraph(request.repoPath, { afterFetch: true }), () => undefined)
+  }
+  return result
 }
 
 /** Push one tag (or delete it on the remote), shown and cancelled like a push. */

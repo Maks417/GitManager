@@ -9,10 +9,10 @@ import type {
   ImagePreview,
   ImageSide
 } from '@shared/ipc'
-import { decorateCommitsWithColors, layoutCommitGraph } from '@history-core/layout'
+import { decorateCommitsWithColors } from '@history-core/layout'
 import { matchBranchPatterns, splitBranchTokens, type BranchName } from '@shared/branch-search'
 import { HISTORY_PAGE_SIZE } from '@shared/layout-defaults'
-import { parseHistorySearch, type HistorySearch } from '../history-query'
+import { parseHistorySearch, type HistorySearch } from '@shared/history-query'
 import { gitOk, readGitBlobCapped, readGitShowCapped, runGit, runGitDelimited } from '../git-runner'
 import { assertRevision, assertSha, readRepoFile, resolveRepoPath } from './guards'
 import { getDiffHunks } from './patch'
@@ -159,7 +159,7 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
 
   // Unborn branch / empty repo: no commits yet
   if (!headSha && !query.branch && branchPatterns.length === 0) {
-    return { commits: [], graph: [], nextCursor: null, headSha: null }
+    return { commits: [], nextCursor: null, headSha: null }
   }
 
   if (query.branch) assertRevision(query.branch, 'branch')
@@ -191,7 +191,6 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
           const decorated = decorateCommitsWithColors(commits)
           return {
             commits: decorated,
-            graph: layoutCommitGraph(decorated),
             nextCursor: null,
             headSha
           }
@@ -207,7 +206,6 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
     if (branchRefs.length === 0) {
       return {
         commits: [],
-        graph: [],
         nextCursor: null,
         headSha,
         branches: [],
@@ -232,7 +230,7 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
     input = `${branchRefs.map((b) => b.refName).join('\n')}\n`
   } else if (query.branch) {
     if (query.branch === 'HEAD' && !headSha) {
-      return { commits: [], graph: [], nextCursor: null, headSha: null }
+      return { commits: [], nextCursor: null, headSha: null }
     }
     args.push(query.branch)
   } else {
@@ -260,7 +258,7 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
   })
   if (logResult.code !== 0) {
     if (/does not have any commits yet|bad revision|unknown revision|ambiguous argument/i.test(logResult.stderr)) {
-      return { commits: [], graph: [], nextCursor: null, headSha, branches }
+      return { commits: [], nextCursor: null, headSha, branches }
     }
     throw new Error(logResult.stderr || 'git log failed')
   }
@@ -283,14 +281,12 @@ export async function loadHistory(query: HistoryQuery): Promise<HistoryPage> {
     commits = commits.slice(0, pageSize)
   }
 
+  // The renderer lays out the graph: it continues later pages from a checkpoint of the earlier ones.
   const decorated = decorateCommitsWithColors(commits)
-  // Later pages are laid out on the renderer from a checkpoint; a page-local graph is not continuous.
-  const graph = skip > 0 ? [] : layoutCommitGraph(decorated)
   const nextCursor = decorated.length >= pageSize ? decorated[decorated.length - 1]?.sha ?? null : null
 
   return {
     commits: decorated,
-    graph,
     nextCursor,
     headSha,
     branches,

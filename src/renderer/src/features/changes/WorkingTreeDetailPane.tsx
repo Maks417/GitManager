@@ -1,52 +1,31 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import type React from 'react'
 import {
   Archive,
   ArrowUpFromLine,
-  Check,
   ChevronDown,
   ChevronRight,
   History,
   ListMinus,
   ListPlus,
   Minus,
-  Pencil,
   Play,
   Plus,
   Trash2
 } from 'lucide-react'
-import type {
-  GitIdentity,
-  PartialAction,
-  PartialSelection,
-  RemoteOpResult,
-  StashEntry,
-  StatusEntry
-} from '@shared/ipc'
-import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
+import type { GitIdentity, PartialAction, PartialSelection, StashEntry } from '@shared/ipc'
+import { ChangesFileList } from './ChangesFileList'
+import { CommitForm } from './CommitForm'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { OperationBar } from '../../components/OperationBar'
 import { Splitter } from '../../components/Splitter'
-import {
-  Button,
-  FileStatusDot,
-  IconButton,
-  isMenuKey,
-  menuPointFor,
-  RefPill,
-  SegmentedControl
-} from '../../components/ui'
-import type { DiffSide } from '../../hooks/selection'
+import { Button, IconButton, SegmentedControl } from '../../components/ui'
 import { CONFIRM_DISCARD, confirmDiscardPart, confirmDropStash } from '../../lib/copy'
-import { loadCommitDraft, saveCommitDraft } from '../../logic/commit-drafts'
 import { toErrorMessage } from '../../lib/errors'
-import { statusKindFor } from '../../logic/file-status'
-import { nextListIndex } from '../../logic/list-nav'
 import { useAppStatusActions } from '../../state/AppStatusProvider'
 import { useConfirm } from '../../state/ConfirmProvider'
-import { useFileMenu, type FileTarget } from '../../state/FileMenuProvider'
 import { useDialogActions } from '../../state/DialogsProvider'
 import { useGitActions } from '../../state/GitActionsProvider'
 import { useHistoryState } from '../../state/HistoryProvider'
@@ -71,47 +50,31 @@ function formatIdentity(id: GitIdentity | null | undefined): string {
   return `${id.name} <${id.email}>`
 }
 
-const STAGE_BEFORE_COMMIT = NOTHING_STAGED_COMMIT
+const NONE_CHECKED: ReadonlySet<string> = new Set()
 
-const changesRowId = (index: number): string => `changes-row-${index}`
-const rowKey = (side: DiffSide, path: string): string => `${side}\0${path}`
-
-export function WorkingTreeDetailPane(): React.JSX.Element {
+export const WorkingTreeDetailPane = memo(function WorkingTreeDetailPane(): React.JSX.Element {
   const repoPath = useActiveRepo().path
   const { status } = useStatus()
   const { identity, rebaseInProgress, mergeInProgress, sequencerOp } = useSession()
   const { afterGitMutation } = useSessionActions()
   const { focusedStatusPath: focusedPath, diffSide } = useSelectionFocus()
   const { diff, diffLoading } = useSelectionDiffContent()
-  const { setFocusedStatusPath, setDiffSide } = useSelectionActions()
+  const { setDiffSide } = useSelectionActions()
   const { headSha } = useHistoryState()
   const { setError: onError } = useAppStatusActions()
   const { goHistory } = useWorkingTreeActions()
   const { openDialog } = useDialogActions()
-  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep, pushCurrentBranch, resolveRemoteOutcome } =
-    useGitActions()
+  const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep } = useGitActions()
   const { diffView, syntaxHighlighting } = useLayoutPrefsState()
   const { persistLayout } = useLayoutActions()
   const { changesFilesWidth: filesWidth, setChangesFilesWidth } = useLayoutPaneFiles()
   const confirm = useConfirm()
-  const { openFileMenu } = useFileMenu()
   const canAmend = Boolean(headSha)
 
-  const [message, setMessageState] = useState(() => loadCommitDraft(repoPath))
-  const setMessage = (next: string): void => {
-    saveCommitDraft(repoPath, next)
-    setMessageState(next)
-  }
-  const [amendChecked, setAmend] = useState(false)
-  // Nothing can be amended before the first commit.
-  const amend = amendChecked && canAmend
-  const [pushAfterCommit, setPushAfterCommit] = useState(false)
-  const [checked, setChecked] = useState<string[]>([])
+  const [checked, setChecked] = useState<ReadonlySet<string>>(NONE_CHECKED)
   const [busy, setBusy] = useState(false)
   const [stashes, setStashes] = useState<StashEntry[]>([])
   const [stashesExpanded, setStashesExpanded] = useState(false)
-  const [stagedExpanded, setStagedExpanded] = useState(true)
-  const [changesExpanded, setChangesExpanded] = useState(true)
 
   const focused = useMemo(() => status.find((s) => s.path === focusedPath), [status, focusedPath])
   const bothSides = Boolean(focused?.staged && focused?.unstaged)
@@ -123,20 +86,6 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
   )
   const stageablePaths = useMemo(() => changesEntries.map((s) => s.path), [changesEntries])
   const unstageablePaths = useMemo(() => stagedEntries.map((s) => s.path), [stagedEntries])
-
-  // The rows the arrow keys walk through: staged files, then the other changes, as far as they are expanded.
-  const navRows = useMemo(
-    () => [
-      ...(stagedExpanded ? stagedEntries.map((entry) => ({ entry, side: 'staged' as DiffSide })) : []),
-      ...(changesExpanded ? changesEntries.map((entry) => ({ entry, side: 'unstaged' as DiffSide })) : [])
-    ],
-    [stagedExpanded, stagedEntries, changesExpanded, changesEntries]
-  )
-  const navIndexByKey = useMemo(
-    () => new Map(navRows.map((row, index) => [rowKey(row.side, row.entry.path), index])),
-    [navRows]
-  )
-  const navIndex = focusedPath ? (navIndexByKey.get(rowKey(diffSide, focusedPath)) ?? -1) : -1
 
   const loadStashes = useCallback(async (): Promise<void> => {
     try {
@@ -191,147 +140,28 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
     )
   }
 
-  // Concluding a merge may legitimately commit no new changes (e.g. every conflict resolved as ours).
-  const needsStageBeforeCommit = !amend && !mergeInProgress && stagedEntries.length === 0
-
-  const toggleChecked = (path: string): void => {
-    setChecked((prev) => (prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]))
-  }
-
-  const setGroupChecked = (paths: string[], selected: boolean): void => {
+  const toggleChecked = useCallback((path: string): void => {
     setChecked((prev) => {
-      if (selected) return [...new Set([...prev, ...paths])]
-      const drop = new Set(paths)
-      return prev.filter((p) => !drop.has(p))
+      const next = new Set(prev)
+      if (!next.delete(path)) next.add(path)
+      return next
     })
-  }
+  }, [])
 
-  const groupAllChecked = (paths: string[]): boolean =>
-    paths.length > 0 && paths.every((p) => checked.includes(p))
+  const setGroupChecked = useCallback((paths: string[], selected: boolean): void => {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      for (const p of paths) {
+        if (selected) next.add(p)
+        else next.delete(p)
+      }
+      return next
+    })
+  }, [])
 
-  const targets = checked
+  const clearChecked = useCallback((): void => setChecked(NONE_CHECKED), [])
 
-  const fileTarget = (s: StatusEntry): FileTarget => ({
-    path: s.path,
-    inWorkTree: s.workTreeStatus !== 'D' && s.indexStatus !== 'D',
-    untracked: s.untracked
-  })
-
-  const onFilesKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
-    // Section checkboxes and toggles handle their own keys.
-    if (e.target !== e.currentTarget) return
-    if (isMenuKey(e)) {
-      const row = navRows[navIndex]
-      const el = document.getElementById(changesRowId(navIndex))
-      if (!row || !el) return
-      e.preventDefault()
-      openFileMenu(fileTarget(row.entry), menuPointFor(el))
-      return
-    }
-    if (e.key === ' ') {
-      const row = navRows[navIndex]
-      if (!row) return
-      e.preventDefault()
-      toggleChecked(row.entry.path)
-      return
-    }
-    const next = nextListIndex(e.key, navIndex, navRows.length)
-    if (next === null) return
-    e.preventDefault()
-    const row = navRows[next]
-    setFocusedStatusPath(row.entry.path)
-    setDiffSide(row.side)
-    document.getElementById(changesRowId(next))?.scrollIntoView({ block: 'nearest' })
-  }
-
-  const renderFileRow = (s: StatusEntry, side: DiffSide): React.JSX.Element => {
-    const index = navIndexByKey.get(rowKey(side, s.path)) ?? -1
-    const isActive = focusedPath === s.path && diffSide === side
-    const isChecked = checked.includes(s.path)
-    return (
-      <li
-        key={`${side}:${s.path}`}
-        id={index >= 0 ? changesRowId(index) : undefined}
-        role="option"
-        aria-selected={isActive}
-        aria-checked={isChecked}
-        className={[isActive ? 'active' : '', isChecked ? 'checked' : ''].filter(Boolean).join(' ')}
-        onClick={() => {
-          setFocusedStatusPath(s.path)
-          setDiffSide(side)
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          setFocusedStatusPath(s.path)
-          setDiffSide(side)
-          openFileMenu(fileTarget(s), { x: e.clientX, y: e.clientY })
-        }}
-        title={s.path}
-      >
-        <div className="row-inline">
-          <input
-            type="checkbox"
-            checked={isChecked}
-            // Space on the list checks the active file, so the boxes stay out of the Tab order and a
-            // click leaves keyboard focus on the list.
-            tabIndex={-1}
-            onMouseDown={(e) => e.preventDefault()}
-            onChange={() => toggleChecked(s.path)}
-            onClick={(e) => e.stopPropagation()}
-            title="Check to include in Stage / Unstage / Discard"
-          />
-          <FileStatusDot kind={statusKindFor(s, side)} oldPath={s.oldPath} />
-          <span className="cell-ellipsis">{s.path}</span>
-          {s.conflicted && <RefPill tone="danger">conflict</RefPill>}
-        </div>
-      </li>
-    )
-  }
-
-  const renderFileSection = (
-    label: string,
-    entries: StatusEntry[],
-    side: DiffSide,
-    expanded: boolean,
-    onToggle: () => void
-  ): React.JSX.Element | null => {
-    if (entries.length === 0) return null
-    const paths = entries.map((s) => s.path)
-    return (
-      <div className="changes-file-section" role="group" aria-label={label}>
-        <div className="changes-file-section-header">
-          <label className="row-inline changes-select-all changes-file-section-check">
-            <input
-              type="checkbox"
-              checked={groupAllChecked(paths)}
-              disabled={busy}
-              onChange={(e) => setGroupChecked(paths, e.target.checked)}
-              title={`Select all ${label.toLowerCase()} files`}
-            />
-          </label>
-          <button
-            type="button"
-            className="panel-title panel-disclosure changes-file-section-toggle"
-            onClick={onToggle}
-            aria-expanded={expanded}
-            title={expanded ? `Collapse ${label}` : `Expand ${label}`}
-          >
-            <span>
-              {label} ({entries.length})
-            </span>
-            <span className="muted">
-              {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </span>
-          </button>
-        </div>
-        {expanded && (
-          <ul className="file-list" role="presentation">
-            {entries.map((s) => renderFileRow(s, side))}
-          </ul>
-        )}
-      </div>
-    )
-  }
+  const targets = useMemo(() => [...checked], [checked])
 
   const identityBar = (
     <div className="identity-bar">
@@ -488,10 +318,10 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
             <label className="row-inline changes-select-all">
               <input
                 type="checkbox"
-                checked={status.length > 0 && checked.length === status.length}
+                checked={status.length > 0 && status.every((s) => checked.has(s.path))}
                 disabled={busy || status.length === 0}
                 onChange={(e) => {
-                  setChecked(e.target.checked ? status.map((s) => s.path) : [])
+                  setChecked(e.target.checked ? new Set(status.map((s) => s.path)) : NONE_CHECKED)
                 }}
                 title="Select all files"
               />
@@ -508,7 +338,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
                 <span className="changes-count-unstaged">{changesEntries.length}</span> unstaged
               </>
             )}
-            {checked.length > 0 ? ` · ${checked.length} selected` : ''}
+            {checked.size > 0 ? ` · ${checked.size} selected` : ''}
           </span>
           {operationBar}
           <div className="changes-actions">
@@ -520,7 +350,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
               onClick={() =>
                 void run(async () => {
                   await window.gitManager.git.stage(repoPath, targets)
-                  setChecked([])
+                  setChecked(NONE_CHECKED)
                 })
               }
             >
@@ -535,7 +365,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
                 const paths = stageablePaths
                 void run(async () => {
                   await window.gitManager.git.stage(repoPath, paths)
-                  setChecked([])
+                  setChecked(NONE_CHECKED)
                 })
               }}
             >
@@ -549,7 +379,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
               onClick={() =>
                 void run(async () => {
                   await window.gitManager.git.unstage(repoPath, targets)
-                  setChecked([])
+                  setChecked(NONE_CHECKED)
                 })
               }
             >
@@ -564,7 +394,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
                 const paths = unstageablePaths
                 void run(async () => {
                   await window.gitManager.git.unstage(repoPath, paths)
-                  setChecked([])
+                  setChecked(NONE_CHECKED)
                 })
               }}
             >
@@ -581,7 +411,7 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
                   if (!ok) return
                   void run(async () => {
                     await window.gitManager.git.discard(repoPath, paths)
-                    setChecked([])
+                    setChecked(NONE_CHECKED)
                   })
                 })
               }}
@@ -590,117 +420,29 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
             </Button>
           </div>
         </div>
-        <div
-          className="changes-file-list"
-          role="listbox"
-          aria-label="Changed files"
-          tabIndex={0}
-          aria-activedescendant={navIndex >= 0 ? changesRowId(navIndex) : undefined}
-          onKeyDown={onFilesKeyDown}
-          data-pane-focus
-        >
-          {renderFileSection('Staged', stagedEntries, 'staged', stagedExpanded, () =>
-            setStagedExpanded((v) => !v)
-          )}
-          {renderFileSection('Changes', changesEntries, 'unstaged', changesExpanded, () =>
-            setChangesExpanded((v) => !v)
-          )}
-        </div>
+        <ChangesFileList
+          stagedEntries={stagedEntries}
+          changesEntries={changesEntries}
+          checked={checked}
+          busy={busy}
+          onToggleChecked={toggleChecked}
+          onSetGroupChecked={setGroupChecked}
+        />
         {stashPanel}
-        <div className="changes-commit-form">
-          {identityBar}
-          {!identityReady && (
-            <p className="muted text-sm" style={{ margin: 0 }}>
-              Set your name and email before committing.
-            </p>
-          )}
-          {needsStageBeforeCommit && changesEntries.length > 0 && (
-            <p className="muted text-sm" style={{ margin: 0 }}>
-              Stage files with <strong>Stage</strong> or <strong>Stage all</strong> before committing.
-            </p>
-          )}
-          <textarea
-            rows={3}
-            placeholder="Commit message"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-          />
-          <label className="amend-check row-inline text-sm">
-            <input
-              type="checkbox"
-              checked={amend}
-              disabled={!canAmend || busy}
-              onChange={(e) => setAmend(e.target.checked)}
-            />
-            Amend last commit
-          </label>
-          {amend && (
-            <p className="muted text-xs" style={{ margin: 0 }}>
-              Replaces HEAD with this message and any staged changes.
-            </p>
-          )}
-          <label className="amend-check row-inline text-sm">
-            <input
-              type="checkbox"
-              checked={pushAfterCommit}
-              disabled={busy}
-              onChange={(e) => setPushAfterCommit(e.target.checked)}
-            />
-            Push to remote
-          </label>
-          <Button
-            variant="primary"
-            icon={
-              amend ? (
-                <Pencil size={16} strokeWidth={1.75} />
-              ) : (
-                <Check size={16} strokeWidth={1.75} />
-              )
-            }
-            hint={
-              needsStageBeforeCommit && changesEntries.length > 0
-                ? STAGE_BEFORE_COMMIT
-                : amend
-                  ? 'Amend the last commit'
-                  : 'Create a new commit'
-            }
-            title={
-              needsStageBeforeCommit && changesEntries.length > 0
-                ? STAGE_BEFORE_COMMIT
-                : amend
-                  ? 'Amend the last commit'
-                  : 'Create a new commit'
-            }
-            disabled={busy || !message.trim() || !identityReady}
-            onClick={() => {
-              let pushed: RemoteOpResult | undefined
-              void run(async () => {
-                if (needsStageBeforeCommit) {
-                  if (changesEntries.length > 0) throw new Error(STAGE_BEFORE_COMMIT)
-                  throw new Error('Nothing to commit — the working tree is clean.')
-                }
-                await window.gitManager.git.commit(repoPath, message.trim(), amend)
-                // The commit exists now: clear the form before pushing, which can fail on its own.
-                setMessage('')
-                setAmend(false)
-                setChecked([])
-                if (pushAfterCommit) {
-                  try {
-                    // Same path as Sync → Push: progress and Cancel in the toolbar.
-                    pushed = await pushCurrentBranch()
-                  } catch (err) {
-                    throw new Error(`Committed, but the push failed: ${toErrorMessage(err)}`)
-                  }
-                }
-              }).then(() => {
-                // A rejected push offers a pull or a force push, once this pane is no longer busy.
-                if (pushed) void resolveRemoteOutcome(pushed)
-              })
-            }}
-          >
-            {amend ? 'Amend' : 'Commit'}
-          </Button>
-        </div>
+        <CommitForm
+          // Each repository restores its own saved draft.
+          key={repoPath}
+          repoPath={repoPath}
+          busy={busy}
+          canAmend={canAmend}
+          identityReady={identityReady}
+          identityBar={identityBar}
+          stagedCount={stagedEntries.length}
+          changesCount={changesEntries.length}
+          mergeInProgress={mergeInProgress}
+          run={run}
+          onCommitted={clearChecked}
+        />
       </aside>
       <Splitter
         axis="x"
@@ -751,4 +493,4 @@ export function WorkingTreeDetailPane(): React.JSX.Element {
       </div>
     </div>
   )
-}
+})

@@ -17,10 +17,12 @@ import {
   layoutCommitGraphWithCheckpoint,
   type LayoutCheckpoint
 } from '@history-core/layout'
-import { mergeTipPage } from '@history-core/tip-merge'
+import { mergeTipPage, reuseLoadedCommits, sameCommitList } from '@history-core/tip-merge'
+import { searchSkipsCommits } from '@shared/history-query'
 import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
+import { selectionForNewRepository } from '../logic/new-repo-selection'
 import type { Selection, ViewMode } from './selection'
 import { useLatestRef } from './useLatestRef'
 
@@ -72,6 +74,8 @@ interface HistoryList {
   /** Lane wait map after `graph`, so load-more can append without a full relayout. */
   layoutCheckpoint: LayoutCheckpoint
   maxLane: number
+  /** A search that skips commits: drawn as one column of dots (see `LayoutOptions.unlinked`). */
+  unlinked: boolean
   headSha: string | null
   nextCursor: string | null
   branchFilter: string[] | null
@@ -86,6 +90,8 @@ type UseHistoryArgs = {
   search: string
   historyFilter: 'all' | 'current' | undefined
   busy: boolean
+  /** The view shown; a new repository keeps the working copy selected in Changes. */
+  viewMode: ViewMode
   setBusy: (busy: boolean) => void
   setError: (msg: string | null) => void
   setSelection: React.Dispatch<React.SetStateAction<Selection | null>>
@@ -102,6 +108,7 @@ export function useHistory({
   search,
   historyFilter,
   busy,
+  viewMode,
   setBusy,
   setError,
   setSelection,
@@ -212,14 +219,15 @@ export function useHistory({
             if (seq !== loadSeqRef.current) return undefined
             if (reveal) loadSeqRef.current++
             appliedSearchRef.current = searchText
-            // Prefer the worker graph for display, but always derive a checkpoint so load-more can append.
-            const laidOut = layoutCommitGraphWithCheckpoint(page.commits)
+            const unlinked = searchSkipsCommits(searchText)
+            const laidOut = layoutCommitGraphWithCheckpoint(page.commits, { unlinked })
             writeList({
               key,
               commits: page.commits,
-              graph: page.graph.length === page.commits.length ? page.graph : laidOut.nodes,
+              graph: laidOut.nodes,
               layoutCheckpoint: laidOut.checkpoint,
               maxLane: laidOut.maxLane,
+              unlinked,
               headSha: page.headSha,
               nextCursor: page.nextCursor,
               branchFilter: page.branches ?? null,
@@ -266,12 +274,14 @@ export function useHistory({
         // A refresh replaced the list meanwhile: this page's offset no longer applies.
         if (!isCurrentRepo(repoPath) || listRef.current !== loaded) return
         const seen = new Set(loaded.commits.map((c) => c.sha))
-        const appended = page.commits.filter((c) => !seen.has(c.sha))
-        const commits = decorateCommitsWithColors([...loaded.commits, ...appended])
-        const laidOut = appendLayoutCommitGraph(loaded.layoutCheckpoint, appended)
+        const appended = decorateCommitsWithColors(
+          page.commits.filter((c) => !seen.has(c.sha)),
+          loaded.commits
+        )
+        const laidOut = appendLayoutCommitGraph(loaded.layoutCheckpoint, appended, { unlinked: loaded.unlinked })
         writeList({
           ...loaded,
-          commits,
+          commits: [...loaded.commits, ...appended],
           graph: [...loaded.graph, ...laidOut.nodes],
           layoutCheckpoint: laidOut.checkpoint,
           maxLane: Math.max(loaded.maxLane, laidOut.maxLane),
@@ -307,26 +317,39 @@ export function useHistory({
         const loaded = current?.key === key ? current.commits : []
         // null when history was rewritten (amend, rebase, reset, pruned branches): replace, don't splice.
         const spliced = mergeTipPage(loaded, page.commits, page.nextCursor !== null)
-        const commits = decorateCommitsWithColors(spliced ?? page.commits)
-        // Tip splice/rewrite can change the prefix topology, so always relayout from scratch.
-        const laidOut = layoutCommitGraphWithCheckpoint(commits)
-        writeList({
-          key,
-          commits,
-          graph: laidOut.nodes,
-          layoutCheckpoint: laidOut.checkpoint,
-          maxLane: laidOut.maxLane,
-          headSha: page.headSha,
-          branchFilter: page.branches ?? null,
-          notice: page.notice ?? null,
-          // Splicing keeps the loaded depth; a replaced list pages on from the fresh first page.
-          nextCursor:
-            page.nextCursor === null
-              ? null
-              : spliced && loaded.length > 0
-                ? (current?.nextCursor ?? null)
-                : page.nextCursor
-        })
+        // Unchanged commits keep their objects, so their rows do not render again.
+        const commits = reuseLoadedCommits(spliced ?? page.commits, loaded)
+        // Splicing keeps the loaded depth; a replaced list pages on from the fresh first page.
+        const nextCursor =
+          page.nextCursor === null
+            ? null
+            : spliced && loaded.length > 0
+              ? (current?.nextCursor ?? null)
+              : page.nextCursor
+        const unchanged =
+          current !== null &&
+          sameCommitList(commits, loaded) &&
+          current.headSha === page.headSha &&
+          current.nextCursor === nextCursor &&
+          current.notice === (page.notice ?? null) &&
+          (current.branchFilter ?? []).join('\n') === (page.branches ?? []).join('\n')
+        if (!unchanged) {
+          const unlinked = current?.unlinked ?? searchSkipsCommits(appliedSearchRef.current)
+          // Tip splice/rewrite can change the prefix topology, so relayout from scratch.
+          const laidOut = layoutCommitGraphWithCheckpoint(commits, { unlinked })
+          writeList({
+            key,
+            commits,
+            graph: laidOut.nodes,
+            layoutCheckpoint: laidOut.checkpoint,
+            maxLane: laidOut.maxLane,
+            unlinked,
+            headSha: page.headSha,
+            branchFilter: page.branches ?? null,
+            notice: page.notice ?? null,
+            nextCursor
+          })
+        }
         setSelection((sel) => {
           if (sel?.kind === 'working-copy') return sel
           if (sel?.kind === 'commit' && commits.some((c) => c.sha === sel.sha)) return sel
@@ -350,7 +373,7 @@ export function useHistory({
     if (!sameRepoPath(metaPathRef.current, activeRepo.path)) {
       // Nothing selected in the previous repository exists in this one.
       metaPathRef.current = activeRepo.path
-      setSelection(null)
+      setSelection(selectionForNewRepository(viewMode))
       setDetail(null)
       setSelectedFile(null)
       setDiff(null)

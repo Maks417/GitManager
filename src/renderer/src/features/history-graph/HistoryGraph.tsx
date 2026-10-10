@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { Locate } from 'lucide-react'
 import type { Commit } from '@shared/ipc'
@@ -22,7 +22,7 @@ const OVERSCAN = 12
 /** Moving the selection this close to the end of the loaded commits loads the next page. */
 const LOAD_MORE_WITHIN = 20
 
-export function HistoryGraph(): React.JSX.Element {
+export const HistoryGraph = memo(function HistoryGraph(): React.JSX.Element {
   const { busy } = useAppStatus()
   const {
     commits,
@@ -343,4 +343,4 @@ export function HistoryGraph(): React.JSX.Element {
       </div>
     </div>
   )
-}
+})

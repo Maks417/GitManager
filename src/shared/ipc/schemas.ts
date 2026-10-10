@@ -107,7 +107,6 @@ export type GraphNode = z.infer<typeof GraphNodeSchema>
 
 export const HistoryPageSchema = z.object({
   commits: z.array(CommitSchema),
-  graph: z.array(GraphNodeSchema),
   nextCursor: z.string().nullable(),
   headSha: z.string().nullable(),
   /** Branches a `branch:` search selected (short names); absent without one. */

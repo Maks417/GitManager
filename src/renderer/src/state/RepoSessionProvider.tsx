@@ -58,6 +58,8 @@ export type SessionActions = Pick<
 
 const SessionContext = createContext<SessionState | null>(null)
 const StatusContext = createContext<StatusState | null>(null)
+/** Apart from the status, so a refresh that found the same status renders only what reloads diffs. */
+const StatusRevisionContext = createContext<number | null>(null)
 const SessionActionsContext = createContext<SessionActions | null>(null)
 
 /** Repository list, the active repository, its branches and status, and live-watch refreshes. */
@@ -90,6 +92,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
     repoRemoveError,
     repoRemoveWarning,
     status,
+    statusRevision,
     setActiveRepo,
     getActiveRepo,
     setRemoteBranches,
@@ -194,7 +197,9 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
   return (
     <SessionActionsContext.Provider value={actions}>
       <SessionContext.Provider value={state}>
-        <StatusContext.Provider value={statusState}>{children}</StatusContext.Provider>
+        <StatusContext.Provider value={statusState}>
+          <StatusRevisionContext.Provider value={statusRevision}>{children}</StatusRevisionContext.Provider>
+        </StatusContext.Provider>
       </SessionContext.Provider>
     </SessionActionsContext.Provider>
   )
@@ -203,6 +208,9 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
 export const useSession = (): SessionState => useRequiredContext(SessionContext, 'useSession')
 
 export const useStatus = (): StatusState => useRequiredContext(StatusContext, 'useStatus')
+
+/** Changes with every status refresh, including one that found the same status. */
+export const useStatusRevision = (): number => useRequiredContext(StatusRevisionContext, 'useStatusRevision')
 
 export const useSessionActions = (): SessionActions =>
   useRequiredContext(SessionActionsContext, 'useSessionActions')

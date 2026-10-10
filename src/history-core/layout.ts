@@ -71,12 +71,20 @@ function maxLaneOf(nodes: GraphNode[]): number {
   return max
 }
 
+export interface LayoutOptions {
+  /**
+   * Draw every commit as an unconnected dot in the first lane. For lists that skip commits (a message
+   * or author search): their parents are mostly not listed, and each would hold a lane open for good.
+   */
+  unlinked?: boolean
+}
+
 /**
  * Assigns lanes for commits in log order (children before parents, e.g. `git log --date-order`),
  * returning the nodes plus a checkpoint that can resume an append-only continuation.
  */
-export function layoutCommitGraphWithCheckpoint(commits: LayoutCommit[]): LayoutResult {
-  return appendLayoutCommitGraph([], commits)
+export function layoutCommitGraphWithCheckpoint(commits: LayoutCommit[], options?: LayoutOptions): LayoutResult {
+  return appendLayoutCommitGraph([], commits, options)
 }
 
 /**
@@ -85,12 +93,13 @@ export function layoutCommitGraphWithCheckpoint(commits: LayoutCommit[]): Layout
  */
 export function appendLayoutCommitGraph(
   checkpoint: LayoutCheckpoint,
-  newCommits: LayoutCommit[]
+  newCommits: LayoutCommit[],
+  options?: LayoutOptions
 ): LayoutResult {
   const lanes = [...checkpoint]
   const nodes: GraphNode[] = []
   for (const commit of newCommits) {
-    nodes.push(layoutCommitStep(lanes, commit))
+    nodes.push(layoutCommitStep(lanes, options?.unlinked ? { sha: commit.sha, parents: [] } : commit))
   }
   return {
     nodes,
@@ -110,10 +119,17 @@ export function layoutCommitGraph(commits: LayoutCommit[]): GraphNode[] {
   return layoutCommitGraphWithCheckpoint(commits).nodes
 }
 
-export function decorateCommitsWithColors(commits: Commit[]): Commit[] {
+/**
+ * Gives every ref a color by name, in order of first appearance. With `shown`, colors continue from the
+ * commits already decorated there, so a ref keeps its color when pages are added or the tip refreshes.
+ */
+export function decorateCommitsWithColors(commits: Commit[], shown: readonly Commit[] = []): Commit[] {
   const palette = [...LANE_COLORS]
-  let colorIndex = 0
   const colorMap = new Map<string, string>()
+  for (const commit of shown) {
+    for (const ref of commit.refs) if (ref.color && !colorMap.has(ref.name)) colorMap.set(ref.name, ref.color)
+  }
+  let colorIndex = colorMap.size
 
   return commits.map((commit) => ({
     ...commit,

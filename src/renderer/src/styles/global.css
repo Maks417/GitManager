@@ -1075,6 +1075,14 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   background: var(--row-hover);
 }
 
+/* The space of the rows a long list does not render (useListWindow). */
+.file-list li.list-spacer {
+  padding: 0;
+  border-radius: 0;
+  pointer-events: none;
+  transition: none;
+}
+
 .file-list li.active,
 .history-row.selected {
   background: var(--row-selected);

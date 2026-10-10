@@ -45,6 +45,7 @@ export const GIT_METHOD_META: Record<GitMethodName, GitMethodMeta> = {
   getCommitDetail: READ,
   getFileDiff: READ,
   getWatchFingerprint: READ_BG,
+  ensureCommitGraph: READ_BG,
   getWorktreeInfo: READ,
   pruneWorktree: MUTATE,
   getWorkingTreeDiff: READ,

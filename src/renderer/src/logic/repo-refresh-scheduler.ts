@@ -10,7 +10,8 @@ export interface RepoRefreshScheduler {
   readonly inFlight: boolean
 }
 
-function maxScope(a: RepoRefreshScope, b: RepoRefreshScope): RepoRefreshScope {
+/** The scope that covers both: a meta refresh also refreshes status. */
+export function maxScope(a: RepoRefreshScope, b: RepoRefreshScope): RepoRefreshScope {
   return a === 'meta' || b === 'meta' ? 'meta' : 'status'
 }
 

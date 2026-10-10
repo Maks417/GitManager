@@ -77,6 +77,8 @@ export function useWorkingTreeState(): {
 type UseWorkingTreeArgs = Omit<ReturnType<typeof useWorkingTreeState>, 'diff' | 'diffLoading'> & {
   activeRepo: Repository | null
   status: StatusEntry[]
+  /** Grows with every status refresh, also one that found the same status. */
+  statusRevision: number
   commits: Commit[]
   headSha: string | null
   setError: (msg: string | null) => void
@@ -89,6 +91,7 @@ type UseWorkingTreeArgs = Omit<ReturnType<typeof useWorkingTreeState>, 'diff' | 
 export function useWorkingTree({
   activeRepo,
   status,
+  statusRevision,
   commits,
   headSha,
   setError,
@@ -280,8 +283,9 @@ export function useWorkingTree({
         if (!cancelled) setDiffLoading(false)
       }
     }
-    // `status` is a dependency on purpose: every status refresh reloads the focused file's diff
-    // (debounced above when the key is unchanged).
+    // `statusRevision` is a dependency on purpose: every status refresh reloads the focused file's diff
+    // (debounced above when the key is unchanged), also when the status itself did not change: editing a
+    // file that is already modified changes only its diff.
     const timer = setTimeout(() => {
       void load()
     }, delayMs)
@@ -294,7 +298,7 @@ export function useWorkingTree({
     selectionKind,
     focusedStatusPath,
     diffSide,
-    status,
+    statusRevision,
     setError,
     setDiff,
     setDiffLoading

@@ -4,7 +4,7 @@ import { useWorkingTree } from '../hooks/useWorkingTree'
 import { useAppStatusActions } from './AppStatusProvider'
 import { useRequiredContext } from './context'
 import { useHistoryState } from './HistoryProvider'
-import { useSession, useStatus } from './RepoSessionProvider'
+import { useSession, useStatus, useStatusRevision } from './RepoSessionProvider'
 import {
   useSelectionActions,
   useSelectionCore,
@@ -39,6 +39,7 @@ export function WorkingTreeProvider({ children }: { children: React.ReactNode })
   const selectionActions = useSelectionActions()
   const { activeRepo } = useSession()
   const { status } = useStatus()
+  const statusRevision = useStatusRevision()
   const { commits, headSha } = useHistoryState()
   const { setError } = useAppStatusActions()
 
@@ -49,6 +50,7 @@ export function WorkingTreeProvider({ children }: { children: React.ReactNode })
     ...selectionActions,
     activeRepo,
     status,
+    statusRevision,
     commits,
     headSha,
     setError

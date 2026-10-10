@@ -224,7 +224,6 @@ describe('jump to a commit', () => {
     // Only the root commit is left below it.
     expect(page.commits.slice(-2).map((c) => c.subject)).toEqual(['old tip', 'root'])
     expect(page.nextCursor).toBeNull()
-    expect(page.graph).toHaveLength(page.commits.length)
   }, 30000)
 
   it('stops one page past the commit, and paging continues from there', async () => {

@@ -1,9 +1,11 @@
+import { memo, useRef } from 'react'
 import type React from 'react'
 import { Copy, Ellipsis, GitBranch, GitMerge } from 'lucide-react'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { Splitter } from '../../components/Splitter'
+import { LIST_ROW_ATTR, ListSpacer, useListWindow } from '../../hooks/useListWindow'
 import { Button, FileStatusDot, isMenuKey, menuPointFor } from '../../components/ui'
 import { confirmMerge, confirmRebase } from '../../lib/copy'
 import { formatRelativeDate } from '../../lib/format'
@@ -27,7 +29,7 @@ import {
 
 const fileOptionId = (index: number): string => `inspector-file-${index}`
 
-export function CommitDetailPane(): React.JSX.Element {
+export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Element {
   const { busy } = useAppStatus()
   const { detail, selectedFile } = useSelectionDetail()
   const { diff, diffLoading } = useSelectionDiffContent()
@@ -39,6 +41,9 @@ export function CommitDetailPane(): React.JSX.Element {
   const confirm = useConfirm()
   const { openCommitMenu } = useCommitMenu()
   const { openFileMenu } = useFileMenu()
+  const filesRef = useRef<HTMLUListElement>(null)
+  // A commit can change thousands of files; only the rows near the viewport are rendered.
+  const filesWindow = useListWindow(filesRef, filesRef, detail?.files.length ?? 0)
 
   if (!detail) {
     return (
@@ -64,10 +69,11 @@ export function CommitDetailPane(): React.JSX.Element {
   const onFilesKeyDown = (e: React.KeyboardEvent<HTMLUListElement>): void => {
     if (isMenuKey(e)) {
       const file = files[selectedIndex]
-      const row = document.getElementById(fileOptionId(selectedIndex))
-      if (!file || !row) return
+      if (!file) return
       e.preventDefault()
-      openFileMenu(fileTarget(file), menuPointFor(row))
+      filesWindow.scrollToRow(selectedIndex)
+      const row = document.getElementById(fileOptionId(selectedIndex))
+      if (row) openFileMenu(fileTarget(file), menuPointFor(row))
       return
     }
     if (e.key === 'Escape') {
@@ -82,7 +88,7 @@ export function CommitDetailPane(): React.JSX.Element {
     if (next === null) return
     e.preventDefault()
     setSelectedFile(files[next])
-    document.getElementById(fileOptionId(next))?.scrollIntoView({ block: 'nearest' })
+    filesWindow.scrollToRow(next)
   }
 
   return (
@@ -160,18 +166,25 @@ export function CommitDetailPane(): React.JSX.Element {
       </div>
       <div className="inspector-body" style={{ ['--inspector-files-width' as string]: `${filesWidth}px` }}>
         <ul
+          ref={filesRef}
           className="file-list inspector-files"
           role="listbox"
           aria-label="Changed files"
           tabIndex={0}
-          aria-activedescendant={selectedIndex >= 0 ? fileOptionId(selectedIndex) : undefined}
+          aria-activedescendant={
+            selectedIndex >= filesWindow.startIndex && selectedIndex < filesWindow.endIndex
+              ? fileOptionId(selectedIndex)
+              : undefined
+          }
           onKeyDown={onFilesKeyDown}
           data-pane-focus
         >
-          {files.map((f, index) => (
+          <ListSpacer rows={filesWindow.startIndex} rowHeight={filesWindow.rowHeight} />
+          {files.slice(filesWindow.startIndex, filesWindow.endIndex).map((f, i) => (
             <li
+              {...{ [LIST_ROW_ATTR]: '' }}
               key={f.path}
-              id={fileOptionId(index)}
+              id={fileOptionId(filesWindow.startIndex + i)}
               role="option"
               aria-selected={selectedFile?.path === f.path}
               className={selectedFile?.path === f.path ? 'active' : ''}
@@ -189,6 +202,7 @@ export function CommitDetailPane(): React.JSX.Element {
               </div>
             </li>
           ))}
+          <ListSpacer rows={files.length - filesWindow.endIndex} rowHeight={filesWindow.rowHeight} />
           {files.length === 0 && (
             <li className="muted" role="presentation">
               No file changes
@@ -230,4 +244,4 @@ export function CommitDetailPane(): React.JSX.Element {
       </div>
     </div>
   )
-}
+})

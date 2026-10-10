@@ -1,3 +1,4 @@
+import { normalize } from 'path'
 import type { StatusEntry } from '@shared/ipc'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
 import { gitOk, resolveHeadSha, runGit } from './shared'
@@ -12,6 +13,16 @@ export const UNTRACKED_FILES_LIMIT = 5000
 /** Status output this long is not read further: it can only be a flood of new files. */
 const MAX_LISTED_STATUS_CHARS = 20_000_000
 
+/** How long a repository with too many new files skips listing them one by one, before trying again. */
+const UNTRACKED_RECHECK_MS = 60_000
+
+/**
+ * Repositories whose last one-by-one listing found too many new files: how many (Infinity when the
+ * output was cut off) and when. Until the recheck, status goes straight to the folder listing instead
+ * of walking every new file only to throw the result away, on every refresh.
+ */
+const tooManyUntracked = new Map<string, { count: number; at: number }>()
+
 /**
  * Staged, changed, conflicted and new paths. New files are listed one by one, also inside new folders, unless
  * there are more than `untrackedLimit` of them. Stage and Discard accept a whole `folder/` entry too.
@@ -21,15 +32,25 @@ export async function getStatus(
   { untrackedLimit = UNTRACKED_FILES_LIMIT }: { untrackedLimit?: number } = {}
 ): Promise<StatusEntry[]> {
   const args = ['status', '--porcelain=v2', '-z']
-  const listed = await runGit({
-    cwd: repoPath,
-    args: [...args, '--untracked-files=all'],
-    maxStdoutChars: MAX_LISTED_STATUS_CHARS
-  })
-  if (listed.code !== 0) throw new Error(listed.stderr.trim() || `git status failed (${listed.code})`)
-  if (listed.stdout.length < MAX_LISTED_STATUS_CHARS) {
-    const entries = parseStatus(listed.stdout)
-    if (entries.filter((entry) => entry.untracked).length <= untrackedLimit) return entries
+  const key = normalize(repoPath).toLowerCase()
+  const known = tooManyUntracked.get(key)
+  if (!known || known.count <= untrackedLimit || Date.now() - known.at >= UNTRACKED_RECHECK_MS) {
+    const listed = await runGit({
+      cwd: repoPath,
+      args: [...args, '--untracked-files=all'],
+      maxStdoutChars: MAX_LISTED_STATUS_CHARS
+    })
+    if (listed.code !== 0) throw new Error(listed.stderr.trim() || `git status failed (${listed.code})`)
+    let count = Infinity
+    if (listed.stdout.length < MAX_LISTED_STATUS_CHARS) {
+      const entries = parseStatus(listed.stdout)
+      count = entries.filter((entry) => entry.untracked).length
+      if (count <= untrackedLimit) {
+        tooManyUntracked.delete(key)
+        return entries
+      }
+    }
+    tooManyUntracked.set(key, { count, at: Date.now() })
   }
   return parseStatus(await gitOk(repoPath, [...args, '--untracked-files=normal']))
 }

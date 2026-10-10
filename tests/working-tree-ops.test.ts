@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { chunkPaths } from '../src/git-worker/ops/status'
 import { getStatus, planDiscard, restoreWorktree, stagePaths, unstagePaths } from '../src/git-worker/operations'
 import { git, initRepo, mergeWithConflicts, trackTempDirs } from './helpers/git-fixture'
@@ -88,6 +88,24 @@ describe('status of new files', () => {
       'vendor/lib/b.js',
       'vendor/lib/c.js'
     ])
+  }, 30000)
+
+  it('keeps listing folders for a minute after finding too many new files, then looks again', async () => {
+    const dir = await initRepo(tempDir('gm-untracked-recheck-'))
+    mkdirSync(join(dir, 'vendor'), { recursive: true })
+    for (const name of ['a.js', 'b.js', 'c.js']) writeFileSync(join(dir, 'vendor', name), name)
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      expect((await getStatus(dir, { untrackedLimit: 2 })).map((s) => s.path)).toEqual(['vendor/'])
+      rmSync(join(dir, 'vendor', 'b.js'))
+      rmSync(join(dir, 'vendor', 'c.js'))
+      // Within the minute the folder listing is reused, without walking every new file first.
+      expect((await getStatus(dir, { untrackedLimit: 2 })).map((s) => s.path)).toEqual(['vendor/'])
+      vi.advanceTimersByTime(60_000)
+      expect((await getStatus(dir, { untrackedLimit: 2 })).map((s) => s.path)).toEqual(['vendor/a.js'])
+    } finally {
+      vi.useRealTimers()
+    }
   }, 30000)
 })
 

@@ -25,7 +25,11 @@ export function registerHistoryHandlers(): void {
   })
   ipcMain.handle(IpcChannels.history.load, async (event, raw: unknown) => {
     assertSender(event)
-    return git.loadHistory(HistoryQuerySchema.parse(raw))
+    const query = HistoryQuerySchema.parse(raw)
+    const page = await git.loadHistory(query)
+    // A repository without a commit-graph reads its whole history for every page; write one in the background.
+    if (!query.skip) void git.ensureCommitGraph(query.repoPath).catch(() => undefined)
+    return page
   })
 
   ipcMain.handle(IpcChannels.history.commitDetail, async (event, repoPath: unknown, sha: unknown) => {

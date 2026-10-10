@@ -63,7 +63,7 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
   const { setBusy, setError } = useAppStatusActions()
   const { prefs } = useLayoutPrefsState()
   const { activeRepo } = useSession()
-  const { selection } = useSelectionCore()
+  const { selection, viewMode } = useSelectionCore()
   const { setSelection, setViewMode, setDetail, setSelectedFile, setDiff, setFocusedStatusPath } =
     useSelectionActions()
   const { setRemoteBranches, refreshRepoMeta, historyFnsRef, getActiveRepo } = useSessionActions()
@@ -94,6 +94,7 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
     search,
     historyFilter,
     busy,
+    viewMode,
     setBusy,
     setError,
     setSelection,

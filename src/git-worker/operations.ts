@@ -87,6 +87,8 @@ export { inspectRepoForRemoval } from './ops/removal'
 
 export { getWatchFingerprint } from './ops/watch'
 
+export { ensureCommitGraph } from './ops/maintenance'
+
 export { getWorktreeInfo, pruneWorktree } from './ops/worktrees'
 
 export { getRemotes, saveRemote, removeRemote, setUpstream } from './ops/remotes'

@@ -141,19 +141,50 @@ describe('appendLayoutCommitGraph', () => {
   })
 })
 
+const commit = (sha: string, refs: Commit['refs']): Commit => ({
+  sha,
+  shortSha: sha.slice(0, 7),
+  subject: sha,
+  body: '',
+  authorName: 'Ada',
+  authorEmail: 'ada@example.com',
+  authoredAt: '2026-01-01T00:00:00Z',
+  parents: [],
+  refs
+})
+
+describe('unlinked layout (searches that skip commits)', () => {
+  /** Search results: every commit's parent is a commit the search skipped. */
+  const results = (n: number): LayoutCommit[] =>
+    Array.from({ length: n }, (_, i) => ({ sha: `r${i}`, parents: [`skipped${i}`] }))
+
+  it('keeps a thousand results in one lane, where a linked layout opens a lane per result', () => {
+    expect(layoutCommitGraphWithCheckpoint(results(50)).maxLane).toBeGreaterThan(40)
+    const flat = layoutCommitGraphWithCheckpoint(results(1000), { unlinked: true })
+    expect(flat.maxLane).toBe(0)
+    expect(flat.checkpoint).toEqual([])
+    expect(flat.nodes.every((n) => n.lane === 0 && n.connections.length === 0 && n.passThrough.length === 0)).toBe(true)
+  })
+
+  it('stays one lane wide when pages are appended', () => {
+    const first = layoutCommitGraphWithCheckpoint(results(200), { unlinked: true })
+    const more = appendLayoutCommitGraph(first.checkpoint, results(400).slice(200), { unlinked: true })
+    expect(more.maxLane).toBe(0)
+  })
+})
+
 describe('decorateCommitsWithColors', () => {
+  it('continues the colors of commits already shown', () => {
+    const shown = decorateCommitsWithColors([
+      commit('a', [{ name: 'main', type: 'local' }]),
+      commit('b', [{ name: 'dev', type: 'local' }])
+    ])
+    const all = decorateCommitsWithColors([...shown, commit('c', [{ name: 'dev', type: 'local' }, { name: 'v2', type: 'tag' }])])
+    const appended = decorateCommitsWithColors([commit('c', [{ name: 'dev', type: 'local' }, { name: 'v2', type: 'tag' }])], shown)
+    expect(appended[0].refs).toEqual(all[2].refs)
+  })
+
   it('gives every ref a color, the same color for the same ref name', () => {
-    const commit = (sha: string, refs: Commit['refs']): Commit => ({
-      sha,
-      shortSha: sha.slice(0, 7),
-      subject: sha,
-      body: '',
-      authorName: 'Ada',
-      authorEmail: 'ada@example.com',
-      authoredAt: '2026-01-01T00:00:00Z',
-      parents: [],
-      refs
-    })
     const decorated = decorateCommitsWithColors([
       commit('abc1234ffff', [{ name: 'main', type: 'local' }]),
       commit('def5678ffff', [{ name: 'main', type: 'local' }, { name: 'v1', type: 'tag' }])

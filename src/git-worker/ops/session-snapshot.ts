@@ -1,17 +1,12 @@
 import { createHash } from 'crypto'
-import { basename, normalize } from 'path'
-import type { RepoRefreshRequest, RepoSessionSnapshot, Repository } from '@shared/ipc'
-import {
-  getBranches,
-  getRemoteBranches,
-  isMergeInProgress,
-  isRebaseInProgress
-} from './branches'
-import { getSequencerOp } from './commits'
+import { existsSync } from 'fs'
+import { basename, join, normalize } from 'path'
+import type { RepoRefreshRequest, RepoSessionSnapshot, Repository, SequencerOp } from '@shared/ipc'
+import { getBranches, getRemoteBranches } from './branches'
 import { getGitIdentity } from './identity'
 import { inspectRepository } from './repo'
 import { getStatus } from './status'
-import { currentBranchName, resolveHeadSha, runGit } from './shared'
+import { currentBranchName, getGitDirs, resolveHeadSha, runGit } from './shared'
 import { linkedWorktreeMain } from './worktrees'
 
 async function refsFingerprint(repoPath: string): Promise<string> {
@@ -22,14 +17,32 @@ async function refsFingerprint(repoPath: string): Promise<string> {
   return createHash('sha1').update(refs.stdout).digest('hex')
 }
 
-async function slimRepository(repoPath: string, base?: Repository | null): Promise<Repository> {
+/**
+ * A merge, rebase, cherry-pick or revert in progress, from the files Git keeps for it in the work tree's
+ * git directory: the same files `isMergeInProgress`, `isRebaseInProgress` and `getSequencerOp` look for,
+ * without starting a Git process for each.
+ */
+function operationsInProgress(gitDir: string): {
+  rebaseInProgress: boolean
+  mergeInProgress: boolean
+  sequencerOp: SequencerOp | null
+} {
+  const has = (name: string): boolean => existsSync(join(gitDir, name))
+  return {
+    rebaseInProgress: has('rebase-merge') || has('rebase-apply'),
+    mergeInProgress: has('MERGE_HEAD'),
+    sequencerOp: has('CHERRY_PICK_HEAD') ? 'cherry-pick' : has('REVERT_HEAD') ? 'revert' : null
+  }
+}
+
+async function slimRepository(repoPath: string, branch: string | null, base?: Repository | null): Promise<Repository> {
   const path = normalize(repoPath)
-  const [branch, remotesOut, worktreeOf] = await Promise.all([
-    currentBranchName(path),
+  const [remotesOut, worktreeOf] = await Promise.all([
     // Remotes can be edited outside the app; meta snapshots must not preserve a stale cached list.
     runGit({ cwd: path, args: ['remote', '-v'] }),
+    // Known once looked up: null for a repository that is not a linked worktree.
     base?.worktreeOf !== undefined
-      ? Promise.resolve(base.worktreeOf ?? null)
+      ? Promise.resolve(base.worktreeOf)
       : linkedWorktreeMain(path).catch(() => null)
   ])
   const map = new Map<string, string>()
@@ -44,7 +57,7 @@ async function slimRepository(repoPath: string, base?: Repository | null): Promi
     path,
     currentBranch: branch,
     remotes,
-    worktreeOf: worktreeOf ?? undefined
+    worktreeOf
   }
 }
 
@@ -54,31 +67,29 @@ async function slimRepository(repoPath: string, base?: Repository | null): Promi
  */
 export async function refreshRepoSession(request: RepoRefreshRequest): Promise<RepoSessionSnapshot> {
   const repoPath = normalize(request.repoPath)
-  const status = await getStatus(repoPath)
-
   if (request.scope === 'status') {
-    return { status }
+    return { status: await getStatus(repoPath) }
   }
 
-  const [branches, remoteBranches, identity, rebaseInProgress, mergeInProgress, sequencerOp, headSha, refsHash] =
-    await Promise.all([
-      getBranches(repoPath),
-      getRemoteBranches(repoPath),
-      getGitIdentity(repoPath),
-      isRebaseInProgress(repoPath),
-      isMergeInProgress(repoPath),
-      getSequencerOp(repoPath),
-      resolveHeadSha(repoPath),
-      refsFingerprint(repoPath)
-    ])
+  const [status, { gitDir }, branches, remoteBranches, identity, headSha, refsHash] = await Promise.all([
+    getStatus(repoPath),
+    getGitDirs(repoPath),
+    getBranches(repoPath),
+    getRemoteBranches(repoPath),
+    getGitIdentity(repoPath),
+    resolveHeadSha(repoPath),
+    refsFingerprint(repoPath)
+  ])
+  const { rebaseInProgress, mergeInProgress, sequencerOp } = operationsInProgress(gitDir)
 
   const repository = request.persistRepository
     ? await inspectRepository(repoPath)
-    : await slimRepository(repoPath, request.baseRepository)
-
-  if (!request.persistRepository) {
-    repository.currentBranch = branches.find((b) => b.current)?.name ?? repository.currentBranch
-  }
+    : await slimRepository(
+        repoPath,
+        // An unborn branch (no commits yet) has no ref to list; HEAD still names it.
+        branches.find((b) => b.current)?.name ?? (await currentBranchName(repoPath)),
+        request.baseRepository
+      )
 
   const historyFingerprint = createHash('sha1')
     .update(headSha ?? '')

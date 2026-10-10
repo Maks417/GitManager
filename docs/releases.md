@@ -5,11 +5,11 @@ The release source of truth is the root [package.json](../package.json). Keep it
 ## Local preparation
 
 1. Include the intended source changes and update the affected feature docs.
-2. Set the app version and write user-facing notes in `docs/releases/<version>.md`. See [1.2.2](releases/1.2.2.md).
+2. Set the app version and write user-facing notes in `docs/releases/<version>.md`. See [1.2.3](releases/1.2.3.md).
 3. Run `npm run typecheck`, `npm run lint`, `npm test` and `npm run build`.
 4. Run `npm run dist:win`, `npm run dist:mac` or `npm run dist:linux` on the appropriate platform. Output goes into the ignored `release/` directory. These commands do not publish.
 5. Inspect the packaged app and smoke-test the changed flows with a disposable profile/repository. Check the displayed version, startup with saved repositories, window-mode restoration, remote publication, comparison, recovery and commit drafts.
-6. Commit the release changes, then create the matching annotated tag, for example `git tag -a v1.2.2 -m "Git Manager 1.2.2"`. Confirm it points at the release commit and the working tree is clean.
+6. Commit the release changes, then create the matching annotated tag, for example `git tag -a v1.2.3 -m "Git Manager 1.2.3"`. Confirm it points at the release commit and the working tree is clean.
 
 [electron-builder.yml](../electron-builder.yml) includes only the production `out/main`, `out/preload` and `out/renderer` bundles, app metadata and runtime dependencies. Temporary files or test profiles elsewhere in `out/` must stay out of installers.
 

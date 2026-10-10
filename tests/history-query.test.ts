@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseHistorySearch } from '../src/git-worker/history-query'
+import { parseHistorySearch } from '../src/shared/history-query'
 
 describe('parseHistorySearch', () => {
   it('treats plain text, including several words and regex characters, as a message search', () => {

@@ -44,7 +44,6 @@ describe('git fixtures', () => {
 
     const page = await loadHistory({ repoPath: dir, limit: 50 })
     expect(page.commits.length).toBeGreaterThanOrEqual(2)
-    expect(page.graph.length).toBe(page.commits.length)
     expect(page.headSha).toBeTruthy()
 
     const found = await loadHistory({ repoPath: dir, limit: 50, search: 'feature' })

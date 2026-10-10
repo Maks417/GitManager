@@ -19,9 +19,11 @@ import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
 import { createLatestGate } from '../logic/latest-gate'
+import { keepIfSame } from '../logic/same-data'
 import type { StartupStatus } from '../logic/startup-view'
 import {
   createRepoRefreshScheduler,
+  maxScope,
   shouldRefreshHistoryTip,
   type RepoRefreshScope
 } from '../logic/repo-refresh-scheduler'
@@ -52,6 +54,17 @@ function sameRemotes(a: Repository['remotes'], b: Repository['remotes']): boolea
   )
 }
 
+function sameRepository(a: Repository, b: Repository): boolean {
+  return (
+    a.id === b.id &&
+    a.path === b.path &&
+    a.currentBranch === b.currentBranch &&
+    a.name === b.name &&
+    (a.worktreeOf ?? null) === (b.worktreeOf ?? null) &&
+    sameRemotes(a.remotes, b.remotes)
+  )
+}
+
 export function useRepoSession({
   setError,
   hydrateFromPrefs,
@@ -74,6 +87,8 @@ export function useRepoSession({
   remoteBranches: RemoteBranchInfo[]
   setRemoteBranches: React.Dispatch<React.SetStateAction<RemoteBranchInfo[]>>
   status: StatusEntry[]
+  /** Grows with every status refresh, also one that found the same status (a file edited again). */
+  statusRevision: number
   identity: GitIdentity | null
   setIdentity: React.Dispatch<React.SetStateAction<GitIdentity | null>>
   rebaseInProgress: boolean
@@ -105,6 +120,7 @@ export function useRepoSession({
   const [branches, setBranches] = useState<BranchInfo[]>([])
   const [remoteBranches, setRemoteBranches] = useState<RemoteBranchInfo[]>([])
   const [status, setStatus] = useState<StatusEntry[]>([])
+  const [statusRevision, setStatusRevision] = useState(0)
   const [identity, setIdentity] = useState<GitIdentity | null>(null)
   const [rebaseInProgress, setRebaseInProgress] = useState(false)
   const [sequencerOp, setSequencerOp] = useState<SequencerOp | null>(null)
@@ -166,19 +182,11 @@ export function useRepoSession({
   const applyRepository = useCallback((repo: Repository, fresh: Repository): void => {
     setActiveRepo((prev) => {
       if (!prev || !sameRepoPath(prev.path, repo.path)) return prev
-      if (
-        prev.id === fresh.id &&
-        prev.path === fresh.path &&
-        prev.currentBranch === fresh.currentBranch &&
-        prev.name === fresh.name &&
-        (prev.worktreeOf ?? null) === (fresh.worktreeOf ?? null) &&
-        sameRemotes(prev.remotes, fresh.remotes)
-      ) {
-        return prev
-      }
-      return fresh
+      return sameRepository(prev, fresh) ? prev : fresh
     })
     setRepos((prev) => {
+      // A refresh that changed nothing keeps the list, so the sidebar does not render again.
+      if (prev.some((r) => r.id === fresh.id && sameRepository(r, fresh))) return prev
       let replaced = false
       const next = prev.map((r) => {
         if (r.id === fresh.id || r.id === repo.id || r.path.toLowerCase() === fresh.path.toLowerCase()) {
@@ -206,14 +214,16 @@ export function useRepoSession({
     ): Repository => {
       if (!sameRepoPath(activeRepoRef.current?.path, repo.path)) return repo
       if (statusGate.isLatest(opts.statusToken)) {
-        setStatus(snapshot.status)
+        setStatus(keepIfSame(snapshot.status))
+        setStatusRevision((n) => n + 1)
         noteConflicts(repo.path, snapshot.status)
       }
       if (!opts.applyMeta) return repo
       if (opts.metaToken !== undefined && !metaGate.isLatest(opts.metaToken)) return repo
-      if (snapshot.branches) setBranches(snapshot.branches)
-      if (snapshot.remoteBranches) setRemoteBranches(snapshot.remoteBranches)
-      if (snapshot.identity) setIdentity(snapshot.identity)
+      // Refreshes that changed nothing keep the previous values, so nothing that reads them renders again.
+      if (snapshot.branches) setBranches(keepIfSame(snapshot.branches))
+      if (snapshot.remoteBranches) setRemoteBranches(keepIfSame(snapshot.remoteBranches))
+      if (snapshot.identity) setIdentity(keepIfSame<GitIdentity | null>(snapshot.identity))
       if (snapshot.rebaseInProgress !== undefined) setRebaseInProgress(snapshot.rebaseInProgress)
       if (snapshot.mergeInProgress !== undefined) setMergeInProgress(snapshot.mergeInProgress)
       if (snapshot.sequencerOp !== undefined) setSequencerOp(snapshot.sequencerOp)
@@ -264,13 +274,18 @@ export function useRepoSession({
     async (opts?: { history?: HistoryRefreshMode }): Promise<void> => {
       const repo = activeRepoRef.current
       if (!repo) return
+      const previousFingerprint = historyFingerprintRef.current
       // History uses the refreshed repository so a "current branch" filter follows a checkout.
       const fresh = await refreshRepoMeta(repo)
       const mode = opts?.history ?? 'tip'
       const fns = historyFnsRef.current
       if (!fns || !sameRepoPath(activeRepoRef.current?.path, repo.path)) return
       if (mode === 'full') await fns.loadHistory(fresh)
-      else if (mode === 'tip') await fns.refreshHistoryTip(fresh)
+      // Staging, discarding or stashing leaves HEAD and refs alone: no history to reload. When a refresh
+      // that started meanwhile already saw the change, it reloads the history itself.
+      else if (mode === 'tip' && shouldRefreshHistoryTip(previousFingerprint, historyFingerprintRef.current)) {
+        await fns.refreshHistoryTip(fresh)
+      }
     },
     [activeRepoRef, refreshRepoMeta, historyFnsRef]
   )
@@ -395,6 +410,22 @@ export function useRepoSession({
       }
     }
 
+    const requestRefresh = (scope: RepoRefreshScope): void => {
+      const scheduled = watchScheduler.request(scope)
+      if (scheduled.run) void runWatchRefresh(scheduled.scope, scheduled.generation)
+    }
+
+    // While the window is minimized or covered, changes are only noted; one refresh catches up when it
+    // shows again, instead of Git and React work for every save of a build or an editor.
+    let held: RepoRefreshScope | null = null
+    const onVisibility = (): void => {
+      if (document.hidden || !held) return
+      const scope = held
+      held = null
+      requestRefresh(scope)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
     // The state also arrives as an event, but a reloaded window whose watch kept running gets none.
     window.gitManager.repo.watch(repoPath).then(setWatchState, () => undefined)
     const off = window.gitManager.repo.onChanged((raw) => {
@@ -406,12 +437,13 @@ export function useRepoSession({
       const repo = activeRepoRef.current
       if (!repo || repo.path !== repoPath) return
       const scope: RepoRefreshScope = event.kind === 'git-meta' ? 'meta' : 'status'
-      const scheduled = watchScheduler.request(scope)
-      if (scheduled.run) void runWatchRefresh(scheduled.scope, scheduled.generation)
+      if (document.hidden) held = held ? maxScope(held, scope) : scope
+      else requestRefresh(scope)
     })
 
     return () => {
       off()
+      document.removeEventListener('visibilitychange', onVisibility)
       watchScheduler.reset()
       void window.gitManager.repo.unwatch()
     }
@@ -437,6 +469,7 @@ export function useRepoSession({
     remoteBranches,
     setRemoteBranches,
     status,
+    statusRevision,
     identity,
     setIdentity,
     rebaseInProgress,

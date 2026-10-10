@@ -16,7 +16,10 @@ import { useSelectionCore } from '../state/SelectionProvider'
 import { RepoSidebar } from './RepoSidebar'
 import { WatchNotice } from './WatchNotice'
 
-/** Sidebar, history or changes, and the commit inspector of the active repository. */
+/**
+ * Sidebar, history or changes, and the commit inspector of the active repository. The panes take no
+ * props and are memoized, so a splitter drag or a refresh that re-renders this shell skips them.
+ */
 export function WorkspaceShell(): React.JSX.Element {
   const { error } = useAppStatus()
   const activeRepo = useActiveRepo()
