@@ -2,6 +2,7 @@ import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
+import { fontsourceWoff2Only } from './services/build/fontsource-woff2'
 
 const CSP_PLACEHOLDER = '__CONTENT_SECURITY_POLICY__'
 
@@ -30,7 +31,7 @@ function contentSecurityPolicy(): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: ['zod', 'electron-updater'] })],
     resolve: {
       alias: {
         '@shared': resolve('src/shared'),
@@ -39,6 +40,7 @@ export default defineConfig({
       }
     },
     build: {
+      minify: true,
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),
@@ -65,6 +67,9 @@ export default defineConfig({
       }
     },
     plugins: [react(), contentSecurityPolicy()],
+    css: {
+      postcss: { plugins: [fontsourceWoff2Only()] }
+    },
     build: {
       // electron-vite leaves the renderer unminified; the page keeps every loaded script's source in memory.
       minify: true

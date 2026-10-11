@@ -18,6 +18,7 @@ extraResources:
 # (Git.Manager-…) that latest-mac.yml refers to.
 artifactName: Git-Manager-${version}-${os}-${arch}.${ext}
 asar: true
+afterPack: scripts/after-pack.cjs
 asarUnpack:
   - "**/*.node"
 publish:
@@ -34,6 +35,7 @@ win:
         - x64
         - arm64
 nsis:
+  include: build/installer.nsh
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
