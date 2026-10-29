@@ -212,7 +212,7 @@ describe('branch merge rebase stash ops', () => {
     dirs.push(dir)
     await runGit({ cwd: dir, args: ['init', '-b', 'main'] })
     expect(await getBranches(dir)).toEqual([
-      { name: 'main', current: true, upstream: null, ahead: 0, behind: 0, sha: null }
+      { name: 'main', current: true, upstream: null, ahead: 0, behind: 0, sha: null, worktreePath: null }
     ])
   }, 30000)
 })

@@ -116,6 +116,7 @@ export function buildAppMenu(): void {
         { label: 'Manage Remotes', click: () => sendMenu(MenuChannels.remotes) },
         { label: 'Compare References', click: () => sendMenu(MenuChannels.compare) },
         { label: 'Recovery', click: () => sendMenu(MenuChannels.recovery) },
+        { label: 'New Worktree…', click: () => sendMenu(MenuChannels.newWorktree) },
         { type: 'separator' },
         {
           label: 'Fetch',

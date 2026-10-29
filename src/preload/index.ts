@@ -82,6 +82,14 @@ const api = {
       ipcRenderer.invoke(IpcChannels.git.createBranch, repoPath, name, checkout, startPoint),
     deleteBranch: (repoPath: string, name: string, force?: boolean) =>
       ipcRenderer.invoke(IpcChannels.git.deleteBranch, repoPath, name, force),
+    worktreeList: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.worktreeList, repoPath),
+    worktreeAdd: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.worktreeAdd, request),
+    worktreeRemove: (repoPath: string, path: string, force?: boolean) =>
+      ipcRenderer.invoke(IpcChannels.git.worktreeRemove, repoPath, path, force),
+    worktreeLock: (repoPath: string, path: string, reason?: string) =>
+      ipcRenderer.invoke(IpcChannels.git.worktreeLock, repoPath, path, reason),
+    worktreeUnlock: (repoPath: string, path: string) => ipcRenderer.invoke(IpcChannels.git.worktreeUnlock, repoPath, path),
+    worktreePrune: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.worktreePrune, repoPath),
     merge: (repoPath: string, ref: string) => ipcRenderer.invoke(IpcChannels.git.merge, repoPath, ref),
     rebase: (repoPath: string, upstream: string) =>
       ipcRenderer.invoke(IpcChannels.git.rebase, repoPath, upstream),
@@ -149,7 +157,9 @@ const api = {
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.shell.openExternal, url),
     showInFolder: (repoPath: string, path: string) =>
-      ipcRenderer.invoke(IpcChannels.shell.showInFolder, repoPath, path)
+      ipcRenderer.invoke(IpcChannels.shell.showInFolder, repoPath, path),
+    openWorktreeFolder: (repoPath: string, path: string) =>
+      ipcRenderer.invoke(IpcChannels.shell.openWorktreeFolder, repoPath, path)
   }
 }
 

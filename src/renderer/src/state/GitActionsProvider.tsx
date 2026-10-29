@@ -1,8 +1,16 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
-import type { RemoteOpKind, RemoteOpRequest, RemoteOpResult, Repository, ResetMode, SequencerStep } from '@shared/ipc'
+import type { AddWorktreeRequest, RemoteOpKind, RemoteOpRequest, RemoteOpResult, Repository, ResetMode, SequencerStep } from '@shared/ipc'
+import { worktreeConflictPath } from '@shared/git-messages'
 import { useLatestRef } from '../hooks/useLatestRef'
-import { choosePullOrForcePush, chooseMergeOrRebase, confirmForceDeleteBranch, GIT_MISSING_MESSAGE } from '../lib/copy'
+import {
+  branchHeldByWorktree,
+  choosePullOrForcePush,
+  chooseMergeOrRebase,
+  confirmForceDeleteBranch,
+  confirmOpenWorktree,
+  GIT_MISSING_MESSAGE
+} from '../lib/copy'
 import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
@@ -47,9 +55,14 @@ export interface GitActions {
   resolveRemoteOutcome: (result: RemoteOpResult) => Promise<void>
   /** Merge, rebase, cherry-pick or revert, then refresh; conflicts open the merge editor. */
   runMergeOrRebase: (op: ConflictingOp, ref: string) => Promise<void>
+  /** A branch another worktree has checked out offers to open that worktree instead. */
   checkoutBranch: (name: string) => Promise<void>
   checkoutRemote: (remoteRef: string) => Promise<void>
   deleteBranch: (name: string) => Promise<void>
+  /** Adds the worktree at `path` to the repository list, if needed, and switches to it. */
+  openWorktree: (path: string) => Promise<void>
+  /** Throws, for the dialog to show. Resolves the new worktree's folder. */
+  addWorktree: (request: Omit<AddWorktreeRequest, 'repoPath'>) => Promise<string>
   /** Stop the running fetch, pull or push, if it can still be stopped. */
   cancelRemote: () => void
   // These throw, so the dialog or pane that started them can show the error in place.
@@ -303,34 +316,69 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
     [syncOnce, resolveRemoteOutcome]
   )
 
-  const checkoutBranch = useCallback(
-    async (name: string): Promise<void> => {
-      const repo = getActiveRepo()
-      if (!repo || busyRef.current) return
+  const openWorktree = useCallback(
+    async (path: string): Promise<void> => {
+      if (!requireGit()) return
       await runWithBusy(
         async () => {
-          await window.gitManager.git.checkout(repo.path, name)
+          const repo = await window.gitManager.repo.add(path)
+          await refreshRepos()
+          selectRepo(repo)
+        },
+        { setError }
+      )
+    },
+    [requireGit, refreshRepos, selectRepo, setError]
+  )
+
+  /** Checks out with `run`; a branch another worktree holds offers that worktree instead of an error. */
+  const checkoutOrOfferWorktree = useCallback(
+    async (branch: string, run: (repoPath: string) => Promise<void>): Promise<void> => {
+      const repo = getActiveRepo()
+      if (!repo || busyRef.current) return
+      let heldAt: string | null = null
+      await runWithBusy(
+        async () => {
+          try {
+            await run(repo.path)
+          } catch (err) {
+            heldAt = worktreeConflictPath(toErrorMessage(err))
+            if (!heldAt) throw err
+            return
+          }
           await afterGitMutation({ history: 'full' })
         },
         { setBusy, setError }
       )
+      const path: string | null = heldAt
+      if (path && (await confirm(confirmOpenWorktree(branch, path)))) await openWorktree(path)
     },
-    [getActiveRepo, busyRef, afterGitMutation, setBusy, setError]
+    [getActiveRepo, busyRef, afterGitMutation, setBusy, setError, confirm, openWorktree]
+  )
+
+  const checkoutBranch = useCallback(
+    (name: string): Promise<void> =>
+      checkoutOrOfferWorktree(name, (repoPath) => window.gitManager.git.checkout(repoPath, name)),
+    [checkoutOrOfferWorktree]
   )
 
   const checkoutRemote = useCallback(
-    async (remoteRef: string): Promise<void> => {
+    (remoteRef: string): Promise<void> =>
+      checkoutOrOfferWorktree(remoteRef.slice(remoteRef.indexOf('/') + 1), (repoPath) =>
+        window.gitManager.git.checkoutRemoteBranch(repoPath, remoteRef)
+      ),
+    [checkoutOrOfferWorktree]
+  )
+
+  const addWorktree = useCallback(
+    async (request: Omit<AddWorktreeRequest, 'repoPath'>): Promise<string> => {
       const repo = getActiveRepo()
-      if (!repo || busyRef.current) return
-      await runWithBusy(
-        async () => {
-          await window.gitManager.git.checkoutRemoteBranch(repo.path, remoteRef)
-          await afterGitMutation({ history: 'full' })
-        },
-        { setBusy, setError }
-      )
+      if (!repo) throw new Error('No repository is open.')
+      const path = await window.gitManager.git.worktreeAdd({ ...request, repoPath: repo.path })
+      await afterGitMutation({ history: 'full' })
+      return path
     },
-    [getActiveRepo, busyRef, afterGitMutation, setBusy, setError]
+    [getActiveRepo, afterGitMutation]
   )
 
   const deleteBranch = useCallback(
@@ -342,6 +390,9 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
           try {
             await window.gitManager.git.deleteBranch(repo.path, name, false)
           } catch (err) {
+            // Forcing cannot delete a branch another worktree has checked out.
+            const heldAt = worktreeConflictPath(toErrorMessage(err))
+            if (heldAt) throw new Error(branchHeldByWorktree(name, heldAt))
             // Git refuses to delete a branch whose commits are not merged; offer to force it.
             if (!(await confirm(confirmForceDeleteBranch(name, toErrorMessage(err))))) throw err
             await window.gitManager.git.deleteBranch(repo.path, name, true)
@@ -482,6 +533,8 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       checkoutBranch,
       checkoutRemote,
       deleteBranch,
+      openWorktree,
+      addWorktree,
       cancelRemote,
       runRemote,
       createBranch,
@@ -509,6 +562,8 @@ export function GitActionsProvider({ children }: { children: React.ReactNode }):
       checkoutBranch,
       checkoutRemote,
       deleteBranch,
+      openWorktree,
+      addWorktree,
       cancelRemote,
       runRemote,
       createBranch,

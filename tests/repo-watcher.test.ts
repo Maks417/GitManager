@@ -54,9 +54,10 @@ describe('classifyWatchPath', () => {
     expect(classifyWatchPath('src\\foo.ts')).toBe('worktree')
   })
 
-  it('ignores other linked worktrees and treats submodule repositories as status changes', () => {
-    expect(classifyWatchPath('.git/worktrees/feature/HEAD')).toBeNull()
+  it('ignores other linked worktrees but their checkouts, and treats submodule repositories as status changes', () => {
+    expect(classifyWatchPath('.git/worktrees/feature/HEAD')).toBe('git-meta')
     expect(classifyWatchPath('.git/worktrees/feature/index')).toBeNull()
+    expect(classifyWatchPath('.git/worktrees/feature/logs/HEAD')).toBeNull()
     expect(classifyWatchPath('.git/modules/sub/HEAD')).toBe('worktree')
     expect(classifyWatchPath('.git/modules/libs/sub/refs/heads/main')).toBe('worktree')
     expect(classifyWatchPath('.git/modules/sub/objects/ab/cdef')).toBeNull()

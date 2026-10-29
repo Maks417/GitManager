@@ -22,6 +22,7 @@ Start at the root [README](../README.md).
 | History graph | [history-graph](features/history-graph.md) |
 | Working tree & commits | [working-tree](features/working-tree.md) |
 | Branches & sync | [branches-and-sync](features/branches-and-sync.md) |
+| Worktrees | [worktrees](features/worktrees.md) |
 | Remotes & publishing | [remotes-and-publishing](features/remotes-and-publishing.md) |
 | Reference comparison | [reference-comparison](features/reference-comparison.md) |
 | Recovery | [recovery](features/recovery.md) |

@@ -24,13 +24,30 @@ export interface BranchDialogTarget {
   branchName: string
 }
 
-export type DialogState = Record<DialogName, boolean> & { branchDialog: BranchDialogTarget | null }
+/** What a new worktree starts from: picked in the dialog, or a branch or commit it was opened for. */
+export type WorktreeSource =
+  | { kind: 'new' }
+  | { kind: 'branch'; name: string }
+  | { kind: 'remote'; name: string }
+  | { kind: 'commit'; sha: string; label: string }
+
+export interface WorktreeDialogTarget {
+  repoPath: string
+  source: WorktreeSource
+}
+
+export type DialogState = Record<DialogName, boolean> & {
+  branchDialog: BranchDialogTarget | null
+  worktreeDialog: WorktreeDialogTarget | null
+}
 
 export interface DialogActions {
   openDialog: (name: DialogName) => void
   closeDialog: (name: DialogName) => void
   openBranchDialog: (target: BranchDialogTarget) => void
   closeBranchDialog: () => void
+  openWorktreeDialog: (target: WorktreeDialogTarget) => void
+  closeWorktreeDialog: () => void
 }
 
 const ALL_CLOSED: DialogState = {
@@ -47,7 +64,8 @@ const ALL_CLOSED: DialogState = {
   mergePick: false,
   rebasePick: false,
   mergeEditor: false,
-  branchDialog: null
+  branchDialog: null,
+  worktreeDialog: null
 }
 
 const DialogStateContext = createContext<DialogState | null>(null)
@@ -61,7 +79,9 @@ export function DialogsProvider({ children }: { children: React.ReactNode }): Re
       openDialog: (name) => setOpen((prev) => (prev[name] ? prev : { ...prev, [name]: true })),
       closeDialog: (name) => setOpen((prev) => (prev[name] ? { ...prev, [name]: false } : prev)),
       openBranchDialog: (target) => setOpen((prev) => ({ ...prev, branchDialog: target })),
-      closeBranchDialog: () => setOpen((prev) => prev.branchDialog ? { ...prev, branchDialog: null } : prev)
+      closeBranchDialog: () => setOpen((prev) => prev.branchDialog ? { ...prev, branchDialog: null } : prev),
+      openWorktreeDialog: (target) => setOpen((prev) => ({ ...prev, worktreeDialog: target })),
+      closeWorktreeDialog: () => setOpen((prev) => (prev.worktreeDialog ? { ...prev, worktreeDialog: null } : prev))
     }),
     []
   )

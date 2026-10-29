@@ -48,6 +48,40 @@ export const WorktreeInfoSchema = z.object({
 })
 export type WorktreeInfo = z.infer<typeof WorktreeInfoSchema>
 
+/** One work tree of a repository, as `git worktree list` describes it. */
+export const WorktreeItemSchema = z.object({
+  path: z.string(),
+  /** Branch checked out there; null when detached or bare. */
+  branch: z.string().nullable(),
+  /** Commit checked out (all zeros on an unborn branch); null for a bare repository. */
+  head: z.string().nullable(),
+  detached: z.boolean(),
+  bare: z.boolean(),
+  locked: z.boolean(),
+  lockReason: z.string().nullable(),
+  /** Git found its folder missing. */
+  prunable: z.boolean(),
+  /** The repository's main work tree, which the others share history with. */
+  isMain: z.boolean(),
+  /** The work tree the listing was asked from. */
+  isCurrent: z.boolean()
+})
+export type WorktreeItem = z.infer<typeof WorktreeItemSchema>
+
+/**
+ * A new linked worktree at `path`: checking out `branch`, creating `newBranch` at `startPoint` (tracking it
+ * when `track`, for a remote branch), or else detached at `startPoint`.
+ */
+export const AddWorktreeRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  path: z.string().min(1),
+  branch: z.string().min(1).optional(),
+  newBranch: z.string().min(1).optional(),
+  startPoint: z.string().min(1).optional(),
+  track: z.boolean().optional()
+})
+export type AddWorktreeRequest = z.infer<typeof AddWorktreeRequestSchema>
+
 export const RepoRemoveOptionsSchema = z.object({
   /** Move the repository folder to the Trash. */
   deleteFiles: z.boolean().optional(),
@@ -282,7 +316,9 @@ export const BranchInfoSchema = z.object({
   ahead: z.number(),
   behind: z.number(),
   /** Tip commit; null for a branch that has no commits yet. */
-  sha: z.string().nullable()
+  sha: z.string().nullable(),
+  /** Set when the branch is checked out in another worktree of the repository: that worktree's folder. */
+  worktreePath: z.string().nullable().default(null)
 })
 export type BranchInfo = z.infer<typeof BranchInfoSchema>
 
@@ -468,6 +504,7 @@ export const AppPreferencesSchema = z.object({
   sidebarCollapsed: z.boolean().default(false).catch(false),
   branchesExpanded: z.boolean().default(false).catch(false),
   remoteBranchesExpanded: z.boolean().default(false).catch(false),
+  worktreesExpanded: z.boolean().default(false).catch(false),
   sidebarWidth: sizePref(140, 480, LAYOUT_DEFAULTS.sidebarWidth),
   inspectorHeight: sizePref(180, 900, LAYOUT_DEFAULTS.inspectorHeight),
   detailWidth: sizePref(280, 900, LAYOUT_DEFAULTS.detailWidth),

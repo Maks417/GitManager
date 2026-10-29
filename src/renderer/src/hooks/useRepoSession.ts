@@ -15,6 +15,7 @@ import type {
   StatusEntry,
   UpdateStatus
 } from '@shared/ipc'
+import { gitTooOldMessage, isGitTooOld } from '@shared/git-messages'
 import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
@@ -338,6 +339,8 @@ export function useRepoSession({
         return
       }
       setGitMissing(false)
+      // An older Git still runs: the banner says what will not work.
+      if (probe.version && isGitTooOld(probe.version)) setError(gitTooOldMessage(probe.version))
       await refreshRepos()
     }
   )

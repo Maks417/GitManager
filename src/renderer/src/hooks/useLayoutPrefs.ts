@@ -30,6 +30,7 @@ export function useLayoutPrefs(): {
   sidebarCollapsed: boolean
   branchesExpanded: boolean
   remoteBranchesExpanded: boolean
+  worktreesExpanded: boolean
   detailDock: 'right' | 'bottom'
   diffView: AppPreferences['diffView']
   syntaxHighlighting: boolean
@@ -41,6 +42,7 @@ export function useLayoutPrefs(): {
   toggleSidebar: () => void
   toggleBranches: () => void
   toggleRemoteBranches: () => void
+  toggleWorktrees: () => void
   setThemePref: (theme: ThemePreference) => void
   setHistoryFilter: (historyFilter: AppPreferences['historyFilter']) => void
   setDiffView: (diffView: AppPreferences['diffView']) => void
@@ -74,6 +76,7 @@ export function useLayoutPrefs(): {
   const sidebarCollapsed = Boolean(prefs?.sidebarCollapsed)
   const branchesExpanded = Boolean(prefs?.branchesExpanded)
   const remoteBranchesExpanded = Boolean(prefs?.remoteBranchesExpanded)
+  const worktreesExpanded = Boolean(prefs?.worktreesExpanded)
   const detailDock = prefs?.detailDock === 'right' ? 'right' : 'bottom'
   const diffView = prefs?.diffView === 'side-by-side' ? 'side-by-side' : 'inline'
   const syntaxHighlighting = prefs?.syntaxHighlighting !== false
@@ -137,6 +140,10 @@ export function useLayoutPrefs(): {
       .then(setPrefs)
   }, [remoteBranchesExpanded])
 
+  const toggleWorktrees = useCallback((): void => {
+    void window.gitManager.prefs.set({ worktreesExpanded: !worktreesExpanded }).then(setPrefs)
+  }, [worktreesExpanded])
+
   const setThemePref = useCallback((theme: ThemePreference): void => {
     void window.gitManager.prefs.set({ theme }).then((p) => {
       setPrefs(p)
@@ -186,6 +193,7 @@ export function useLayoutPrefs(): {
     sidebarCollapsed,
     branchesExpanded,
     remoteBranchesExpanded,
+    worktreesExpanded,
     detailDock,
     diffView,
     syntaxHighlighting,
@@ -197,6 +205,7 @@ export function useLayoutPrefs(): {
     toggleSidebar,
     toggleBranches,
     toggleRemoteBranches,
+    toggleWorktrees,
     setThemePref,
     setHistoryFilter,
     setDiffView,

@@ -1,17 +1,23 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'fs'
-import { rm, rmdir } from 'fs/promises'
-import { basename, dirname, join, normalize, resolve } from 'path'
-import type { WorktreeInfo } from '@shared/ipc'
-import { getGitDirs, runGit } from './shared'
+import { readdir, rm, rmdir, stat } from 'fs/promises'
+import { basename, dirname, isAbsolute, join, normalize, resolve } from 'path'
+import type { AddWorktreeRequest, WorktreeInfo, WorktreeItem } from '@shared/ipc'
+import { WORKTREE_HAS_CHANGES } from '@shared/git-messages'
+import { assertRevision } from './guards'
+import { getGitDirs, gitOk, runGit } from './shared'
 
 export interface WorktreeEntry {
   path: string
   /** Commit checked out (all zeros on an unborn branch); null for a bare repository. */
   head: string | null
+  /** Branch checked out, without `refs/heads/`; null when detached or bare. */
+  branch: string | null
   /** HEAD points at a commit instead of a branch. */
   detached: boolean
   bare: boolean
   locked: boolean
+  /** Why it was locked, when a reason was given. */
+  lockReason: string | null
   /** Git found the worktree's folder missing. */
   prunable: boolean
 }
@@ -25,9 +31,11 @@ export function parseWorktreeList(output: string): WorktreeEntry[] {
       current = {
         path: line.slice('worktree '.length),
         head: null,
+        branch: null,
         detached: false,
         bare: false,
         locked: false,
+        lockReason: null,
         prunable: false
       }
       entries.push(current)
@@ -35,12 +43,15 @@ export function parseWorktreeList(output: string): WorktreeEntry[] {
       continue
     } else if (line.startsWith('HEAD ')) {
       current.head = line.slice('HEAD '.length).trim() || null
+    } else if (line.startsWith('branch ')) {
+      current.branch = line.slice('branch '.length).replace(/^refs\/heads\//, '') || null
     } else if (line === 'detached') {
       current.detached = true
     } else if (line === 'bare') {
       current.bare = true
     } else if (line === 'locked' || line.startsWith('locked ')) {
       current.locked = true
+      current.lockReason = line.slice('locked'.length).trim() || null
     } else if (line === 'prunable' || line.startsWith('prunable ')) {
       current.prunable = true
     }
@@ -65,13 +76,103 @@ function canonicalPath(path: string): string {
   return process.platform === 'win32' || process.platform === 'darwin' ? normalized.toLowerCase() : normalized
 }
 
-function samePath(a: string, b: string): boolean {
+export function samePath(a: string, b: string): boolean {
   return canonicalPath(a) === canonicalPath(b)
 }
 
 async function listWorktrees(repoPath: string): Promise<WorktreeEntry[]> {
   const result = await runGit({ cwd: repoPath, args: ['worktree', 'list', '--porcelain'] })
   return result.code === 0 ? parseWorktreeList(result.stdout) : []
+}
+
+/** Every work tree of the repository at `repoPath`, the main one first. */
+export async function listWorktreeItems(repoPath: string): Promise<WorktreeItem[]> {
+  const entries = await listWorktrees(repoPath)
+  return entries.map((entry, index) => ({
+    path: normalize(entry.path),
+    branch: entry.branch,
+    head: entry.head,
+    detached: entry.detached,
+    bare: entry.bare,
+    locked: entry.locked,
+    lockReason: entry.lockReason,
+    prunable: entry.prunable,
+    isMain: index === 0,
+    isCurrent: samePath(entry.path, repoPath)
+  }))
+}
+
+/** A folder Git can create a worktree in: absolute, and missing or empty. */
+async function assertNewWorktreeFolder(path: string): Promise<string> {
+  if (!path || !isAbsolute(path) || path.includes('\0')) throw new Error(`Invalid worktree folder: ${JSON.stringify(path)}`)
+  const info = await stat(path).catch(() => null)
+  if (info && (!info.isDirectory() || (await readdir(path)).length > 0)) {
+    throw new Error(`${path} already exists and is not empty. Pick another folder for the worktree.`)
+  }
+  return normalize(path)
+}
+
+/** Adds a linked worktree and returns its folder. */
+export async function addWorktree(repoPath: string, request: Omit<AddWorktreeRequest, 'repoPath'>): Promise<string> {
+  const path = await assertNewWorktreeFolder(request.path)
+  const startPoint = request.startPoint ? [assertRevision(request.startPoint, 'start point')] : []
+  let args: string[]
+  if (request.newBranch) {
+    const track = request.track ? ['--track'] : []
+    args = ['worktree', 'add', ...track, '-b', assertRevision(request.newBranch, 'branch name'), path, ...startPoint]
+  } else if (request.branch) {
+    args = ['worktree', 'add', path, assertRevision(request.branch, 'branch')]
+  } else {
+    args = ['worktree', 'add', '--detach', path, ...(startPoint.length ? startPoint : ['HEAD'])]
+  }
+  await gitOk(repoPath, args)
+  return path
+}
+
+/** A linked worktree of the repository at `repoPath`: never its main work tree, nor `repoPath` itself. */
+async function linkedEntry(repoPath: string, path: string): Promise<WorktreeEntry> {
+  const entries = await listWorktrees(repoPath)
+  const index = entries.findIndex((e) => samePath(e.path, path))
+  if (index < 0) throw new Error(`${path} is not a worktree of this repository.`)
+  if (index === 0) throw new Error('The main work tree cannot be removed or locked from here.')
+  if (samePath(path, repoPath)) throw new Error('Switch to another worktree before removing this one.')
+  return entries[index]
+}
+
+/**
+ * Removes a linked worktree's folder and Git's record of it. Without `force`, Git refuses a worktree with
+ * changes or untracked files: the error then starts with WORKTREE_HAS_CHANGES.
+ */
+export async function removeWorktree(repoPath: string, path: string, force = false): Promise<void> {
+  const entry = await linkedEntry(repoPath, path)
+  if (entry.locked) {
+    throw new Error(`The worktree is locked${entry.lockReason ? ` (${entry.lockReason})` : ''}. Unlock it first.`)
+  }
+  const result = await runGit({ cwd: repoPath, args: ['worktree', 'remove', ...(force ? ['--force'] : []), entry.path] })
+  if (result.code === 0) return
+  const message = result.stderr.trim()
+  if (!force && /modified or untracked files/.test(message)) {
+    throw new Error(`${WORKTREE_HAS_CHANGES}: removing it deletes its uncommitted and untracked files.`)
+  }
+  throw new Error(message || `git worktree remove exited with code ${result.code}`)
+}
+
+export async function lockWorktree(repoPath: string, path: string, reason?: string): Promise<void> {
+  const entry = await linkedEntry(repoPath, path)
+  const why = reason?.trim() ? ['--reason', reason.trim()] : []
+  await gitOk(repoPath, ['worktree', 'lock', ...why, entry.path])
+}
+
+export async function unlockWorktree(repoPath: string, path: string): Promise<void> {
+  const entry = await linkedEntry(repoPath, path)
+  await gitOk(repoPath, ['worktree', 'unlock', entry.path])
+}
+
+/** `git worktree prune`: drops the records of every worktree whose folder is gone. Returns how many went. */
+export async function pruneMissingWorktrees(repoPath: string): Promise<number> {
+  const before = (await listWorktrees(repoPath)).length
+  await gitOk(repoPath, ['worktree', 'prune'])
+  return before - (await listWorktrees(repoPath)).length
 }
 
 /** For a linked worktree, the main work tree of its repository; null for anything else. */

@@ -6,6 +6,7 @@ import { BranchPickModal } from '../features/branches/BranchPickModal'
 import { BranchTrackingModal } from '../features/branches/BranchTrackingModal'
 import { CreateBranchModal } from '../features/branches/CreateBranchModal'
 import { CloneModal } from '../features/clone/CloneModal'
+import { CreateWorktreeModal } from '../features/worktrees/CreateWorktreeModal'
 import { IdentityModal } from '../features/identity/IdentityModal'
 import { MergeEditorModal } from '../features/merge-editor/MergeEditorModal'
 import { NewRepoModal } from '../features/repositories/NewRepoModal'
@@ -39,6 +40,31 @@ function BranchDialogs(): React.JSX.Element | null {
     : <PublishBranchModal key={key} repo={activeRepo} branch={branch} onClose={closeBranchDialog} />
 }
 
+/** The new-worktree dialog stays with the repository it was opened for, and closes when that one is left. */
+function WorktreeDialog(): React.JSX.Element | null {
+  const { worktreeDialog: target } = useDialogState()
+  const { closeWorktreeDialog } = useDialogActions()
+  const { activeRepo, branches, remoteBranches } = useSession()
+  const { addWorktree, openWorktree } = useGitActions()
+  const valid = Boolean(target && activeRepo && sameRepoPath(target.repoPath, activeRepo.path))
+  useEffect(() => {
+    if (target && !valid) closeWorktreeDialog()
+  }, [target, valid, closeWorktreeDialog])
+  if (!valid || !target || !activeRepo) return null
+  return (
+    <CreateWorktreeModal
+      key={`${target.repoPath}:${JSON.stringify(target.source)}`}
+      repo={activeRepo}
+      branches={branches}
+      remoteBranches={remoteBranches}
+      source={target.source}
+      onClose={closeWorktreeDialog}
+      onCreate={addWorktree}
+      onOpen={openWorktree}
+    />
+  )
+}
+
 /** Every modal of the app shell. Repository-scoped dialogs only mount while a repository is active. */
 export function AppDialogs(): React.JSX.Element {
   const open = useDialogState()
@@ -70,6 +96,7 @@ export function AppDialogs(): React.JSX.Element {
   return (
     <>
       <BranchDialogs />
+      <WorktreeDialog />
       {open.remotes && activeRepo && <RemotesModal key={activeRepo.path} repo={activeRepo} onClose={() => closeDialog('remotes')} />}
       {open.compare && activeRepo && <CompareModal key={activeRepo.path} repoPath={activeRepo.path} refs={[...branches.map((branch) => branch.name), ...remoteBranches.map((branch) => branch.name)]} onClose={() => closeDialog('compare')} />}
       {open.recovery && activeRepo && <RecoveryModal key={activeRepo.path} repoPath={activeRepo.path} onClose={() => closeDialog('recovery')} />}

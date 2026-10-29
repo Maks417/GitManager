@@ -17,6 +17,7 @@ import {
 import { useAppStatus } from './AppStatusProvider'
 import { useConfirm } from './ConfirmProvider'
 import { useRequiredContext } from './context'
+import { useDialogActions } from './DialogsProvider'
 import { useGitActions } from './GitActionsProvider'
 import { useHistoryState } from './HistoryProvider'
 import { useSession, useStatus } from './RepoSessionProvider'
@@ -40,6 +41,7 @@ export function CommitMenuProvider({ children }: { children: React.ReactNode }):
   const { status } = useStatus()
   const { headSha } = useHistoryState()
   const actions = useGitActions()
+  const { openWorktreeDialog } = useDialogActions()
   const confirm = useConfirm()
   const [menu, setMenu] = useState<{ commit: Commit; x: number; y: number } | null>(null)
   const [dialog, setDialog] = useState<CommitDialog>(null)
@@ -75,6 +77,13 @@ export function CommitMenuProvider({ children }: { children: React.ReactNode }):
       { label: 'Compare with HEAD', disabled: !headSha, onSelect: () => setDialog({ kind: 'compare', commit }) },
       { label: 'New branch here', separatorBefore: true, onSelect: () => setDialog({ kind: 'branch', commit }) },
       { label: 'New tag here', onSelect: () => setDialog({ kind: 'tag', commit }) },
+      {
+        label: 'New worktree here…',
+        disabled: busy || !activeRepo,
+        onSelect: () => {
+          if (activeRepo) openWorktreeDialog({ repoPath: activeRepo.path, source: { kind: 'commit', sha: commit.sha, label: short } })
+        }
+      },
       {
         label: `Merge into ${onto}`,
         separatorBefore: true,

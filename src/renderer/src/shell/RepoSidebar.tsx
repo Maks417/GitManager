@@ -1,9 +1,10 @@
 import { memo, useMemo, useState } from 'react'
 import type React from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Ellipsis, ListFilter, Locate, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Ellipsis, FolderGit2, ListFilter, Locate, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { confirmDeleteBranch, confirmMerge, confirmRebase } from '../lib/copy'
 import { loadBranchFolders, saveBranchFolders } from '../logic/branch-folders'
 import { buildBranchRows, filterBranchNames, folderChain, type BranchLeafRow, type BranchRow } from '../logic/branch-tree'
+import { orderRepos } from '../logic/worktree-paths'
 import { Button, ContextMenu, IconButton, isMenuKey, menuPointFor, type MenuItem } from '../components/ui'
 import { useRovingList } from '../hooks/useRovingList'
 import { useAppStatus } from '../state/AppStatusProvider'
@@ -15,6 +16,7 @@ import { useLayoutPrefsState } from '../state/LayoutProvider'
 import { useActiveRepo, useSession } from '../state/RepoSessionProvider'
 import { BranchFilterBox } from './BranchFilterBox'
 import { BranchLabel, BranchTreeList, type BranchRowView } from './BranchTreeList'
+import { WorktreesSection } from './WorktreesSection'
 
 const stopRowEvents = {
   onClick: (e: React.MouseEvent) => e.stopPropagation(),
@@ -47,9 +49,9 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
   const activeRepo = useActiveRepo()
   const { repos, branches, remoteBranches, currentBranch, localBranchNames } = useSession()
   const { sidebarCollapsed, branchesExpanded, remoteBranchesExpanded, toggleSidebar, toggleBranches, toggleRemoteBranches } = useLayoutPrefsState()
-  const { openDialog, openBranchDialog } = useDialogActions()
+  const { openDialog, openBranchDialog, openWorktreeDialog } = useDialogActions()
   const confirm = useConfirm()
-  const { selectRepo, requestRemoveRepo, checkoutBranch, runMergeOrRebase, deleteBranch, checkoutRemote, runSync } = useGitActions()
+  const { selectRepo, requestRemoveRepo, checkoutBranch, runMergeOrRebase, deleteBranch, checkoutRemote, runSync, openWorktree } = useGitActions()
   const remoteOp = useRemoteOp()
   const blocked = busy || Boolean(remoteOp)
   const fetching = remoteOp?.kind === 'fetch'
@@ -69,9 +71,11 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
   const filter = filters[activeRepo.path] ?? ''
   const filtering = filter.trim() !== ''
 
-  const repoRows = useRovingList(repos.length, repos.findIndex((repo) => repo.id === activeRepo.id), (index) => {
-    const repo = repos[index]
-    if (repo) selectRepo(repo)
+  // Linked worktrees sit under their main repository.
+  const repoList = useMemo(() => orderRepos(repos), [repos])
+  const repoRows = useRovingList(repoList.length, repoList.findIndex((row) => row.repo.id === activeRepo.id), (index) => {
+    const row = repoList[index]
+    if (row) selectRepo(row.repo)
   })
 
   const localByName = useMemo(() => new Map(branches.map((branch) => [branch.name, branch])), [branches])
@@ -149,12 +153,17 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
       props: {
         ...menuHandlers('local', row.name),
         className: branch?.current ? 'active' : '',
-        title: 'Double-click or press Enter to check out',
+        title: branch?.worktreePath
+          ? `Checked out in the worktree at ${branch.worktreePath}. Double-click or press Enter to open it`
+          : 'Double-click or press Enter to check out',
         onDoubleClick: () => { if (!blocked) void checkoutBranch(row.name) }
       },
       content: <>
         <div className="branch-row-main">
-          <BranchLabel row={row} />
+          <div className="branch-name-line">
+            <BranchLabel row={row} />
+            {branch?.worktreePath && <span className="muted branch-worktree-mark" title={`Checked out in the worktree at ${branch.worktreePath}`}><FolderGit2 size={13} strokeWidth={1.75} aria-label="In another worktree" /></span>}
+          </div>
           {branch && (branch.ahead > 0 || branch.behind > 0) && <div className="muted ahead-behind text-xs"><ArrowUp size={12} strokeWidth={2} />{branch.ahead}<ArrowDown size={12} strokeWidth={2} />{branch.behind}</div>}
         </div>
         <div className="branch-row-actions" {...stopRowEvents}>{historyButtons(row.name, branch?.sha ?? null)}{menuButton('local', row.name)}</div>
@@ -181,8 +190,17 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
 
   const local = menu?.kind === 'local' ? branches.find((branch) => branch.name === menu.name) : undefined
   const remote = menu?.kind === 'remote' ? remoteBranches.find((branch) => branch.name === menu.name) : undefined
+  const worktreeItem = (source: { kind: 'branch' | 'remote'; name: string }): MenuItem => ({
+    label: 'Check out in new worktree…',
+    disabled: blocked,
+    onSelect: () => openWorktreeDialog({ repoPath: activeRepo.path, source })
+  })
+  const heldAt = local?.worktreePath ?? null
   const menuItems: MenuItem[] = local ? [
-    { label: 'Check out', disabled: blocked || local.current, onSelect: () => void checkoutBranch(local.name) },
+    heldAt
+      ? { label: 'Open its worktree', disabled: blocked, onSelect: () => void openWorktree(heldAt) }
+      : { label: 'Check out', disabled: blocked || local.current, onSelect: () => void checkoutBranch(local.name) },
+    ...(local.current || heldAt ? [] : [worktreeItem({ kind: 'branch', name: local.name })]),
     { label: 'Merge into current branch', disabled: blocked || local.current, onSelect: () => {
       void confirm(confirmMerge(local.name)).then((ok) => { if (ok) void runMergeOrRebase('merge', local.name) })
     } },
@@ -191,11 +209,12 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
     } },
     { label: 'Tracking', separatorBefore: true, disabled: blocked, onSelect: () => tracking(local.name) },
     ...(local.current ? [{ label: local.upstream ? 'Push to' : 'Publish branch', disabled: blocked || !local.sha, onSelect: () => pushTo(local.name) }] : []),
-    { label: 'Delete branch', separatorBefore: true, danger: true, disabled: blocked || local.current, onSelect: () => {
+    { label: 'Delete branch', separatorBefore: true, danger: true, disabled: blocked || local.current || Boolean(heldAt), onSelect: () => {
       void confirm(confirmDeleteBranch(local.name)).then((ok) => { if (ok) void deleteBranch(local.name) })
     } }
   ] : remote ? [
-    { label: localBranchNames.has(remote.shortName) ? 'Check out local branch' : 'Check out and track', disabled: blocked, onSelect: () => void checkoutRemote(remote.name) }
+    { label: localBranchNames.has(remote.shortName) ? 'Check out local branch' : 'Check out and track', disabled: blocked, onSelect: () => void checkoutRemote(remote.name) },
+    worktreeItem({ kind: 'remote', name: remote.name })
   ] : menu?.kind === 'remotes' ? [
     { label: 'Manage remotes', disabled: blocked, onSelect: () => openDialog('remotes') }
   ] : []
@@ -210,8 +229,9 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
         {!sidebarCollapsed && <div className="panel-title sidebar-heading">Repositories</div>}
       </div>
       <ul className="repo-list" aria-label="Repositories" onKeyDown={repoRows.onKeyDown}>
-        {repos.map((repo, index) => (
-          <li key={repo.id} {...repoRows.rowProps(index)} className={repo.id === activeRepo.id ? 'active' : ''} onClick={() => selectRepo(repo)} title={sidebarCollapsed ? `${repo.name}${repo.currentBranch ? ` (${repo.currentBranch})` : ''}` : repo.path}>
+        {repoList.map(({ repo, depth }, index) => (
+          <li key={repo.id} {...repoRows.rowProps(index)} className={[repo.id === activeRepo.id ? 'active' : '', depth ? 'repo-worktree' : ''].filter(Boolean).join(' ')} onClick={() => selectRepo(repo)} title={sidebarCollapsed ? `${repo.name}${repo.currentBranch ? ` (${repo.currentBranch})` : ''}` : repo.worktreeOf ? `${repo.path}\nWorktree of ${repo.worktreeOf}` : repo.path}>
+            {!sidebarCollapsed && repo.worktreeOf && <FolderGit2 className="muted repo-worktree-icon" size={14} strokeWidth={1.75} aria-label="Worktree" />}
             <div className="repo-row-main">
               <div className="cell-ellipsis repo-name">{sidebarCollapsed ? repo.name.slice(0, 1).toUpperCase() : repo.name}</div>
               {!sidebarCollapsed && repo.id !== activeRepo.id && <div className="muted cell-ellipsis repo-branch-sub">{repo.currentBranch || 'detached'}</div>}
@@ -266,6 +286,7 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
             renderBranch={renderRemote}
             footer={filtering ? filterNote(remoteView) : remoteBranches.length === 0 && <li className="muted text-xs branch-list-note">{activeRepo.remotes.length ? 'No remote branches — fetch to refresh' : 'No remotes configured'}</li>}
           />}
+          <WorktreesSection />
         </>
       )}
     </aside>

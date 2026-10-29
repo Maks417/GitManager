@@ -1,5 +1,6 @@
 import { ipcMain, shell } from 'electron'
 import {
+  AddWorktreeRequestSchema,
   SaveRemoteRequestSchema,
   SetUpstreamRequestSchema,
   ApplyPartialRequestSchema,
@@ -137,6 +138,37 @@ export function registerGitHandlers(): void {
       await git.deleteBranch(parseRepoPath(repoPath), parseRef(name), optionalBool.parse(force) ?? false)
     }
   )
+  ipcMain.handle(IpcChannels.git.worktreeList, async (event, repoPath: unknown) => {
+    assertSender(event)
+    return git.listWorktreeItems(parseRepoPath(repoPath))
+  })
+  ipcMain.handle(IpcChannels.git.worktreeAdd, async (event, raw: unknown) => {
+    assertSender(event)
+    const { repoPath, ...request } = AddWorktreeRequestSchema.parse(raw)
+    return git.addWorktree(parseRepoPath(repoPath), request)
+  })
+  ipcMain.handle(
+    IpcChannels.git.worktreeRemove,
+    async (event, repoPath: unknown, path: unknown, force?: unknown) => {
+      assertSender(event)
+      await git.removeWorktree(parseRepoPath(repoPath), NonEmptyStringSchema.parse(path), optionalBool.parse(force) ?? false)
+    }
+  )
+  ipcMain.handle(
+    IpcChannels.git.worktreeLock,
+    async (event, repoPath: unknown, path: unknown, reason?: unknown) => {
+      assertSender(event)
+      await git.lockWorktree(parseRepoPath(repoPath), NonEmptyStringSchema.parse(path), optionalString.parse(reason))
+    }
+  )
+  ipcMain.handle(IpcChannels.git.worktreeUnlock, async (event, repoPath: unknown, path: unknown) => {
+    assertSender(event)
+    await git.unlockWorktree(parseRepoPath(repoPath), NonEmptyStringSchema.parse(path))
+  })
+  ipcMain.handle(IpcChannels.git.worktreePrune, async (event, repoPath: unknown) => {
+    assertSender(event)
+    return git.pruneMissingWorktrees(parseRepoPath(repoPath))
+  })
   ipcMain.handle(IpcChannels.git.merge, async (event, repoPath: unknown, ref: unknown) => {
     assertSender(event)
     return git.mergeRef(parseRepoPath(repoPath), parseRef(ref))

@@ -64,6 +64,7 @@
 | **History-first graph** | Large commit topology with search, branch filter, and inline or side-by-side diffs |
 | **Working tree** | Stage whole files, hunks or lines; commit with a message draft saved per repository |
 | **Branches & sync** | Create/switch branches, merge/rebase, fetch, pull and push; filter thousands of branches and browse them in folders; configure remotes and choose publication destinations |
+| **Worktrees** | Check out branches in folders of their own: create, open, lock and remove worktrees, and see which branches other worktrees hold |
 | **Reference comparison** | Compare branches, tags or commits as exact snapshots or changes since their common ancestor |
 | **Recovery** | Restore tracked-change backups and create branches from saved commits or recent HEAD history |
 | **Commit actions** | Cherry-pick, revert, reset, create/delete tags and push tags from the commit actions menu |
@@ -95,9 +96,9 @@ On Windows and Linux the app then updates itself from the same releases. macOS u
 ### Requirements
 
 - **Windows** 10 or 11, **macOS** on Apple silicon, or **Linux** x64
-- **System Git** on `PATH`, or set `GIT_MANAGER_GIT_PATH` to a Git binary
+- **System Git 2.23 or newer** on `PATH`, or set `GIT_MANAGER_GIT_PATH` to a Git binary
 
-The app probes for Git at startup and guides you to install it if missing.
+The app probes for Git at startup and guides you to install it if missing. With an older Git it shows a banner: most things still work, but branches checked out in other worktrees are not marked.
 
 ## Connect host accounts
 
@@ -175,7 +176,7 @@ Menu shortcuts use <kbd>Ctrl</kbd> on Windows and <kbd>⌘</kbd> on macOS:
 
 ## Build from source
 
-Requires [Node.js](https://nodejs.org/) 22 and Git.
+Requires [Node.js](https://nodejs.org/) 22 and Git 2.23 or newer.
 
 ```bash
 npm install
@@ -256,6 +257,7 @@ Full write-up: [`docs/architecture.md`](docs/architecture.md).
 | [History graph](docs/features/history-graph.md) | Topology UI |
 | [Working tree](docs/features/working-tree.md) | Changes & commits |
 | [Branches & sync](docs/features/branches-and-sync.md) | Branch ops and remotes |
+| [Worktrees](docs/features/worktrees.md) | Branches checked out in folders of their own |
 | [Remotes & publishing](docs/features/remotes-and-publishing.md) | Remote URLs, upstreams and publication destinations |
 | [Reference comparison](docs/features/reference-comparison.md) | Exact snapshots and feature-branch review |
 | [Recovery](docs/features/recovery.md) | Saved commits, tracked-change snapshots and reflog |

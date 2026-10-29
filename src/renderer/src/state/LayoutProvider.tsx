@@ -12,6 +12,7 @@ export type LayoutPrefs = Pick<
   | 'sidebarCollapsed'
   | 'branchesExpanded'
   | 'remoteBranchesExpanded'
+  | 'worktreesExpanded'
   | 'detailDock'
   | 'diffView'
   | 'syntaxHighlighting'
@@ -21,6 +22,7 @@ export type LayoutPrefs = Pick<
   | 'toggleSidebar'
   | 'toggleBranches'
   | 'toggleRemoteBranches'
+  | 'toggleWorktrees'
   | 'setThemePref'
   | 'setHistoryFilter'
   | 'setDiffView'
@@ -86,6 +88,7 @@ export function LayoutProvider({ children }: { children: React.ReactNode }): Rea
       sidebarCollapsed: layout.sidebarCollapsed,
       branchesExpanded: layout.branchesExpanded,
       remoteBranchesExpanded: layout.remoteBranchesExpanded,
+      worktreesExpanded: layout.worktreesExpanded,
       detailDock: layout.detailDock,
       diffView: layout.diffView,
       syntaxHighlighting: layout.syntaxHighlighting,
@@ -95,6 +98,7 @@ export function LayoutProvider({ children }: { children: React.ReactNode }): Rea
       toggleSidebar: layout.toggleSidebar,
       toggleBranches: layout.toggleBranches,
       toggleRemoteBranches: layout.toggleRemoteBranches,
+      toggleWorktrees: layout.toggleWorktrees,
       setThemePref: layout.setThemePref,
       setHistoryFilter: layout.setHistoryFilter,
       setDiffView: layout.setDiffView,
@@ -107,6 +111,7 @@ export function LayoutProvider({ children }: { children: React.ReactNode }): Rea
       layout.sidebarCollapsed,
       layout.branchesExpanded,
       layout.remoteBranchesExpanded,
+      layout.worktreesExpanded,
       layout.detailDock,
       layout.diffView,
       layout.syntaxHighlighting,
@@ -116,6 +121,7 @@ export function LayoutProvider({ children }: { children: React.ReactNode }): Rea
       layout.toggleSidebar,
       layout.toggleBranches,
       layout.toggleRemoteBranches,
+      layout.toggleWorktrees,
       layout.setThemePref,
       layout.setHistoryFilter,
       layout.setDiffView,

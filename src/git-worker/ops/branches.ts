@@ -1,7 +1,7 @@
 import type { BranchInfo, RemoteBranchInfo, RemoteOpResult, RemoteProgress } from '@shared/ipc'
 import { createHash } from 'crypto'
 import { existsSync } from 'fs'
-import { isAbsolute, join } from 'path'
+import { isAbsolute, join, normalize } from 'path'
 import { GitCancelledError, type GitRunResult } from '../git-runner'
 import { throttleProgress } from '../progress'
 import { listConflictFiles } from './merge'
@@ -9,6 +9,7 @@ import { assertRevision } from './guards'
 import { currentBranchName, gitOk, resolveHeadSha, runGit } from './shared'
 import { assertRemoteName } from './remotes'
 import { saveCommitRecovery } from './recovery'
+import { samePath } from './worktrees'
 import { chunkPaths } from './status'
 
 /** Network operations fail after this long without any output from Git: a stalled network or a silent prompt. */
@@ -56,19 +57,35 @@ async function countAheadBehind(repoPath: string, refs: string[]): Promise<Map<s
   return counts
 }
 
+/** Cleared once a Git older than 2.23 rejects `%(worktreepath)`: refs are then listed without it. */
+let worktreePathAtom = true
+
+async function listRefs(repoPath: string): Promise<string> {
+  const fields = '%(objectname)%00%(refname)%00%(HEAD)%00%(upstream)'
+  if (worktreePathAtom) {
+    try {
+      return await gitOk(repoPath, ['for-each-ref', `--format=${fields}%00%(worktreepath)`])
+    } catch (err) {
+      if (!/worktreepath/.test(err instanceof Error ? err.message : String(err))) throw err
+      worktreePathAtom = false
+    }
+  }
+  return gitOk(repoPath, ['for-each-ref', `--format=${fields}`])
+}
+
 /**
  * One listing of every ref. Ahead/behind (`%(upstream:track)`) walks history for each tracking branch, most of
  * a second with dozens of them, so it is only counted for a branch whose sha or upstream sha moved.
  */
 export async function readRefs(repoPath: string): Promise<RefsSnapshot> {
-  const out = await gitOk(repoPath, ['for-each-ref', '--format=%(objectname)%00%(refname)%00%(HEAD)%00%(upstream)'])
+  const out = await listRefs(repoPath)
   const shaOf = new Map<string, string>()
-  const rows: { sha: string; ref: string; head: boolean; upstream: string }[] = []
+  const rows: { sha: string; ref: string; head: boolean; upstream: string; worktree: string }[] = []
   for (const line of out.split('\n')) {
-    const [sha = '', ref = '', head = '', upstream = ''] = line.split('\0')
+    const [sha = '', ref = '', head = '', upstream = '', worktree = ''] = line.split('\0')
     if (!ref) continue
     shaOf.set(ref, sha)
-    rows.push({ sha, ref, head: head === '*', upstream })
+    rows.push({ sha, ref, head: head === '*', upstream, worktree })
   }
 
   const heads = rows.filter((row) => row.ref.startsWith('refs/heads/'))
@@ -100,14 +117,16 @@ export async function readRefs(repoPath: string): Promise<RefsSnapshot> {
       upstream: row.upstream ? shortRefName(row.upstream) : null,
       ahead: track?.ahead ?? 0,
       behind: track?.behind ?? 0,
-      sha: row.sha || null
+      sha: row.sha || null,
+      // The current branch is checked out here: only another worktree's checkout is worth a mark.
+      worktreePath: row.worktree && !row.head && !samePath(row.worktree, repoPath) ? normalize(row.worktree) : null
     }
   })
   // Unborn branch: no refs/heads yet, but symbolic-ref still names the branch
   if (branches.length === 0) {
     const name = await currentBranchName(repoPath)
     if (name) {
-      branches.push({ name, current: true, upstream: null, ahead: 0, behind: 0, sha: null })
+      branches.push({ name, current: true, upstream: null, ahead: 0, behind: 0, sha: null, worktreePath: null })
     }
   }
 
@@ -121,7 +140,7 @@ export async function readRefs(repoPath: string): Promise<RefsSnapshot> {
   }
 
   const fingerprint = createHash('sha1')
-    .update(rows.map((row) => `${row.sha} ${row.ref}`).join('\n'))
+    .update(rows.map((row) => `${row.sha} ${row.ref} ${row.worktree}`).join('\n'))
     .digest('hex')
   return { branches, remoteBranches, fingerprint }
 }

@@ -141,8 +141,9 @@ export function classifyWatchPath(filename: string | null | undefined): RepoWatc
     if (rel.endsWith('.lock')) return null
     const inner = rel.slice('.git/'.length)
     if (NOISY_GIT_ENTRY_RE.test(inner)) return null
-    // Linked worktrees keep their own HEAD and index here: not this work tree's state.
-    if (inner.startsWith('worktrees/')) return null
+    // Linked worktrees keep their own HEAD and index here: not this work tree's state, except that a checkout
+    // there moves which branches are taken (the sidebar marks them).
+    if (inner.startsWith('worktrees/')) return /^worktrees\/[^/]+\/HEAD$/.test(inner) ? 'git-meta' : null
     // A submodule's repository: its commits and staging change this repository's status, not its history.
     if (inner.startsWith('modules/')) return NOISY_MODULE_ENTRY_RE.test(inner) ? null : 'worktree'
     // Staging changes status but never history.

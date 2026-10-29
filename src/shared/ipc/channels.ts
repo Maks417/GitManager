@@ -22,7 +22,8 @@ export const MenuChannels = {
   toggleDiffView: 'menu:toggle-diff-view',
   toggleSyntaxHighlighting: 'menu:toggle-syntax-highlighting',
   toggleSidebar: 'menu:toggle-sidebar',
-  findBranch: 'menu:find-branch'
+  findBranch: 'menu:find-branch',
+  newWorktree: 'menu:new-worktree'
 } as const
 
 export type MenuChannel = (typeof MenuChannels)[keyof typeof MenuChannels]
@@ -80,6 +81,12 @@ export const IpcChannels = {
     checkoutRemoteBranch: 'git:checkout-remote-branch',
     createBranch: 'git:create-branch',
     deleteBranch: 'git:delete-branch',
+    worktreeList: 'git:worktree-list',
+    worktreeAdd: 'git:worktree-add',
+    worktreeRemove: 'git:worktree-remove',
+    worktreeLock: 'git:worktree-lock',
+    worktreeUnlock: 'git:worktree-unlock',
+    worktreePrune: 'git:worktree-prune',
     merge: 'git:merge',
     rebase: 'git:rebase',
     rebaseContinue: 'git:rebase-continue',
@@ -136,6 +143,7 @@ export const IpcChannels = {
   },
   shell: {
     openExternal: 'shell:open-external',
-    showInFolder: 'shell:show-in-folder'
+    showInFolder: 'shell:show-in-folder',
+    openWorktreeFolder: 'shell:open-worktree-folder'
   }
 } as const

@@ -401,5 +401,11 @@ export const setGitIdentity = wrap('setGitIdentity')
 export const inspectRepoForRemoval = wrap('inspectRepoForRemoval')
 export const getWorktreeInfo = wrap('getWorktreeInfo')
 export const pruneWorktree = wrap('pruneWorktree')
+export const listWorktreeItems = wrap('listWorktreeItems')
+export const addWorktree = wrap('addWorktree')
+export const removeWorktree = wrap('removeWorktree')
+export const lockWorktree = wrap('lockWorktree')
+export const unlockWorktree = wrap('unlockWorktree')
+export const pruneMissingWorktrees = wrap('pruneMissingWorktrees')
 
 export { friendlyCommitError } from './operations'

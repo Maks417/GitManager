@@ -101,6 +101,30 @@ export const confirmDeleteBranch = (name: string): ConfirmRequest => ({
   danger: true
 })
 
+export const confirmOpenWorktree = (branch: string, path: string): ConfirmRequest => ({
+  title: 'Branch is in another worktree',
+  message: `"${branch}" is checked out in the worktree at ${path}. Git checks a branch out in one worktree at a time.\n\nOpen that worktree instead?`,
+  confirmLabel: 'Open worktree'
+})
+
+/** Why a branch that another worktree has checked out cannot be deleted. */
+export const branchHeldByWorktree = (branch: string, path: string): string =>
+  `"${branch}" is checked out in the worktree at ${path}. Check out another branch there, or remove that worktree, then delete the branch.`
+
+export const confirmRemoveWorktree = (path: string, branch: string | null): ConfirmRequest => ({
+  title: 'Remove worktree',
+  message: `Remove the worktree at ${path}? Its folder is deleted.${branch ? ` The branch "${branch}" stays.` : ''}`,
+  confirmLabel: 'Remove',
+  danger: true
+})
+
+export const confirmForceRemoveWorktree = (path: string): ConfirmRequest => ({
+  title: 'Worktree has changes',
+  message: `The worktree at ${path} has uncommitted or untracked files.\n\nRemove it anyway? Those changes are deleted with the folder and cannot be recovered from the app.`,
+  confirmLabel: 'Remove anyway',
+  danger: true
+})
+
 export const confirmForceDeleteBranch = (name: string, reason: string): ConfirmRequest => ({
   title: 'Force delete branch',
   message: `${reason}\n\nForce delete branch "${name}"? Commits that exist only on this branch will no longer be on any branch.`,

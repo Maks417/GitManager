@@ -31,7 +31,7 @@ async function listedNames(main: string): Promise<string[]> {
 }
 
 describe('parseWorktreeList', () => {
-  it('reads each worktree with its HEAD and its detached, lock, prunable and bare flags', () => {
+  it('reads each worktree with its HEAD, branch, detached, lock, prunable and bare flags', () => {
     const output = [
       'worktree /repos/main',
       'HEAD 1111111111111111111111111111111111111111',
@@ -53,10 +53,10 @@ describe('parseWorktreeList', () => {
     ].join('\n')
     const head = (digit: string): string => digit.repeat(40)
     expect(parseWorktreeList(output)).toEqual([
-      { path: '/repos/main', head: head('1'), detached: false, bare: false, locked: false, prunable: false },
-      { path: '/repos/wt', head: head('2'), detached: true, bare: false, locked: true, prunable: false },
-      { path: '/repos/gone', head: head('3'), detached: false, bare: false, locked: false, prunable: true },
-      { path: '/repos/bare.git', head: null, detached: false, bare: true, locked: false, prunable: false }
+      { path: '/repos/main', head: head('1'), branch: 'main', detached: false, bare: false, locked: false, lockReason: null, prunable: false },
+      { path: '/repos/wt', head: head('2'), branch: null, detached: true, bare: false, locked: true, lockReason: 'moving disks', prunable: false },
+      { path: '/repos/gone', head: head('3'), branch: 'gone', detached: false, bare: false, locked: false, lockReason: null, prunable: true },
+      { path: '/repos/bare.git', head: null, branch: null, detached: false, bare: true, locked: false, lockReason: null, prunable: false }
     ])
   })
 })

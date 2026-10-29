@@ -4,12 +4,14 @@ import { focusBranchFilter } from '../shell/BranchFilterBox'
 import { useDialogActions } from '../state/DialogsProvider'
 import { useGitActions } from '../state/GitActionsProvider'
 import { useHistoryActions } from '../state/HistoryProvider'
+import { useSession } from '../state/RepoSessionProvider'
 import { useLayoutPrefsState } from '../state/LayoutProvider'
 import { useWorkingTreeActions } from '../state/WorkingTreeProvider'
 
 /** Runs the commands the application menu (File, View, Repository, Help) sends from the main process. */
 export function useMenuCommands(): void {
-  const { openDialog } = useDialogActions()
+  const { openDialog, openWorktreeDialog } = useDialogActions()
+  const { activeRepo } = useSession()
   const { addRepo, openClone, openNewRepo, runSync } = useGitActions()
   const { searchInputRef } = useHistoryActions()
   const { goHistory, selectWorkingCopy } = useWorkingTreeActions()
@@ -46,6 +48,9 @@ export function useMenuCommands(): void {
         // A collapsed sidebar has no filter box: it takes focus once the sidebar shows it.
         if (sidebarCollapsed) toggleSidebar()
         focusBranchFilter()
+      },
+      [MenuChannels.newWorktree]: () => {
+        if (activeRepo) openWorktreeDialog({ repoPath: activeRepo.path, source: { kind: 'new' } })
       }
     }
     commands[channel]()

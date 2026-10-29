@@ -3,7 +3,9 @@ import { IpcChannels, type UpdateStatus } from '@shared/ipc'
 import { z } from 'zod'
 import { checkForUpdates, getUpdateStatus, installUpdate, subscribeUpdateStatus } from '../updater'
 import { subscribeRepoWatch, subscribeRepoWatchState } from '../repo-watcher'
+import { listWorktreeItems } from '../../git-worker/client'
 import { resolveRepoPath } from '../../git-worker/ops/guards'
+import { samePath } from '../../git-worker/ops/worktrees'
 import { assertSender } from './assert-sender'
 
 export function registerAppHandlers(): void {
@@ -43,6 +45,16 @@ export function registerAppHandlers(): void {
     assertSender(event)
     // Only paths inside the repository, never one that climbs out of it.
     shell.showItemInFolder(resolveRepoPath(z.string().min(1).parse(repoPath), z.string().min(1).parse(path)))
+  })
+  ipcMain.handle(IpcChannels.shell.openWorktreeFolder, async (event, repoPath: unknown, path: unknown) => {
+    assertSender(event)
+    // Only a folder Git lists as a worktree of the repository.
+    const folder = z.string().min(1).parse(path)
+    const items = await listWorktreeItems(z.string().min(1).parse(repoPath))
+    const item = items.find((i) => samePath(i.path, folder))
+    if (!item) throw new Error(`${folder} is not a worktree of this repository.`)
+    const failure = await shell.openPath(item.path)
+    if (failure) throw new Error(failure)
   })
 
   subscribeUpdateStatus((status: UpdateStatus) => {

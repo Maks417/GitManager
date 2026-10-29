@@ -46,7 +46,9 @@ import type {
   StatusEntry,
   UpdateStatus,
   WorkingTreeDiffRequest,
-  WorktreeInfo
+  WorktreeInfo,
+  WorktreeItem,
+  AddWorktreeRequest
 } from './schemas'
 import type { ProviderId } from '../providers'
 
@@ -125,6 +127,14 @@ export interface GitManagerApi {
     /** At HEAD, or at `startPoint` when given. */
     createBranch: (repoPath: string, name: string, checkout?: boolean, startPoint?: string) => Promise<void>
     deleteBranch: (repoPath: string, name: string, force?: boolean) => Promise<void>
+    worktreeList: (repoPath: string) => Promise<WorktreeItem[]>
+    /** Resolves the new worktree's folder. */
+    worktreeAdd: (request: AddWorktreeRequest) => Promise<string>
+    worktreeRemove: (repoPath: string, path: string, force?: boolean) => Promise<void>
+    worktreeLock: (repoPath: string, path: string, reason?: string) => Promise<void>
+    worktreeUnlock: (repoPath: string, path: string) => Promise<void>
+    /** Resolves how many records of missing worktrees were removed. */
+    worktreePrune: (repoPath: string) => Promise<number>
     merge: (repoPath: string, ref: string) => Promise<{ conflicts: string[] }>
     rebase: (repoPath: string, upstream: string) => Promise<{ conflicts: string[] }>
     rebaseContinue: (repoPath: string) => Promise<{ conflicts: string[] }>
@@ -189,6 +199,8 @@ export interface GitManagerApi {
     openExternal: (url: string) => Promise<void>
     /** Show a repository file in Explorer / Finder / the file manager. */
     showInFolder: (repoPath: string, path: string) => Promise<void>
+    /** Open a worktree of the repository in Explorer / Finder / the file manager. */
+    openWorktreeFolder: (repoPath: string, path: string) => Promise<void>
   }
 }
 

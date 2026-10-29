@@ -974,6 +974,63 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   pointer-events: none;
 }
 
+/* A branch another worktree has checked out: its name, then the worktree mark. */
+.branch-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.branch-worktree-mark {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.worktree-list .branch-row-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.worktree-list .branch-row-main > .cell-ellipsis {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.worktree-missing {
+  color: var(--warning);
+}
+
+/* A linked worktree under its main repository in the Repositories list. */
+.sidebar:not(.collapsed) .repo-list li.repo-worktree {
+  padding-left: 22px;
+}
+
+.repo-worktree-icon {
+  flex-shrink: 0;
+}
+
+.worktree-folder {
+  gap: 6px;
+}
+
+.worktree-folder .w-full {
+  flex: 1;
+  min-width: 0;
+}
+
+.worktree-note {
+  margin: 0;
+}
+
+/* Two lines of explanation, unlike the one-line leads of the commit action dialogs. */
+.modal-lead.worktree-lead {
+  white-space: normal;
+  overflow: visible;
+}
+
 mark.branch-match {
   background: var(--accent-muted);
   color: var(--accent);
