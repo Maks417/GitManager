@@ -11,9 +11,11 @@ import {
   useLayoutChrome,
   useLayoutPrefsState
 } from '../state/LayoutProvider'
+import { useRemoteOp } from '../state/GitActionsProvider'
 import { useActiveRepo } from '../state/RepoSessionProvider'
 import { useSelectionCore } from '../state/SelectionProvider'
 import { RepoSidebar } from './RepoSidebar'
+import { LongRunningNotice } from './LongRunningNotice'
 import { WatchNotice } from './WatchNotice'
 
 /**
@@ -21,8 +23,11 @@ import { WatchNotice } from './WatchNotice'
  * props and are memoized, so a splitter drag or a refresh that re-renders this shell skips them.
  */
 export function WorkspaceShell(): React.JSX.Element {
-  const { error } = useAppStatus()
+  const { error, busy } = useAppStatus()
+  // Fetch, pull and push show their own progress and Cancel.
+  const remoteOp = useRemoteOp()
   const activeRepo = useActiveRepo()
+  const longRunning = <LongRunningNotice busy={busy && !remoteOp} repoPath={activeRepo.path} />
   const { viewMode, selection } = useSelectionCore()
   const { detailDock, sidebarCollapsed, toggleDock } = useLayoutPrefsState()
   const { persistLayout } = useLayoutActions()
@@ -77,6 +82,7 @@ export function WorkspaceShell(): React.JSX.Element {
         <>
           <section className="history-pane" data-pane="main">
             {error && <Banner>{error}</Banner>}
+            {longRunning}
             <WatchNotice />
             <HistoryGraph />
           </section>
@@ -129,6 +135,7 @@ export function WorkspaceShell(): React.JSX.Element {
       ) : (
         <section className="changes-pane" data-pane="main">
           {error && <Banner>{error}</Banner>}
+          {longRunning}
           <WatchNotice />
           {/* Each repository restores its own saved draft; file selection stays local to this view. */}
           <WorkingTreeDetailPane key={activeRepo.path} />

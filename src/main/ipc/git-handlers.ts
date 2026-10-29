@@ -103,6 +103,10 @@ export function registerGitHandlers(): void {
     assertSender(event)
     cancelRemoteOperation(RemoteOpRequestSchema.shape.opId.parse(opId))
   })
+  ipcMain.handle(IpcChannels.git.stopLong, async (event, repoPath: unknown) => {
+    assertSender(event)
+    return git.stopLongGit(parseRepoPath(repoPath))
+  })
   ipcMain.handle(IpcChannels.git.checkout, async (event, repoPath: unknown, ref: unknown) => {
     assertSender(event)
     await git.checkoutRef(parseRepoPath(repoPath), parseRef(ref))

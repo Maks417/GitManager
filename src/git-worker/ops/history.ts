@@ -346,7 +346,20 @@ export async function getCommitDetail(repoPath: string, sha: string): Promise<Co
     sha
   ])
 
-  return { commit: decorateCommitsWithColors([commit])[0], files: parseNameStatusZ(nameStatus) }
+  const files = parseNameStatusZ(nameStatus)
+  return {
+    commit: decorateCommitsWithColors([commit])[0],
+    ...limitFileList(files, MAX_DETAIL_FILES)
+  }
+}
+
+/** Files listed for one commit; the inspector's list is windowed, but every row still crosses IPC. */
+const MAX_DETAIL_FILES = 20_000
+
+/** The first `max` files, and how many were left out (only when some were). */
+export function limitFileList<T>(files: T[], max: number): { files: T[]; omittedFiles?: number } {
+  if (files.length <= max) return { files }
+  return { files: files.slice(0, max), omittedFiles: files.length - max }
 }
 
 function mapNameStatus(s: string): FileChange['status'] {

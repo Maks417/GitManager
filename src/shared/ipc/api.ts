@@ -114,6 +114,11 @@ export interface GitManagerApi {
     pull: (request: RemoteOpRequest) => Promise<RemoteOpResult>
     push: (request: RemoteOpRequest) => Promise<RemoteOpResult>
     cancelOperation: (opId: string) => Promise<void>
+    /**
+     * Stop the local Git commands of a repository that have run for a while (a commit waiting on a signing
+     * prompt or a hook); removes the index lock a stopped one left. Fetch, pull and push use cancelOperation.
+     */
+    stopLong: (repoPath: string) => Promise<{ stopped: boolean; removedLock: boolean }>
     onProgress: (callback: (progress: GitProgress) => void) => () => void
     checkout: (repoPath: string, ref: string) => Promise<void>
     checkoutRemoteBranch: (repoPath: string, remoteRef: string) => Promise<void>

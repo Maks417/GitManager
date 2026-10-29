@@ -1,6 +1,6 @@
 import type { CompareDiffRequest, CompareRequest, Comparison } from '@shared/ipc'
 import { assertRevision, assertSha } from './guards'
-import { getTreeFileDiff, parseNameStatusZ } from './history'
+import { getTreeFileDiff, limitFileList, parseNameStatusZ } from './history'
 import { gitOk, runGit } from './shared'
 
 async function resolveCommit(repoPath: string, ref: string): Promise<string> {
@@ -54,8 +54,11 @@ export async function compareRefs(repoPath: string, request: CompareRequest): Pr
     const file = byPath.get(path)
     if (file) { file.additions = added; file.deletions = removed }
   }
-  return { baseSha, targetSha, files, additions, deletions, binaryFiles }
+  return { baseSha, targetSha, ...limitFileList(files, MAX_COMPARED_FILES), additions, deletions, binaryFiles }
 }
+
+/** Files listed by a comparison: its dialog renders every row. */
+const MAX_COMPARED_FILES = 5000
 
 export async function getComparisonDiff(repoPath: string, request: CompareDiffRequest) {
   assertSha(request.baseSha)

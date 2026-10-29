@@ -105,6 +105,7 @@ export const IpcChannels = {
     getIdentity: 'git:get-identity',
     setIdentity: 'git:set-identity',
     cancelOperation: 'git:cancel-operation',
+    stopLong: 'git:stop-long',
     onProgress: 'git:on-progress'
   },
   merge: {

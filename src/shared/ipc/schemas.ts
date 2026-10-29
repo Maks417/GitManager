@@ -169,7 +169,9 @@ export type BlameResult = z.infer<typeof BlameResultSchema>
 
 export const CommitDetailSchema = z.object({
   commit: CommitSchema,
-  files: z.array(FileChangeSchema)
+  files: z.array(FileChangeSchema),
+  /** Changed files past the listing limit (a vendored import, say), left out of `files`. */
+  omittedFiles: z.number().optional()
 })
 export type CommitDetail = z.infer<typeof CommitDetailSchema>
 
@@ -319,6 +321,8 @@ export const ComparisonSchema = z.object({
   baseSha: z.string(),
   targetSha: z.string(),
   files: z.array(FileChangeSchema),
+  /** Differing files past the listing limit, left out of `files`; the totals still count them. */
+  omittedFiles: z.number().optional(),
   additions: z.number(),
   deletions: z.number(),
   binaryFiles: z.number()

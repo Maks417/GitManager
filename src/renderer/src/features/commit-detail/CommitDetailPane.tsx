@@ -7,7 +7,7 @@ import { FileDiffViewer } from '../diff/FileDiffViewer'
 import { Splitter } from '../../components/Splitter'
 import { LIST_ROW_ATTR, ListSpacer, useListWindow } from '../../hooks/useListWindow'
 import { Button, FileStatusDot, isMenuKey, menuPointFor } from '../../components/ui'
-import { confirmMerge, confirmRebase } from '../../lib/copy'
+import { confirmMerge, confirmRebase, omittedFilesNote } from '../../lib/copy'
 import { formatRelativeDate } from '../../lib/format'
 import { nextListIndex } from '../../logic/list-nav'
 import { useAppStatus } from '../../state/AppStatusProvider'
@@ -222,6 +222,11 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
             </li>
           ))}
           <ListSpacer rows={files.length - filesWindow.endIndex} rowHeight={filesWindow.rowHeight} />
+          {detail.omittedFiles ? (
+            <li className="muted" role="presentation">
+              {omittedFilesNote(detail.omittedFiles)}
+            </li>
+          ) : null}
           {files.length === 0 && (
             <li className="muted" role="presentation">
               No file changes

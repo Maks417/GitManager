@@ -149,3 +149,7 @@ export const GIT_MISSING_MESSAGE =
 export const CLONE_URL_SESSION_KEY = 'gm.cloneUrl'
 
 export const MONACO_FONT_FAMILY = 'IBM Plex Mono, Cascadia Code, Consolas, monospace'
+
+/** The row ending a file list cut at its limit. */
+export const omittedFilesNote = (count: number): string =>
+  `${count.toLocaleString()} more file${count === 1 ? '' : 's'} not listed`

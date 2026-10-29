@@ -69,6 +69,7 @@ const api = {
     pull: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.pull, request),
     push: (request: unknown) => ipcRenderer.invoke(IpcChannels.git.push, request),
     cancelOperation: (opId: string) => ipcRenderer.invoke(IpcChannels.git.cancelOperation, opId),
+    stopLong: (repoPath: string) => ipcRenderer.invoke(IpcChannels.git.stopLong, repoPath),
     onProgress: (callback: (progress: unknown) => void) => {
       const listener = (_: Electron.IpcRendererEvent, progress: unknown): void => callback(progress)
       ipcRenderer.on(IpcChannels.git.onProgress, listener)

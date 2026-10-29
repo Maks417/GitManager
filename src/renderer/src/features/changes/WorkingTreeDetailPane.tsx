@@ -27,7 +27,8 @@ import { toErrorMessage } from '../../lib/errors'
 import { useAppStatusActions } from '../../state/AppStatusProvider'
 import { useConfirm } from '../../state/ConfirmProvider'
 import { useDialogActions } from '../../state/DialogsProvider'
-import { useGitActions } from '../../state/GitActionsProvider'
+import { useGitActions, useRemoteOp } from '../../state/GitActionsProvider'
+import { LongRunningNotice } from '../../shell/LongRunningNotice'
 import { useHistoryState } from '../../state/HistoryProvider'
 import {
   useLayoutActions,
@@ -65,6 +66,8 @@ export const WorkingTreeDetailPane = memo(function WorkingTreeDetailPane(): Reac
   const { goHistory } = useWorkingTreeActions()
   const { openDialog } = useDialogActions()
   const { rebaseContinue, rebaseSkip, rebaseAbort, mergeAbort, sequencerStep } = useGitActions()
+  // A push after a commit shows its own progress and Cancel.
+  const remoteOp = useRemoteOp()
   const { diffView, syntaxHighlighting } = useLayoutPrefsState()
   const { persistLayout } = useLayoutActions()
   const { changesFilesWidth: filesWidth, setChangesFilesWidth } = useLayoutPaneFiles()
@@ -312,6 +315,7 @@ export const WorkingTreeDetailPane = memo(function WorkingTreeDetailPane(): Reac
           </div>
         </div>
         <div className="changes-footer-stack">
+          <LongRunningNotice busy={busy && !remoteOp} repoPath={repoPath} />
           {operationBar}
           {stashPanel}
           {identityBar}
@@ -350,6 +354,7 @@ export const WorkingTreeDetailPane = memo(function WorkingTreeDetailPane(): Reac
             )}
             {checked.size > 0 ? ` · ${checked.size} selected` : ''}
           </span>
+          <LongRunningNotice busy={busy && !remoteOp} repoPath={repoPath} />
           {operationBar}
           <div className="changes-actions">
             <Button

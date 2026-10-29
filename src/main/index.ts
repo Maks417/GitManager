@@ -3,7 +3,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { getDevServerUrl, getRendererEntryFile, isTrustedAppUrl } from './app-url'
 import { registerIpcHandlers } from './ipc'
-import { startGitWorker } from '../git-worker/client'
+import { cancelAllGit, startGitWorker } from '../git-worker/client'
 import { buildAppMenu } from './menu'
 import { loadPreferences, loadWindowState, saveWindowState } from './storage'
 import { applyThemePreference, applyWindowThemeBackground, resolvedWindowBackground } from './theme'
@@ -140,6 +140,11 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+// Git started by the app (and the hooks, LFS filters or ssh it started) does not outlive it.
+app.on('before-quit', () => {
+  cancelAllGit()
 })
 
 app.on('window-all-closed', () => {

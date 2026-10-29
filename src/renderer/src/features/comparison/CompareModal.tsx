@@ -4,6 +4,7 @@ import type { Comparison, DiffResult } from '@shared/ipc'
 import { Banner, Button, Field, FileStatusDot, Input, Modal } from '../../components/ui'
 import { useAsyncAction } from '../../lib/useAsyncAction'
 import { toErrorMessage } from '../../lib/errors'
+import { omittedFilesNote } from '../../lib/copy'
 import { nextListIndex } from '../../logic/list-nav'
 import { useLayoutPrefsState } from '../../state/LayoutProvider'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
@@ -76,7 +77,7 @@ export function CompareModal({ repoPath, refs, initialBase, initialTarget, snaps
       <p className="muted text-sm comparison-help">{mergeBase ? 'Review changes introduced by the target since it diverged from the base.' : 'Compare the exact file snapshots at the base and target.'}</p>
       {comparison && <div className="row-inline text-sm" role="status">
         <span className="sha">{comparison.baseSha.slice(0, 7)} → {comparison.targetSha.slice(0, 7)}</span>
-        <span>{comparison.files.length} files · +{comparison.additions} −{comparison.deletions}{comparison.binaryFiles > 0 ? ` · ${comparison.binaryFiles} binary` : ''}</span>
+        <span>{comparison.files.length + (comparison.omittedFiles ?? 0)} files · +{comparison.additions} −{comparison.deletions}{comparison.binaryFiles > 0 ? ` · ${comparison.binaryFiles} binary` : ''}</span>
       </div>}
       <div className="file-history-layout">
         <ul className="file-list file-history-list" role="listbox" aria-label="Compared files" tabIndex={0} aria-activedescendant={file ? `comparison-file-${selected}` : undefined} onKeyDown={onListKeyDown}>
@@ -84,6 +85,7 @@ export function CompareModal({ repoPath, refs, initialBase, initialTarget, snaps
             <div className="row-inline"><FileStatusDot kind={item.status} oldPath={item.oldPath} /><span className="cell-ellipsis">{item.path}</span></div>
             {item.additions !== undefined && <span className="muted text-xs">+{item.additions} −{item.deletions}</span>}
           </li>)}
+          {comparison?.omittedFiles ? <li role="presentation" className="muted">{omittedFilesNote(comparison.omittedFiles)}</li> : null}
           {(!comparison || comparison.files.length === 0) && <li role="presentation" className="muted">{!comparison ? 'Choose references and compare.' : 'No file differences.'}</li>}
         </ul>
         <div className="diff-host">

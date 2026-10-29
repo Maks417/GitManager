@@ -68,8 +68,11 @@ const STOP_WAIT_MS = 5000
 interface ActiveGit {
   cwd: string
   child: ChildProcessWithoutNullStreams
-  /** Runs in its own process group: stop it with killProcessTree. */
+  /** Runs in its own process group (macOS and Linux), so its helpers can be signalled with it. */
   tree: boolean
+  startedAt: number
+  /** Stops the run so that it rejects with GitCancelledError, where the run supports that. */
+  stop?: () => void
 }
 
 const active = new Map<number, ActiveGit>()
@@ -77,7 +80,7 @@ let nextActiveId = 1
 
 function track(cwd: string, child: ChildProcessWithoutNullStreams, tree = false): number {
   const id = nextActiveId++
-  active.set(id, { cwd, child, tree })
+  active.set(id, { cwd, child, tree, startedAt: Date.now() })
   return id
 }
 
@@ -143,8 +146,9 @@ function spawnGit(opts: Pick<GitRunOptions, 'cwd' | 'args' | 'env'>, tree = fals
     // .git/index, re-triggers the watcher, and makes the user's own git commands fail on index.lock.
     GIT_OPTIONAL_LOCKS: '0'
   }
-  // Paths are parsed from stdout; never let Git octal-quote non-ASCII names.
-  return spawn(git, ['-c', 'core.quotePath=false', ...opts.args], {
+  // Paths are parsed from stdout; never let Git octal-quote non-ASCII names. Commit messages are read as
+  // UTF-8, also where `i18n.logOutputEncoding` is set to a legacy code page.
+  return spawn(git, ['-c', 'core.quotePath=false', '-c', 'i18n.logOutputEncoding=UTF-8', ...opts.args], {
     cwd: opts.cwd,
     env,
     windowsHide: true,
@@ -170,6 +174,8 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
     }
 
     const key = track(opts.cwd, child, tree)
+    const tracked = active.get(key)
+    if (tracked) tracked.stop = () => stop(new GitCancelledError())
     // Decode across chunk boundaries so multi-byte UTF-8 characters are never split.
     const outDecoder = new StringDecoder('utf8')
     const errDecoder = new StringDecoder('utf8')
@@ -195,8 +201,9 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
       if (settled) return
       settled = true
       cleanup()
-      if (tree) killProcessTree(child)
-      else child.kill('SIGTERM')
+      // Hooks, LFS filters and credential helpers started by Git would otherwise keep running, holding
+      // files and the working folder (taskkill /T on Windows; the process group elsewhere when it has one).
+      killProcessTree(child)
       // Settle once the process, and every helper holding its output pipes, has exited: until then Windows
       // keeps its files and working folder locked, and a caller cleaning up after it would fail.
       let done = false
@@ -485,12 +492,28 @@ export function isGitRepo(path: string): boolean {
 
 function killEntry(id: number, entry: ActiveGit): void {
   try {
-    if (entry.tree) killProcessTree(entry.child)
-    else entry.child.kill('SIGTERM')
+    if (entry.stop) entry.stop()
+    else killProcessTree(entry.child)
   } catch {
     /* ignore */
   }
   active.delete(id)
+}
+
+/**
+ * Stop the Git commands in `root` that have run for at least `minAgeMs` (a commit waiting on a signing prompt
+ * or a hook, a checkout stuck in an LFS download), leaving quick ones such as refreshes alone. Returns when
+ * the oldest stopped one started, or null when none was stopped.
+ */
+export function stopLongGitIn(root: string, minAgeMs: number): number | null {
+  const now = Date.now()
+  let oldest: number | null = null
+  for (const [id, entry] of active) {
+    if (!isPathInside(root, entry.cwd) || now - entry.startedAt < minAgeMs) continue
+    oldest = oldest === null ? entry.startedAt : Math.min(oldest, entry.startedAt)
+    killEntry(id, entry)
+  }
+  return oldest
 }
 
 export function cancelAllGit(): void {

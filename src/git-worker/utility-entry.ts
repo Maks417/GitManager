@@ -6,6 +6,7 @@
 import { CANCELLABLE_GIT_METHODS, GIT_METHODS } from './method-registry'
 import { cancelAllGit, cancelGitIn, GitCancelledError } from './git-runner'
 import type { RemoteOpContext } from './ops/branches'
+import { stopLongGit } from './ops/stop-long'
 import { gitRepoScheduler } from './scheduler-instance'
 
 type RpcRequest = { id: number; method: string; args?: unknown[]; cancellable?: boolean }
@@ -22,7 +23,8 @@ const handlers: Record<string, (...args: never[]) => unknown> = {
   cancelGitIn: (root: string) => {
     gitRepoScheduler.cancelIn(root)
     cancelGitIn(root)
-  }
+  },
+  stopLongGit
 }
 
 const running = new Map<number, AbortController>()
@@ -43,7 +45,8 @@ if (!port) {
       try {
         const fn = handlers[request.method]
         if (!fn) throw new Error(`Unknown git method: ${request.method}`)
-        if (request.method === 'cancelAllGit' || request.method === 'cancelGitIn') {
+        // Control methods act on running work, so they must not wait in its queue.
+        if (request.method === 'cancelAllGit' || request.method === 'cancelGitIn' || request.method === 'stopLongGit') {
           const result = await (fn as (...a: unknown[]) => Promise<unknown> | unknown)(
             ...(request.args ?? [])
           )

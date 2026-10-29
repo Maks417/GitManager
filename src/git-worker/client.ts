@@ -8,6 +8,7 @@ import { existsSync } from 'fs'
 import type { RemoteOpResult, RemoteProgress } from '@shared/ipc'
 import type * as ops from './operations'
 import type { RemoteOpContext } from './ops/branches'
+import type { StopLongGitResult } from './ops/stop-long'
 import { getGitMethod, type CancellableGitMethod, type GitMethodName } from './method-registry'
 import {
   cancelAllGit as cancelAllGitLocal,
@@ -150,7 +151,7 @@ export function startGitWorker(): void {
   ensureWorker()
 }
 
-type ControlMethod = 'cancelAllGit' | 'cancelGitIn'
+type ControlMethod = 'cancelAllGit' | 'cancelGitIn' | 'stopLongGit'
 
 /** Per slot, the id of the newest request sent with `invokeNewest`. */
 const newestBySlot = new Map<string, number>()
@@ -199,12 +200,21 @@ async function invokeInline(method: string, args: unknown[]): Promise<unknown> {
     cancelGitInLocal(String(args[0]))
     return
   }
+  if (method === 'stopLongGit') {
+    const { stopLongGit: stop } = await import('./ops/stop-long')
+    return stop(String(args[0]))
+  }
   const fn = getGitMethod(method)
   if (!fn) throw new Error(`Unknown git method: ${method}`)
   const { gitRepoScheduler } = await import('./scheduler-instance')
   return gitRepoScheduler.schedule(method, args, () =>
     (fn as (...a: unknown[]) => Promise<unknown> | unknown)(...args)
   )
+}
+
+/** Stop the long-running local Git commands of a repository; see ops/stop-long. */
+export function stopLongGit(repoPath: string): Promise<StopLongGitResult> {
+  return invoke('stopLongGit', [repoPath]) as Promise<StopLongGitResult>
 }
 
 export function cancelAllGit(): void {

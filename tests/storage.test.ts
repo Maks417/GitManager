@@ -5,6 +5,7 @@ import { readJsonFile, writeJsonFileAtomic } from '../src/main/json-store'
 import { decodeSecret, encodeSecret, hasSecureStorage, type SafeStorageLike } from '../src/main/secrets'
 import { AppPreferencesSchema } from '../src/shared/ipc'
 import { LAYOUT_DEFAULTS } from '../src/shared/layout-defaults'
+import { parseStoredRepositories } from '../src/main/stored-repos'
 import { trackTempDirs } from './helpers/git-fixture'
 
 const tempDir = trackTempDirs()
@@ -106,5 +107,20 @@ describe('token storage', () => {
   it('reads entries saved before the scheme was recorded', () => {
     expect(decodeSecret(fakeStorage(true), Buffer.from('enc:tok').toString('base64'))).toBe('tok')
     expect(decodeSecret(fakeStorage(true), Buffer.from('tok').toString('base64'))).toBe('tok')
+  })
+})
+
+describe('saved repositories', () => {
+  it('repairs entries that no longer fit the schema instead of dropping them', () => {
+    const repos = parseStoredRepositories([
+      { id: 'C:/ok', name: 'ok', path: 'C:/ok', currentBranch: 'main', remotes: [], worktreeOf: null },
+      // An older or hand-edited entry: remotes missing, branch of the wrong type.
+      { id: 'C:/old', path: 'C:/old', currentBranch: 3 },
+      { name: 'no path' },
+      'junk'
+    ])
+    expect(repos.map((r) => r.id)).toEqual(['C:/ok', 'C:/old'])
+    expect(repos[1]).toMatchObject({ name: 'old', currentBranch: null, remotes: [], worktreeOf: null })
+    expect(parseStoredRepositories({})).toEqual([])
   })
 })

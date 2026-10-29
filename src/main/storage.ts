@@ -5,12 +5,12 @@ import { z } from 'zod'
 import {
   AppPreferencesSchema,
   ProviderAccountSchema,
-  RepositorySchema,
   type AppPreferences,
   type ProviderAccount,
   type Repository
 } from '@shared/ipc'
 import { readJsonFile, writeJsonFileAtomic } from './json-store'
+import { parseStoredRepositories } from './stored-repos'
 import { decodeSecret, encodeSecret } from './secrets'
 import { WindowStateSchema, type WindowState } from './window-state'
 
@@ -48,7 +48,7 @@ export function savePreferences(partial: Partial<AppPreferences>): AppPreference
 }
 
 export function loadRepositories(): Repository[] {
-  return parseList(readJsonFile<unknown>(join(dataDir(), 'repositories.json'), []), RepositorySchema)
+  return parseStoredRepositories(readJsonFile<unknown>(join(dataDir(), 'repositories.json'), []))
 }
 
 export function saveRepositories(repos: Repository[]): void {
