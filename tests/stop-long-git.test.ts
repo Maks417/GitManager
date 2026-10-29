@@ -9,7 +9,7 @@ import { git, initRepo, trackTempDirs } from './helpers/git-fixture'
 const tempDir = trackTempDirs()
 
 describe('stopLongGit', () => {
-  it('stops a commit stuck in a hook and removes the index lock it left', async () => {
+  it('stops a commit stuck in a hook and leaves no index lock', async () => {
     const dir = await initRepo(tempDir('gm-stop-'))
     // Executable: Git skips a hook without the bit on Linux and macOS, and the commit would finish at once.
     writeFileSync(join(dir, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nsleep 60\n', { mode: 0o755 })
@@ -27,11 +27,18 @@ describe('stopLongGit', () => {
       await new Promise((resolve) => setTimeout(resolve, 5500))
       expect(existsSync(join(dir, '.git', 'index.lock'))).toBe(true)
 
+      const stoppedAt = Date.now()
       const result = await stopLongGit(dir)
       expect(result.stopped).toBe(true)
       expect(await outcome).toBe('cancelled')
-      expect(result.removedLock).toBe(true)
+      // Who removes the lock varies: Git itself on SIGTERM (Linux, macOS) or when its hook is killed first
+      // (taskkill /T on Windows), else stopLongGit once Git has exited. None may be left either way.
       expect(existsSync(join(dir, '.git', 'index.lock'))).toBe(false)
+      if (process.platform !== 'win32') {
+        // SIGTERM reaches the whole process group: the hook's `sleep` ends with Git instead of holding the
+        // output pipes until the stop gives up waiting. (Git for Windows' MSYS processes are outside taskkill's tree.)
+        expect(Date.now() - stoppedAt).toBeLessThan(4000)
+      }
       // The repository works again.
       await git(dir, 'status')
     } finally {

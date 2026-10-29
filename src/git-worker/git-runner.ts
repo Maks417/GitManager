@@ -163,8 +163,10 @@ export async function runGit(opts: GitRunOptions): Promise<GitRunResult> {
       reject(new GitCancelledError())
       return
     }
-    // Stoppable runs get their own process group, so the helpers they start can be stopped too.
-    const tree = Boolean(opts.signal || opts.idleTimeoutMs)
+    // Every run gets its own process group (macOS and Linux), so stopping it stops the hooks, filters and helpers
+    // it started too: Stop in the "Git is still working" notice ends a commit stuck in a hook, which has
+    // neither a signal nor an idle timeout.
+    const tree = true
     let child: ChildProcessWithoutNullStreams
     try {
       child = spawnGit(opts, tree)
@@ -503,17 +505,23 @@ function killEntry(id: number, entry: ActiveGit): void {
 /**
  * Stop the Git commands in `root` that have run for at least `minAgeMs` (a commit waiting on a signing prompt
  * or a hook, a checkout stuck in an LFS download), leaving quick ones such as refreshes alone. Returns when
- * the oldest stopped one started, or null when none was stopped.
+ * the oldest stopped one started, and a promise that settles once every stopped Git process has exited (its
+ * helpers may still hold the output pipes), or null when none was stopped.
  */
-export function stopLongGitIn(root: string, minAgeMs: number): number | null {
+export function stopLongGitIn(root: string, minAgeMs: number): { since: number; exited: Promise<void> } | null {
   const now = Date.now()
   let oldest: number | null = null
+  const exits: Promise<void>[] = []
   for (const [id, entry] of active) {
     if (!isPathInside(root, entry.cwd) || now - entry.startedAt < minAgeMs) continue
     oldest = oldest === null ? entry.startedAt : Math.min(oldest, entry.startedAt)
+    const { child } = entry
+    if (child.exitCode === null && child.signalCode === null) {
+      exits.push(new Promise((resolve) => child.once('exit', () => resolve())))
+    }
     killEntry(id, entry)
   }
-  return oldest
+  return oldest === null ? null : { since: oldest, exited: Promise.all(exits).then(() => undefined) }
 }
 
 export function cancelAllGit(): void {

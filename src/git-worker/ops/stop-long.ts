@@ -6,8 +6,11 @@ import { getGitDirs } from './shared'
 /** Commands younger than this are left running: refreshes and other quick reads, not the stuck one. */
 const MIN_AGE_MS = 5000
 
-/** How long the stopped commands get to exit before the index lock is looked at. */
-const EXIT_WAIT_MS = 600
+/**
+ * Longest wait for the stopped commands to exit before the index lock is looked at. A live Git still holds the
+ * lock open, and on Windows taskkill takes a while on a busy machine.
+ */
+const EXIT_WAIT_MS = 4000
 
 export interface StopLongGitResult {
   /** Whether any command was running long enough to be stopped. */
@@ -23,9 +26,12 @@ export interface StopLongGitResult {
  * another program holds stays.
  */
 export async function stopLongGit(repoPath: string): Promise<StopLongGitResult> {
-  const since = stopLongGitIn(repoPath, MIN_AGE_MS)
-  if (since === null) return { stopped: false, removedLock: false }
-  await new Promise((resolve) => setTimeout(resolve, EXIT_WAIT_MS))
+  const stopped = stopLongGitIn(repoPath, MIN_AGE_MS)
+  if (stopped === null) return { stopped: false, removedLock: false }
+  const { since, exited } = stopped
+  let waited: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([exited, new Promise((resolve) => (waited = setTimeout(resolve, EXIT_WAIT_MS)))])
+  clearTimeout(waited)
   const { gitDir } = await getGitDirs(repoPath)
   const lock = join(gitDir, 'index.lock')
   if (!existsSync(lock)) return { stopped: true, removedLock: false }
