@@ -473,6 +473,10 @@ export const AppPreferencesSchema = z.object({
   detailWidth: sizePref(280, 900, LAYOUT_DEFAULTS.detailWidth),
   inspectorFilesWidth: sizePref(140, 480, LAYOUT_DEFAULTS.inspectorFilesWidth),
   changesFilesWidth: sizePref(200, 560, LAYOUT_DEFAULTS.changesFilesWidth),
+  /** Resting height of the commit message box; it grows past it with the message. */
+  commitMessageHeight: sizePref(48, 600, LAYOUT_DEFAULTS.commitMessageHeight),
+  /** Inspector: how tall a commit's message is shown before it scrolls. */
+  commitBodyHeight: sizePref(40, 900, LAYOUT_DEFAULTS.commitBodyHeight),
   historyGraphColWidth: sizePref(80, 560, LAYOUT_DEFAULTS.historyGraphColWidth),
   historyDateColWidth: sizePref(72, 220, LAYOUT_DEFAULTS.historyDateColWidth),
   historyAuthorColWidth: sizePref(100, 360, LAYOUT_DEFAULTS.historyAuthorColWidth),

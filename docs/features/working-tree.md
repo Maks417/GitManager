@@ -10,6 +10,7 @@ Inspect and mutate the working tree: stage/unstage, discard, stash, commit (incl
 2. Browse staged / unstaged / untracked lists; open a file for its staged or unstaged Monaco diff, inline or side by side ([Diff view](#diff-view)).
 3. Stage paths, write a message, Commit (optional Amend).
    Messages save per repository while typing and restore after switching views, switching repositories or restarting. A successful commit clears its draft, including when a following push fails. Failed commits keep the draft. Push/amend checkboxes are not persisted.
+   The message box grows with a long message, up to half the room it shares with the file list, then scrolls. The splitter above the form sets its resting height (`AppPreferences.commitMessageHeight`, 72 px by default); the file list always keeps 120 px. Dragging the box smaller than its message keeps that size until the message is cleared.
 4. Stash panel (collapsed by default): expand to apply / pop / drop entries; the Stash action stays available in the header.
 5. Identity modal: set `user.name` / `user.email` at local or global scope.
 

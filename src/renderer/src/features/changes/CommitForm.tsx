@@ -1,12 +1,15 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { Check, Pencil } from 'lucide-react'
 import type { RemoteOpResult } from '@shared/ipc'
 import { NOTHING_STAGED_COMMIT } from '@shared/git-messages'
+import { Splitter } from '../../components/Splitter'
 import { Button } from '../../components/ui'
 import { toErrorMessage } from '../../lib/errors'
+import { COMMIT_BOX_MIN, commitBoxHeight, commitBoxMax } from '../../logic/commit-box-height'
 import { loadCommitDraft, saveCommitDraft } from '../../logic/commit-drafts'
 import { useGitActions } from '../../state/GitActionsProvider'
+import { useLayoutActions, useLayoutPaneFiles } from '../../state/LayoutProvider'
 
 const STAGE_BEFORE_COMMIT = NOTHING_STAGED_COMMIT
 
@@ -27,7 +30,8 @@ interface CommitFormProps {
 
 /**
  * Message, amend and push options and the Commit button. The message lives here, so typing renders
- * only this form, not the file list beside it.
+ * only this form, not the file list beside it. The splitter above sets the message box's resting height;
+ * a longer message grows the box up to half the room it shares with the file list.
  */
 export function CommitForm({
   repoPath,
@@ -42,11 +46,53 @@ export function CommitForm({
   onCommitted
 }: CommitFormProps): React.JSX.Element {
   const { pushCurrentBranch, resolveRemoteOutcome } = useGitActions()
+  const { commitMessageHeight, setCommitMessageHeight } = useLayoutPaneFiles()
+  const { persistLayout } = useLayoutActions()
   const [message, setMessageState] = useState(() => loadCommitDraft(repoPath))
+  // Set when the splitter makes the box smaller than its message; a new message grows again.
+  const [pinned, setPinned] = useState(false)
   const setMessage = (next: string): void => {
     saveCommitDraft(repoPath, next)
     setMessageState(next)
+    if (!next) setPinned(false)
   }
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [contentHeight, setContentHeight] = useState(0)
+  const [room, setRoom] = useState(0)
+
+  // Measured before paint, so the box never shows a frame at the old height. The observer catches a
+  // narrower column rewrapping the message, and the window or the stash list changing the file list's room.
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const fileList = el.closest('.changes-sidebar')?.querySelector('.changes-file-list')
+    const measure = (): void => {
+      const { height, overflowY } = el.style
+      const scrollTop = el.scrollTop
+      el.style.height = '0px'
+      el.style.overflowY = 'hidden'
+      // scrollHeight leaves the borders out; the box is sized with them (border-box).
+      const needed = el.scrollHeight + el.offsetHeight - el.clientHeight
+      el.style.height = height
+      el.style.overflowY = overflowY
+      el.scrollTop = scrollTop
+      setContentHeight(needed)
+      // The file list takes whatever the box leaves, so together they always fill the same room.
+      if (fileList) setRoom(el.offsetHeight + fileList.clientHeight)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    if (fileList) ro.observe(fileList)
+    return () => ro.disconnect()
+  }, [message])
+
+  const boxHeight = commitBoxHeight({
+    content: contentHeight,
+    resting: commitMessageHeight,
+    room,
+    pinned
+  })
   const [amendChecked, setAmend] = useState(false)
   const amend = amendChecked && canAmend
   const [pushAfterCommit, setPushAfterCommit] = useState(false)
@@ -61,76 +107,99 @@ export function CommitForm({
         : 'Create a new commit'
 
   return (
-    <div className="changes-commit-form">
-      {identityBar}
-      {!identityReady && (
-        <p className="muted text-sm" style={{ margin: 0 }}>
-          Set your name and email before committing.
-        </p>
-      )}
-      {needsStageBeforeCommit && changesCount > 0 && (
-        <p className="muted text-sm" style={{ margin: 0 }}>
-          Stage files with <strong>Stage</strong> or <strong>Stage all</strong> before committing.
-        </p>
-      )}
-      <textarea rows={3} placeholder="Commit message" value={message} onChange={(e) => setMessage(e.target.value)} />
-      <label className="amend-check row-inline text-sm">
-        <input
-          type="checkbox"
-          checked={amend}
-          disabled={!canAmend || busy}
-          onChange={(e) => setAmend(e.target.checked)}
-        />
-        Amend last commit
-      </label>
-      {amend && (
-        <p className="muted text-xs" style={{ margin: 0 }}>
-          Replaces HEAD with this message and any staged changes.
-        </p>
-      )}
-      <label className="amend-check row-inline text-sm">
-        <input
-          type="checkbox"
-          checked={pushAfterCommit}
-          disabled={busy}
-          onChange={(e) => setPushAfterCommit(e.target.checked)}
-        />
-        Push to remote
-      </label>
-      <Button
-        variant="primary"
-        icon={amend ? <Pencil size={16} strokeWidth={1.75} /> : <Check size={16} strokeWidth={1.75} />}
-        hint={hint}
-        title={hint}
-        disabled={busy || !message.trim() || !identityReady}
-        onClick={() => {
-          let pushed: RemoteOpResult | undefined
-          void run(async () => {
-            if (needsStageBeforeCommit) {
-              if (changesCount > 0) throw new Error(STAGE_BEFORE_COMMIT)
-              throw new Error('Nothing to commit — the working tree is clean.')
-            }
-            await window.gitManager.git.commit(repoPath, message.trim(), amend)
-            // The commit exists now: clear the form before pushing, which can fail on its own.
-            setMessage('')
-            setAmend(false)
-            onCommitted()
-            if (pushAfterCommit) {
-              try {
-                // Same path as Sync → Push: progress and Cancel in the toolbar.
-                pushed = await pushCurrentBranch()
-              } catch (err) {
-                throw new Error(`Committed, but the push failed: ${toErrorMessage(err)}`)
-              }
-            }
-          }).then(() => {
-            // A rejected push offers a pull or a force push, once this pane is no longer busy.
-            if (pushed) void resolveRemoteOutcome(pushed)
-          })
+    <>
+      <Splitter
+        axis="y"
+        reverse
+        className="splitter-commit-y"
+        value={boxHeight}
+        min={COMMIT_BOX_MIN}
+        max={commitBoxMax(room)}
+        onChange={(height) => {
+          setCommitMessageHeight(height)
+          setPinned(height < contentHeight)
         }}
-      >
-        {amend ? 'Amend' : 'Commit'}
-      </Button>
-    </div>
+        onChangeEnd={(height) => persistLayout({ commitMessageHeight: height })}
+        title="Resize commit message"
+      />
+      <div className="changes-commit-form">
+        {identityBar}
+        {!identityReady && (
+          <p className="muted text-sm" style={{ margin: 0 }}>
+            Set your name and email before committing.
+          </p>
+        )}
+        {needsStageBeforeCommit && changesCount > 0 && (
+          <p className="muted text-sm" style={{ margin: 0 }}>
+            Stage files with <strong>Stage</strong> or <strong>Stage all</strong> before committing.
+          </p>
+        )}
+        <textarea
+          ref={textareaRef}
+          placeholder="Commit message"
+          aria-label="Commit message"
+          style={{ height: boxHeight }}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+        />
+        <label className="amend-check row-inline text-sm">
+          <input
+            type="checkbox"
+            checked={amend}
+            disabled={!canAmend || busy}
+            onChange={(e) => setAmend(e.target.checked)}
+          />
+          Amend last commit
+        </label>
+        {amend && (
+          <p className="muted text-xs" style={{ margin: 0 }}>
+            Replaces HEAD with this message and any staged changes.
+          </p>
+        )}
+        <label className="amend-check row-inline text-sm">
+          <input
+            type="checkbox"
+            checked={pushAfterCommit}
+            disabled={busy}
+            onChange={(e) => setPushAfterCommit(e.target.checked)}
+          />
+          Push to remote
+        </label>
+        <Button
+          variant="primary"
+          icon={amend ? <Pencil size={16} strokeWidth={1.75} /> : <Check size={16} strokeWidth={1.75} />}
+          hint={hint}
+          title={hint}
+          disabled={busy || !message.trim() || !identityReady}
+          onClick={() => {
+            let pushed: RemoteOpResult | undefined
+            void run(async () => {
+              if (needsStageBeforeCommit) {
+                if (changesCount > 0) throw new Error(STAGE_BEFORE_COMMIT)
+                throw new Error('Nothing to commit — the working tree is clean.')
+              }
+              await window.gitManager.git.commit(repoPath, message.trim(), amend)
+              // The commit exists now: clear the form before pushing, which can fail on its own.
+              setMessage('')
+              setAmend(false)
+              onCommitted()
+              if (pushAfterCommit) {
+                try {
+                  // Same path as Sync → Push: progress and Cancel in the toolbar.
+                  pushed = await pushCurrentBranch()
+                } catch (err) {
+                  throw new Error(`Committed, but the push failed: ${toErrorMessage(err)}`)
+                }
+              }
+            }).then(() => {
+              // A rejected push offers a pull or a force push, once this pane is no longer busy.
+              if (pushed) void resolveRemoteOutcome(pushed)
+            })
+          }}
+        >
+          {amend ? 'Amend' : 'Commit'}
+        </Button>
+      </div>
+    </>
   )
 }

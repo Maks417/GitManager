@@ -85,6 +85,7 @@ Search suggestions have their own keys (step 4 above). The commit list and the f
 - Detail dock is `bottom` or `right` via `AppPreferences.detailDock`.
 - Diffs follow `AppPreferences.diffView` and `AppPreferences.syntaxHighlighting`, shared with Changes, in either dock.
 - The inspector never gets wider than its dock. A narrow header wraps: the commit's buttons move to a row of their own. Docked right, the file list narrows before the diff, which keeps room for its Inline / Side by side switch.
+- The commit message shows up to `AppPreferences.commitBodyHeight` (60 px by default) and scrolls past it. A message taller than 40 px gets a splitter under it (drag, or arrow keys / Home / End when focused). The splitter stops at the whole message and leaves the file list and diff 100 px ([`CommitBody`](../../src/renderer/src/features/commit-detail/CommitBody.tsx)).
 - After routine mutations (commit, sync), history does a tip merge refresh; topology-changing ops (rebase, merge, checkout, delete branch) reload history fully.
 
 ## Diagram

@@ -17,6 +17,10 @@ export function useLayoutPrefs(): {
   setInspectorFilesWidth: (w: number) => void
   changesFilesWidth: number
   setChangesFilesWidth: (w: number) => void
+  commitMessageHeight: number
+  setCommitMessageHeight: (h: number) => void
+  commitBodyHeight: number
+  setCommitBodyHeight: (h: number) => void
   historyGraphColWidth: number
   setHistoryGraphColWidth: (w: number) => void
   historyDateColWidth: number
@@ -53,6 +57,10 @@ export function useLayoutPrefs(): {
   const [changesFilesWidth, setChangesFilesWidth] = useState<number>(
     LAYOUT_DEFAULTS.changesFilesWidth
   )
+  const [commitMessageHeight, setCommitMessageHeight] = useState<number>(
+    LAYOUT_DEFAULTS.commitMessageHeight
+  )
+  const [commitBodyHeight, setCommitBodyHeight] = useState<number>(LAYOUT_DEFAULTS.commitBodyHeight)
   const [historyGraphColWidth, setHistoryGraphColWidth] = useState<number>(
     LAYOUT_DEFAULTS.historyGraphColWidth
   )
@@ -82,6 +90,8 @@ export function useLayoutPrefs(): {
     setDetailWidth(p.detailWidth)
     setInspectorFilesWidth(p.inspectorFilesWidth)
     setChangesFilesWidth(p.changesFilesWidth)
+    setCommitMessageHeight(p.commitMessageHeight)
+    setCommitBodyHeight(p.commitBodyHeight)
     setHistoryGraphColWidth(p.historyGraphColWidth)
     setHistoryDateColWidth(p.historyDateColWidth)
     setHistoryAuthorColWidth(p.historyAuthorColWidth)
@@ -163,6 +173,10 @@ export function useLayoutPrefs(): {
     setInspectorFilesWidth,
     changesFilesWidth,
     setChangesFilesWidth,
+    commitMessageHeight,
+    setCommitMessageHeight,
+    commitBodyHeight,
+    setCommitBodyHeight,
     historyGraphColWidth,
     setHistoryGraphColWidth,
     historyDateColWidth,

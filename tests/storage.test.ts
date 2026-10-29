@@ -5,6 +5,7 @@ import { readJsonFile, writeJsonFileAtomic } from '../src/main/json-store'
 import { decodeSecret, encodeSecret, hasSecureStorage, type SafeStorageLike } from '../src/main/secrets'
 import { AppPreferencesSchema } from '../src/shared/ipc'
 import { LAYOUT_DEFAULTS } from '../src/shared/layout-defaults'
+import { COMMIT_BOX_MAX, COMMIT_BOX_MIN } from '../src/renderer/src/logic/commit-box-height'
 import { parseStoredRepositories } from '../src/main/stored-repos'
 import { trackTempDirs } from './helpers/git-fixture'
 
@@ -72,6 +73,15 @@ describe('preferences schema', () => {
     expect(AppPreferencesSchema.parse({}).mergeEditorLayout).toBe('columns')
     expect(AppPreferencesSchema.parse({ mergeEditorLayout: 'rows' }).mergeEditorLayout).toBe('columns')
     expect(AppPreferencesSchema.parse({ mergeEditorLayout: 'stacked' }).mergeEditorLayout).toBe('stacked')
+  })
+
+  it('keeps the commit message height within its limits', () => {
+    expect(AppPreferencesSchema.parse({}).commitMessageHeight).toBe(LAYOUT_DEFAULTS.commitMessageHeight)
+    expect(AppPreferencesSchema.parse({ commitMessageHeight: 5 }).commitMessageHeight).toBe(COMMIT_BOX_MIN)
+    expect(AppPreferencesSchema.parse({ commitMessageHeight: 9000 }).commitMessageHeight).toBe(COMMIT_BOX_MAX)
+    expect(AppPreferencesSchema.parse({ commitMessageHeight: 'big' }).commitMessageHeight).toBe(
+      LAYOUT_DEFAULTS.commitMessageHeight
+    )
   })
 })
 

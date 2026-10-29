@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { Copy, Ellipsis, GitBranch, GitMerge } from 'lucide-react'
+import { CommitBody } from './CommitBody'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
 import { SyntaxHighlightToggle } from '../diff/SyntaxHighlightToggle'
 import { FileDiffViewer } from '../diff/FileDiffViewer'
@@ -179,9 +180,7 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
             </Button>
           </div>
         </div>
-        {commit.body ? (
-          <pre className="commit-body-compact muted">{commit.body}</pre>
-        ) : null}
+        {commit.body ? <CommitBody body={commit.body} /> : null}
       </div>
       <div className="inspector-body" style={{ ['--inspector-files-width' as string]: `${filesWidth}px` }}>
         <ul

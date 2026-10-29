@@ -1000,15 +1000,6 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   grid-template-rows: 1fr auto;
 }
 
-.changes-sidebar {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-  border-right: 1px solid var(--border);
-  min-height: 0;
-  height: 100%;
-  background: var(--bg-panel);
-}
-
 .branch-summary {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
@@ -1385,13 +1376,20 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   white-space: nowrap;
 }
 
+/* Shown up to the height set with the splitter below it (CommitBody), then scrolling. */
 .commit-body-compact {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin: 6px 0 0;
   font-size: var(--text-sm);
-  max-height: 4.5em;
   overflow: auto;
+}
+
+/* Straddles the header's bottom border without adding height: 5 + 6 - 11 leaves the 8px padding at 8. */
+.splitter-commit-body {
+  position: relative;
+  margin: 5px -12px -11px;
+  border: none;
 }
 
 .diff-host {
@@ -1456,9 +1454,10 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   min-width: 0;
 }
 
+/* Header, file list, stashes, the commit message splitter and the commit form. */
 .changes-sidebar {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   border-right: 1px solid var(--border);
   min-height: 0;
   height: 100%;
@@ -1520,9 +1519,10 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   background: var(--bg-elevated);
 }
 
+/* Sized by CommitForm: the splitter above sets its resting height, a long message grows it. */
 .changes-commit-form textarea {
-  resize: vertical;
-  min-height: 64px;
+  resize: none;
+  overflow-y: auto;
 }
 
 .identity-bar {
@@ -2152,6 +2152,11 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   border: none;
   border-left: 1px solid var(--border);
   z-index: 9;
+}
+
+/* Takes no room of its own: it straddles the commit form's top border. */
+.splitter-commit-y {
+  border: none;
 }
 
 .splitter-inline-x {

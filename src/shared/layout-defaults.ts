@@ -7,6 +7,8 @@ export const LAYOUT_DEFAULTS = {
   detailWidth: 480,
   inspectorFilesWidth: 200,
   changesFilesWidth: 300,
+  commitMessageHeight: 72,
+  commitBodyHeight: 60,
   historyGraphColWidth: 140,
   historyDateColWidth: 110,
   historyAuthorColWidth: 180

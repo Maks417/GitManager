@@ -56,6 +56,10 @@ export type LayoutPaneFiles = Pick<
   | 'setInspectorFilesWidth'
   | 'changesFilesWidth'
   | 'setChangesFilesWidth'
+  | 'commitMessageHeight'
+  | 'setCommitMessageHeight'
+  | 'commitBodyHeight'
+  | 'setCommitBodyHeight'
 >
 
 /** Aggregate of every layout slice — prefer a narrower hook when possible. */
@@ -171,13 +175,21 @@ export function LayoutProvider({ children }: { children: React.ReactNode }): Rea
       inspectorFilesWidth: layout.inspectorFilesWidth,
       setInspectorFilesWidth: layout.setInspectorFilesWidth,
       changesFilesWidth: layout.changesFilesWidth,
-      setChangesFilesWidth: layout.setChangesFilesWidth
+      setChangesFilesWidth: layout.setChangesFilesWidth,
+      commitMessageHeight: layout.commitMessageHeight,
+      setCommitMessageHeight: layout.setCommitMessageHeight,
+      commitBodyHeight: layout.commitBodyHeight,
+      setCommitBodyHeight: layout.setCommitBodyHeight
     }),
     [
       layout.inspectorFilesWidth,
       layout.setInspectorFilesWidth,
       layout.changesFilesWidth,
-      layout.setChangesFilesWidth
+      layout.setChangesFilesWidth,
+      layout.commitMessageHeight,
+      layout.setCommitMessageHeight,
+      layout.commitBodyHeight,
+      layout.setCommitBodyHeight
     ]
   )
 
