@@ -34,19 +34,29 @@ export function registerHistoryHandlers(): void {
 
   ipcMain.handle(IpcChannels.history.commitDetail, async (event, repoPath: unknown, sha: unknown) => {
     assertSender(event)
-    return git.getCommitDetail(parseRepoPath(repoPath), parseRef(sha))
+    // Each window shows one commit, file diff and work-tree diff: an older request still queued is dropped.
+    return git.invokeNewest(`commitDetail:${event.sender.id}`, 'getCommitDetail', parseRepoPath(repoPath), parseRef(sha))
   })
 
   ipcMain.handle(IpcChannels.history.fileDiff, async (event, raw: unknown) => {
     assertSender(event)
     const req = DiffRequestSchema.parse(raw)
-    return git.getFileDiff(req.repoPath, req.sha, req.path, req.parentIndex, req.oldPath)
+    return git.invokeNewest(
+      `fileDiff:${event.sender.id}`,
+      'getFileDiff',
+      req.repoPath,
+      req.sha,
+      req.path,
+      req.parentIndex,
+      req.oldPath,
+      req.parentSha
+    )
   })
 
   ipcMain.handle(IpcChannels.history.workingTreeDiff, async (event, raw: unknown) => {
     assertSender(event)
     const req = WorkingTreeDiffRequestSchema.parse(raw)
-    return git.getWorkingTreeDiff(req.repoPath, req.path, req.side)
+    return git.invokeNewest(`workingTreeDiff:${event.sender.id}`, 'getWorkingTreeDiff', req.repoPath, req.path, req.side)
   })
 
   ipcMain.handle(IpcChannels.history.fileHistory, async (event, repoPath: unknown, path: unknown, skip?: unknown) => {

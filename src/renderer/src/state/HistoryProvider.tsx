@@ -94,7 +94,6 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
     activeRepo,
     search,
     historyFilter,
-    busy,
     viewMode,
     setBusy,
     setError,

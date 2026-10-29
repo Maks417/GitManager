@@ -45,6 +45,7 @@ export const IpcChannels = {
     unwatch: 'repo:unwatch',
     onChanged: 'repo:on-changed',
     onWatchState: 'repo:on-watch-state',
+    onListRefreshed: 'repo:on-list-refreshed',
     removalInfo: 'repo:removal-info',
     worktreeInfo: 'repo:worktree-info'
   },

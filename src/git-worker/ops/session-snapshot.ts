@@ -2,20 +2,11 @@ import { createHash } from 'crypto'
 import { existsSync } from 'fs'
 import { basename, join, normalize } from 'path'
 import type { RepoRefreshRequest, RepoSessionSnapshot, Repository, SequencerOp } from '@shared/ipc'
-import { getBranches, getRemoteBranches } from './branches'
+import { readRefs } from './branches'
 import { getGitIdentity } from './identity'
-import { inspectRepository } from './repo'
 import { getStatus } from './status'
 import { currentBranchName, getGitDirs, resolveHeadSha, runGit } from './shared'
 import { linkedWorktreeMain } from './worktrees'
-
-async function refsFingerprint(repoPath: string): Promise<string> {
-  const refs = await runGit({
-    cwd: repoPath,
-    args: ['for-each-ref', '--format=%(objectname) %(refname)']
-  })
-  return createHash('sha1').update(refs.stdout).digest('hex')
-}
 
 /**
  * A merge, rebase, cherry-pick or revert in progress, from the files Git keeps for it in the work tree's
@@ -71,25 +62,24 @@ export async function refreshRepoSession(request: RepoRefreshRequest): Promise<R
     return { status: await getStatus(repoPath) }
   }
 
-  const [status, { gitDir }, branches, remoteBranches, identity, headSha, refsHash] = await Promise.all([
+  const [status, { gitDir }, refs, identity, headSha] = await Promise.all([
     getStatus(repoPath),
     getGitDirs(repoPath),
-    getBranches(repoPath),
-    getRemoteBranches(repoPath),
+    readRefs(repoPath),
     getGitIdentity(repoPath),
-    resolveHeadSha(repoPath),
-    refsFingerprint(repoPath)
+    resolveHeadSha(repoPath)
   ])
+  const { branches, remoteBranches, fingerprint: refsHash } = refs
   const { rebaseInProgress, mergeInProgress, sequencerOp } = operationsInProgress(gitDir)
 
-  const repository = request.persistRepository
-    ? await inspectRepository(repoPath)
-    : await slimRepository(
-        repoPath,
-        // An unborn branch (no commits yet) has no ref to list; HEAD still names it.
-        branches.find((b) => b.current)?.name ?? (await currentBranchName(repoPath)),
-        request.baseRepository
-      )
+  // Also what main saves for `persistRepository`: the repository is known, so its id, name and worktree link
+  // carry over and only the branch and remotes are read again.
+  const repository = await slimRepository(
+    repoPath,
+    // An unborn branch (no commits yet) has no ref to list; HEAD still names it.
+    branches.find((b) => b.current)?.name ?? (await currentBranchName(repoPath)),
+    request.baseRepository
+  )
 
   const historyFingerprint = createHash('sha1')
     .update(headSha ?? '')

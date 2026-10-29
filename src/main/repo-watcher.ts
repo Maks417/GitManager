@@ -12,6 +12,8 @@ export type RepoWatchKind = 'worktree' | 'git-meta'
 export interface RepoWatchEvent {
   repoPath: string
   kind: RepoWatchKind
+  /** The work-tree files that changed, when known; absent when anything may have (Git metadata, too many). */
+  paths?: string[]
 }
 
 /** How the watched repository is kept up to date. */
@@ -27,6 +29,9 @@ type StateListener = (state: RepoWatchState | null) => void
 
 /** Resolves to the subset of repo-relative paths that Git ignores. */
 export type IgnoreFilter = (repoPath: string, paths: string[]) => Promise<string[]>
+
+/** Resolves to the folders, of those given, that Git ignores whole and that hold no tracked file. */
+export type IgnoredFolderFilter = (repoPath: string, folders: string[]) => Promise<string[]>
 
 /** Where Git keeps a work tree's metadata (`git rev-parse --git-dir --git-common-dir`). */
 export interface GitDirs {
@@ -45,6 +50,8 @@ export type WatchFunction = (
 
 export interface RepoWatchOptions {
   ignoreFilter?: IgnoreFilter
+  /** With it, folders found ignored are remembered and their changes dropped as they arrive. */
+  ignoredFolderFilter?: IgnoredFolderFilter
   /** Linked worktrees and submodules keep their git directory outside the work tree. */
   gitDirs?: GitDirs
   /**
@@ -64,6 +71,10 @@ export interface WatchBatch {
   paths: string[]
   /** Refresh regardless of ignore rules: Git metadata changed, or the paths are unknown / too many. */
   force: boolean
+  /** `performance.now()` of the batch's last change; a refresh started after it already saw all of them. */
+  changedAt: number
+  /** A `.gitignore` or `.git/info/exclude` changed: folders known to be ignored may no longer be. */
+  rulesChanged: boolean
 }
 
 /** Where a watch event comes from. Git directory events are mapped onto a normal `.git/` layout. */
@@ -77,6 +88,9 @@ export interface WatchTarget {
 
 const DEBOUNCE_MS = 400
 
+/** A batch flushes at the latest this long after its first change, even while changes keep coming. */
+const MAX_WAIT_MS = 2000
+
 /** How often a repository is checked for changes while the system refuses to watch it. */
 export const POLL_INTERVAL_MS = 5000
 
@@ -88,10 +102,16 @@ const MAX_FILTERED_PATHS = 200
  * folders (`dist`, `build`, `out`, `vendor`, …) are often tracked, so Git's ignore rules decide those.
  */
 const IGNORED_DIR_RE =
-  /(^|\/)(node_modules|\.pnpm-store|bower_components|\.next|\.nuxt|\.turbo|__pycache__|\.venv|venv|\.cache|\.parcel-cache)(\/|$)/i
+  /(^|\/)(node_modules|\.pnpm-store|bower_components|\.next|\.nuxt|\.turbo|__pycache__|\.venv|venv|\.cache|\.parcel-cache|\.vs|\.gradle)(\/|$)/i
 
-/** Entries of a `.git/` folder that churn during pack/fetch/commit and never affect status or history. */
-const NOISY_GIT_ENTRY_RE = /^(objects|logs|lfs|hooks)(\/|$)|^COMMIT_EDITMSG$/
+/**
+ * Entries of a `.git/` folder that churn during pack/fetch/commit and never affect status or history. The
+ * fsmonitor daemon writes cookie files there on every `git status`, the app's own included.
+ */
+const NOISY_GIT_ENTRY_RE = /^(objects|logs|lfs|hooks|fsmonitor--daemon)(\/|$)|^(COMMIT_EDITMSG|gc\.log|gc\.pid)$/
+
+/** Files whose change can turn ignored folders into watched ones. */
+const IGNORE_RULES_RE = /(^|\/)\.gitignore$|^\.git\/info\/exclude$/
 
 /** The same noise inside a submodule's repository (`modules/<name>/…`, where names may contain `/`). */
 const NOISY_MODULE_ENTRY_RE = /\/(objects|logs|lfs|hooks)(\/|$)|\/COMMIT_EDITMSG$/
@@ -200,37 +220,67 @@ export interface ChangeBatcher {
   cancel(): void
 }
 
-/** Collects fs.watch events for `debounceMs` and flushes them as one batch. */
-export function createChangeBatcher(onFlush: (batch: WatchBatch) => void, debounceMs = DEBOUNCE_MS): ChangeBatcher {
+export interface ChangeBatcherOptions {
+  debounceMs?: number
+  maxWaitMs?: number
+  /**
+   * Work-tree paths to drop as they arrive (inside folders known to be ignored), so a folder a build or an IDE
+   * keeps writing to neither refreshes nor keeps pushing the batch back.
+   */
+  skip?: (rel: string) => boolean
+}
+
+/**
+ * Collects fs.watch events until `debounceMs` pass without one, or `maxWaitMs` after the first, and flushes
+ * them as one batch.
+ */
+export function createChangeBatcher(
+  onFlush: (batch: WatchBatch) => void,
+  options: ChangeBatcherOptions | number = {}
+): ChangeBatcher {
+  const { debounceMs = DEBOUNCE_MS, maxWaitMs = MAX_WAIT_MS, skip } =
+    typeof options === 'number' ? { debounceMs: options } : options
   let timer: ReturnType<typeof setTimeout> | null = null
+  let firstAt = 0
+  let changedAt = 0
   let kind: RepoWatchKind | null = null
   let force = false
+  let rulesChanged = false
   const paths = new Set<string>()
 
   const reset = (): void => {
     kind = null
     force = false
+    rulesChanged = false
     paths.clear()
+  }
+
+  const flush = (): void => {
+    timer = null
+    const batch: WatchBatch = { kind: kind ?? 'worktree', paths: force ? [] : [...paths], force, changedAt, rulesChanged }
+    reset()
+    onFlush(batch)
   }
 
   return {
     add(filename) {
       const next = classifyWatchPath(filename)
       if (!next) return
-      kind = kind === 'git-meta' || next === 'git-meta' ? 'git-meta' : 'worktree'
       const rel = filename ? toPosixRel(filename) : ''
-      if (!rel || rel === '.' || rel === '.git' || rel.startsWith('.git/') || paths.size >= MAX_FILTERED_PATHS) {
+      const inWorkTree = Boolean(rel) && rel !== '.' && rel !== '.git' && !rel.startsWith('.git/')
+      if (inWorkTree && skip?.(rel)) return
+      kind = kind === 'git-meta' || next === 'git-meta' ? 'git-meta' : 'worktree'
+      if (IGNORE_RULES_RE.test(rel)) rulesChanged = true
+      if (!inWorkTree || paths.size >= MAX_FILTERED_PATHS) {
         force = true
       } else {
         paths.add(rel)
       }
+      const now = performance.now()
+      if (!timer) firstAt = now
+      changedAt = now
       if (timer) clearTimeout(timer)
-      timer = setTimeout(() => {
-        timer = null
-        const batch: WatchBatch = { kind: kind ?? 'worktree', paths: force ? [] : [...paths], force }
-        reset()
-        onFlush(batch)
-      }, debounceMs)
+      timer = setTimeout(flush, Math.max(0, Math.min(debounceMs, firstAt + maxWaitMs - now)))
     },
     cancel() {
       if (timer) clearTimeout(timer)
@@ -238,6 +288,59 @@ export function createChangeBatcher(onFlush: (batch: WatchBatch) => void, deboun
       reset()
     }
   }
+}
+
+/** Folders Git ignores that hold no tracked file, learnt from earlier batches: nothing inside them matters. */
+export interface IgnoredFolderCache {
+  covers(rel: string): boolean
+  add(folders: string[]): void
+  clear(): void
+  /** Folders of these ignored paths worth asking about, up to three levels deep and not known yet. */
+  candidates(ignoredPaths: string[]): string[]
+}
+
+export function createIgnoredFolderCache(): IgnoredFolderCache {
+  const folders = new Set<string>()
+  const ancestors = (rel: string, depth = 3): string[] => {
+    const parts = rel.split('/').slice(0, -1)
+    const out: string[] = []
+    for (let i = 1; i <= Math.min(depth, parts.length); i++) out.push(parts.slice(0, i).join('/'))
+    return out
+  }
+  const lower = (rel: string): string => rel.toLowerCase()
+  return {
+    covers: (rel) => ancestors(lower(rel), Number.MAX_SAFE_INTEGER).some((folder) => folders.has(folder)),
+    add(found) {
+      for (const folder of found) folders.add(lower(folder))
+    },
+    clear: () => folders.clear(),
+    candidates(ignoredPaths) {
+      const out = new Set<string>()
+      for (const rel of ignoredPaths) {
+        if (ancestors(lower(rel), Number.MAX_SAFE_INTEGER).some((folder) => folders.has(folder))) continue
+        for (const folder of ancestors(rel)) out.add(folder)
+      }
+      return [...out]
+    }
+  }
+}
+
+/** `performance.now()` when the newest refresh of each scope started that has finished, for the watched repo. */
+let coveredAt = { meta: -Infinity, status: -Infinity }
+
+/**
+ * A refresh of the watched repository finished; it read Git's state after `startedAt`. A batch whose changes
+ * all came before that start (the files an app action of its own wrote, say) needs no refresh of its own.
+ */
+export function noteRepoRefreshed(repoPath: string, scope: 'meta' | 'status', startedAt: number): void {
+  if (!watchedPath || normalize(repoPath).toLowerCase() !== watchedPath.toLowerCase()) return
+  if (scope === 'meta') coveredAt = { meta: Math.max(coveredAt.meta, startedAt), status: Math.max(coveredAt.status, startedAt) }
+  else coveredAt = { ...coveredAt, status: Math.max(coveredAt.status, startedAt) }
+}
+
+/** Whether a refresh that already finished saw every change in this batch. */
+export function batchCovered(batch: Pick<WatchBatch, 'kind' | 'changedAt'>, covered = coveredAt): boolean {
+  return batch.changedAt < (batch.kind === 'git-meta' ? covered.meta : covered.status)
 }
 
 function emit(event: RepoWatchEvent): void {
@@ -340,25 +443,47 @@ export function startRepoWatch(repoPath: string, options: RepoWatchOptions = {})
 
   stopRepoWatch()
   watchedPath = normalized
-  const { ignoreFilter } = options
+  coveredAt = { meta: -Infinity, status: -Infinity }
+  const { ignoreFilter, ignoredFolderFilter } = options
   const watchFn: WatchFunction = options.watchFn ?? ((path, watchOptions, listener) => watch(path, watchOptions, listener))
+  const ignoredFolders = createIgnoredFolderCache()
 
-  batcher = createChangeBatcher((batch) => {
-    if (watchedPath !== normalized) return
-    const notify = (): void => {
-      if (watchedPath === normalized) emit({ repoPath: normalized, kind: batch.kind })
-    }
-    if (batch.force || !ignoreFilter) {
-      notify()
-      return
-    }
-    void ignoreFilter(normalized, batch.paths).then(
-      (ignored) => {
-        if (ignored.length < batch.paths.length) notify()
+  /** Remembers the folders of these ignored paths that are ignored whole, off the refresh path. */
+  const learnFolders = (ignored: string[]): void => {
+    const candidates = ignoredFolderFilter ? ignoredFolders.candidates(ignored) : []
+    if (!ignoredFolderFilter || candidates.length === 0) return
+    void ignoredFolderFilter(normalized, candidates).then(
+      (found) => {
+        if (watchedPath === normalized) ignoredFolders.add(found)
       },
-      notify
+      () => undefined
     )
-  })
+  }
+
+  batcher = createChangeBatcher(
+    (batch) => {
+      if (watchedPath !== normalized) return
+      if (batch.rulesChanged) ignoredFolders.clear()
+      // A refresh that started after these changes (after an app action, say) already shows them.
+      if (batchCovered(batch)) return
+      const notify = (): void => {
+        if (watchedPath !== normalized) return
+        emit({ repoPath: normalized, kind: batch.kind, ...(batch.force ? {} : { paths: batch.paths }) })
+      }
+      if (batch.force || !ignoreFilter) {
+        notify()
+        return
+      }
+      void ignoreFilter(normalized, batch.paths).then(
+        (ignored) => {
+          if (ignored.length < batch.paths.length) notify()
+          learnFolders(ignored)
+        },
+        notify
+      )
+    },
+    { skip: (rel) => ignoredFolders.covers(rel) }
+  )
 
   /** On a watch limit, drops every watch of this repository for polling; false for other failures. */
   const pollInstead = (err: unknown): boolean => {
@@ -376,6 +501,9 @@ export function startRepoWatch(repoPath: string, options: RepoWatchOptions = {})
       fsWatcher = watchFn(target.path, { recursive: target.recursive }, (_eventType, filename) => {
         const name = typeof filename === 'string' ? filename : filename != null ? String(filename) : null
         if (target.source === 'worktree') {
+          // The `.git` folder itself "changed" whenever an entry in it did (Windows), also a lock file of
+          // another tool's `git status`; real changes arrive under their own names.
+          if (name === '.git') return
           batcher?.add(name)
           return
         }

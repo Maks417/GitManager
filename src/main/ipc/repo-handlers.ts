@@ -17,7 +17,7 @@ import * as git from '../../git-worker/client'
 import { cancelGitIn } from '../../git-worker/client'
 import { isPathInside } from '../../git-worker/path-utils'
 import { loadPreferences, loadRepositories, saveRepositories } from '../storage'
-import { getRepoWatchState, getWatchedRepoPath, startRepoWatch, stopRepoWatch } from '../repo-watcher'
+import { getRepoWatchState, getWatchedRepoPath, noteRepoRefreshed, startRepoWatch, stopRepoWatch } from '../repo-watcher'
 import { assertDeletableRepoDir } from '../repo-removal'
 import { repoNameFromUrl } from '../clone-target'
 import { describeNewRepoTarget } from '../new-repo'
@@ -33,20 +33,39 @@ function storedRepository(rawId: unknown): Repository {
   return repo
 }
 
+/** How many saved repositories are inspected at once after the list is shown. */
+const INSPECT_CONCURRENCY = 4
+
+/** Each repository as Git sees it now, in the same order; one that cannot be inspected stays as saved. */
+async function inspectRepositories(stored: Repository[]): Promise<Repository[]> {
+  const inspected = [...stored]
+  let next = 0
+  const work = async (): Promise<void> => {
+    while (next < stored.length) {
+      const index = next++
+      inspected[index] = await git.inspectRepository(stored[index].path).catch(() => stored[index])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(INSPECT_CONCURRENCY, stored.length) }, work))
+  return inspected
+}
+
 export function registerRepoHandlers(): void {
   ipcMain.handle(IpcChannels.repo.list, async (event) => {
     assertSender(event)
     const stored = loadRepositories()
-    const refreshed = []
-    for (const entry of stored) {
-      try {
-        refreshed.push(await git.inspectRepository(entry.path))
-      } catch {
-        refreshed.push(entry)
-      }
-    }
-    saveRepositories(refreshed)
-    return refreshed
+    // The window shows the saved list at once instead of waiting for Git on every repository (seconds with a
+    // few dozen, longer for one on an unreachable share); their current branches and remotes follow.
+    const sender = event.sender
+    void inspectRepositories(stored).then((inspected) => {
+      // Repositories added or removed meanwhile stay as they are now.
+      const byId = new Map(stored.map((repo, index) => [repo.id, inspected[index]]))
+      const current = loadRepositories()
+      const merged = current.map((repo) => byId.get(repo.id) ?? repo)
+      if (JSON.stringify(merged) !== JSON.stringify(current)) saveRepositories(merged)
+      if (!sender.isDestroyed()) sender.send(IpcChannels.repo.onListRefreshed, merged)
+    })
+    return stored
   })
 
   ipcMain.handle(IpcChannels.repo.add, async (event, path: unknown) => {
@@ -197,6 +216,7 @@ export function registerRepoHandlers(): void {
     if (request !== watchRequest) return getRepoWatchState()
     startRepoWatch(path, {
       ignoreFilter: (root, paths) => git.filterIgnoredPaths(root, paths),
+      ignoredFolderFilter: (root, folders) => git.filterIgnoredFolders(root, folders),
       gitDirs,
       // When the system refuses more watches (Linux's inotify limit), changes are polled instead, and
       // only while one of the app's windows is focused.
@@ -227,7 +247,10 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IpcChannels.repo.refresh, async (event, raw: unknown) => {
     assertSender(event)
     const request = RepoRefreshRequestSchema.parse(raw)
+    const startedAt = performance.now()
     const snapshot = RepoSessionSnapshotSchema.parse(await git.refreshRepoSession(request))
+    // Watch batches of changes made before this refresh started (the app's own action) are dropped.
+    noteRepoRefreshed(request.repoPath, request.scope, startedAt)
     if (request.persistRepository && snapshot.repository) {
       upsertRepository(snapshot.repository)
     }

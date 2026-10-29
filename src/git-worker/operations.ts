@@ -24,6 +24,7 @@ export { getFileHistory, getBlame } from './ops/file-history'
 export {
   getStatus,
   filterIgnoredPaths,
+  filterIgnoredFolders,
   stagePaths,
   unstagePaths,
   planDiscard,

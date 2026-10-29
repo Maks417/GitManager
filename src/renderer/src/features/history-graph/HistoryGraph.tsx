@@ -160,11 +160,11 @@ export const HistoryGraph = memo(function HistoryGraph(): React.JSX.Element {
 
   const maybeLoadMore = useCallback(
     (target: HTMLDivElement): void => {
-      if (!hasMore || loadingMore || busy) return
+      if (!hasMore || loadingMore) return
       const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
       if (remaining < ROW_HEIGHT * 8) void loadMoreHistory()
     },
-    [hasMore, loadMoreHistory, loadingMore, busy]
+    [hasMore, loadMoreHistory, loadingMore]
   )
 
   // Scrolling is what loads more, so a list left at its end while a load was not allowed (busy, a page
@@ -219,7 +219,7 @@ export const HistoryGraph = memo(function HistoryGraph(): React.JSX.Element {
     e.preventDefault()
     selectCommit(commits[next].sha)
     scrollRowIntoView(next, 'nearest')
-    if (hasMore && !loadingMore && !busy && commits.length - next <= LOAD_MORE_WITHIN) void loadMoreHistory()
+    if (hasMore && !loadingMore && commits.length - next <= LOAD_MORE_WITHIN) void loadMoreHistory()
   }
 
   return (

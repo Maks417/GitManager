@@ -1,3 +1,4 @@
+import { existsSync } from 'fs'
 import { resolve } from 'path'
 import { gitOk, runGit } from '../git-runner'
 import { SHA_RE } from '@shared/sha'
@@ -25,7 +26,19 @@ export async function currentBranchName(repoPath: string): Promise<string | null
  * Absolute git directories of a work tree. `gitDir` holds HEAD, the index and merge/rebase state;
  * `commonDir` holds refs. Both lie outside the work tree for linked worktrees and submodules.
  */
+/** Git directories by work-tree path: they never move while the work tree exists, and almost every refresh asks. */
+const gitDirsCache = new Map<string, { gitDir: string; commonDir: string }>()
+
 export async function getGitDirs(repoPath: string): Promise<{ gitDir: string; commonDir: string }> {
+  const cached = gitDirsCache.get(repoPath)
+  if (cached && existsSync(cached.gitDir)) return cached
+  const dirs = await readGitDirs(repoPath)
+  if (gitDirsCache.size > 200) gitDirsCache.clear()
+  gitDirsCache.set(repoPath, dirs)
+  return dirs
+}
+
+async function readGitDirs(repoPath: string): Promise<{ gitDir: string; commonDir: string }> {
   // Plain output (no --path-format, which needs Git 2.31): paths may be relative to the work tree.
   const [gitDir, commonDir] = (await gitOk(repoPath, ['rev-parse', '--git-dir', '--git-common-dir']))
     .split(/\r?\n/)

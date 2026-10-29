@@ -179,7 +179,9 @@ export const DiffRequestSchema = z.object({
   path: z.string().min(1),
   /** Pre-rename path, so the parent side of a renamed file can be read. */
   oldPath: z.string().min(1).optional(),
-  parentIndex: z.number().int().min(0).default(0)
+  parentIndex: z.number().int().min(0).default(0),
+  /** That parent, when the caller knows it (null: a root commit), which saves looking it up. */
+  parentSha: z.string().regex(SHA_RE, 'Invalid commit id').nullable().optional()
 })
 export type DiffRequest = z.infer<typeof DiffRequestSchema>
 
@@ -480,7 +482,9 @@ export type AppPreferences = z.infer<typeof AppPreferencesSchema>
 
 export const RepoWatchEventSchema = z.object({
   repoPath: z.string(),
-  kind: z.enum(['worktree', 'git-meta'])
+  kind: z.enum(['worktree', 'git-meta']),
+  /** The work-tree files that changed, when known; absent when anything may have. */
+  paths: z.array(z.string()).optional()
 })
 export type RepoWatchEvent = z.infer<typeof RepoWatchEventSchema>
 

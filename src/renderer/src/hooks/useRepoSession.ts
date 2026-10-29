@@ -27,7 +27,7 @@ import {
   shouldRefreshHistoryTip,
   type RepoRefreshScope
 } from '../logic/repo-refresh-scheduler'
-import type { HistoryRefreshMode, Selection, ViewMode } from './selection'
+import type { HistoryRefreshMode, Selection, StatusChange, ViewMode } from './selection'
 import { useLatestRef } from './useLatestRef'
 
 export type HistoryFns = {
@@ -87,8 +87,11 @@ export function useRepoSession({
   remoteBranches: RemoteBranchInfo[]
   setRemoteBranches: React.Dispatch<React.SetStateAction<RemoteBranchInfo[]>>
   status: StatusEntry[]
-  /** Grows with every status refresh, also one that found the same status (a file edited again). */
-  statusRevision: number
+  /**
+   * Every applied status refresh, also one that found the same status (a file edited again), with the files
+   * the watcher saw change.
+   */
+  statusChange: StatusChange
   identity: GitIdentity | null
   setIdentity: React.Dispatch<React.SetStateAction<GitIdentity | null>>
   rebaseInProgress: boolean
@@ -120,7 +123,7 @@ export function useRepoSession({
   const [branches, setBranches] = useState<BranchInfo[]>([])
   const [remoteBranches, setRemoteBranches] = useState<RemoteBranchInfo[]>([])
   const [status, setStatus] = useState<StatusEntry[]>([])
-  const [statusRevision, setStatusRevision] = useState(0)
+  const [statusChange, setStatusChange] = useState<StatusChange>({ revision: 0, paths: null })
   const [identity, setIdentity] = useState<GitIdentity | null>(null)
   const [rebaseInProgress, setRebaseInProgress] = useState(false)
   const [sequencerOp, setSequencerOp] = useState<SequencerOp | null>(null)
@@ -210,12 +213,12 @@ export function useRepoSession({
     (
       repo: Repository,
       snapshot: RepoSessionSnapshot,
-      opts: { metaToken?: number; statusToken: number; applyMeta: boolean }
+      opts: { metaToken?: number; statusToken: number; applyMeta: boolean; changedPaths?: readonly string[] | null }
     ): Repository => {
       if (!sameRepoPath(activeRepoRef.current?.path, repo.path)) return repo
       if (statusGate.isLatest(opts.statusToken)) {
         setStatus(keepIfSame(snapshot.status))
-        setStatusRevision((n) => n + 1)
+        setStatusChange((prev) => ({ revision: prev.revision + 1, paths: opts.changedPaths ?? null }))
         noteConflicts(repo.path, snapshot.status)
       }
       if (!opts.applyMeta) return repo
@@ -237,7 +240,7 @@ export function useRepoSession({
 
   /** Work-tree edits only change status; branches, identity and history stay as they are. */
   const refreshStatus = useCallback(
-    async (repo: Repository): Promise<void> => {
+    async (repo: Repository, changedPaths?: readonly string[] | null): Promise<void> => {
       const token = statusGate.begin()
       const snapshot = await window.gitManager.repo.refresh({
         repoPath: repo.path,
@@ -245,7 +248,7 @@ export function useRepoSession({
         persistRepository: false,
         baseRepository: repo
       })
-      applySnapshot(repo, snapshot, { statusToken: token, applyMeta: false })
+      applySnapshot(repo, snapshot, { statusToken: token, applyMeta: false, changedPaths })
     },
     [applySnapshot, statusGate]
   )
@@ -366,6 +369,26 @@ export function useRepoSession({
     }
   }, [setError, setUpdateStatus, bootAttempt])
 
+  // The list shown at startup is the saved one; each repository's current branch and remotes follow once Git
+  // has looked at it. The active repository keeps what its own refreshes found, which may be newer.
+  useEffect(() => {
+    if (!window.gitManager?.repo?.onListRefreshed) return
+    return window.gitManager.repo.onListRefreshed((inspected) => {
+      const activePath = activeRepoRef.current?.path
+      setRepos((prev) => {
+        let changed = false
+        const next = prev.map((repo) => {
+          if (sameRepoPath(repo.path, activePath)) return repo
+          const fresh = inspected.find((r) => r.id === repo.id || sameRepoPath(r.path, repo.path))
+          if (!fresh || sameRepository(repo, fresh)) return repo
+          changed = true
+          return fresh
+        })
+        return changed ? next : prev
+      })
+    })
+  }, [activeRepoRef])
+
   // The main process says when watching falls back to polling, e.g. at Linux's inotify limit.
   useEffect(() => {
     if (!window.gitManager?.repo?.onWatchState) return
@@ -382,6 +405,8 @@ export function useRepoSession({
 
     historyFingerprintRef.current = null
     watchScheduler.reset()
+    /** Work-tree files changed since the last watch refresh started; null when any may have. */
+    let changedPaths: Set<string> | null = new Set()
 
     const runWatchRefresh = async (scope: RepoRefreshScope, generation: number): Promise<void> => {
       const repo = activeRepoRef.current
@@ -392,6 +417,8 @@ export function useRepoSession({
       try {
         if (scope === 'meta') {
           const previousFingerprint = historyFingerprintRef.current
+          // A meta refresh reloads status as a whole, for whatever files changed.
+          changedPaths = new Set()
           const fresh = await refreshRepoMeta(repo, { persist: false })
           if (
             sameRepoPath(activeRepoRef.current?.path, repoPath) &&
@@ -400,7 +427,9 @@ export function useRepoSession({
             await historyFnsRef.current?.refreshHistoryTip(fresh)
           }
         } else {
-          await refreshStatus(repo)
+          const paths = changedPaths ? [...changedPaths] : null
+          changedPaths = new Set()
+          await refreshStatus(repo, paths)
         }
       } catch (err) {
         if (sameRepoPath(activeRepoRef.current?.path, repoPath)) setError(toErrorMessage(err))
@@ -437,6 +466,8 @@ export function useRepoSession({
       const repo = activeRepoRef.current
       if (!repo || repo.path !== repoPath) return
       const scope: RepoRefreshScope = event.kind === 'git-meta' ? 'meta' : 'status'
+      if (!event.paths) changedPaths = null
+      else if (changedPaths) for (const path of event.paths) changedPaths.add(path)
       if (document.hidden) held = held ? maxScope(held, scope) : scope
       else requestRefresh(scope)
     })
@@ -469,7 +500,7 @@ export function useRepoSession({
     remoteBranches,
     setRemoteBranches,
     status,
-    statusRevision,
+    statusChange,
     identity,
     setIdentity,
     rebaseInProgress,

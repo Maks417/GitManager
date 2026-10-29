@@ -29,6 +29,11 @@ const api = {
       ipcRenderer.on(IpcChannels.repo.onWatchState, listener)
       return () => ipcRenderer.removeListener(IpcChannels.repo.onWatchState, listener)
     },
+    onListRefreshed: (callback: (repos: unknown) => void) => {
+      const listener = (_: Electron.IpcRendererEvent, repos: unknown): void => callback(repos)
+      ipcRenderer.on(IpcChannels.repo.onListRefreshed, listener)
+      return () => ipcRenderer.removeListener(IpcChannels.repo.onListRefreshed, listener)
+    },
     removalInfo: (id: string) => ipcRenderer.invoke(IpcChannels.repo.removalInfo, id),
     worktreeInfo: (id: string) => ipcRenderer.invoke(IpcChannels.repo.worktreeInfo, id)
   },

@@ -5,7 +5,15 @@ import { isPathInside } from './path-utils'
 
 export { GitCancelledError } from './git-runner'
 
-export type GitLane = 'read' | 'mutate'
+/**
+ * - `read`: up to READ_CONCURRENCY at once, never beside a mutation.
+ * - `mutate`: alone in the repository.
+ * - `network`: fetch, pull and push. One at a time and never beside a mutation (both write refs and
+ *   packed-refs), but reads go on meanwhile: a long fetch no longer holds up commit, diff and history clicks.
+ * - `maintenance`: background housekeeping (commit-graph). Starts only when the repository is idle and then
+ *   holds nothing up, since it only adds files Git reads when they are complete.
+ */
+export type GitLane = 'read' | 'mutate' | 'network' | 'maintenance'
 export type GitPriority = 0 | 1 | 2
 
 export interface GitMethodMeta {
@@ -19,7 +27,8 @@ export interface GitMethodMeta {
 const READ: GitMethodMeta = { lane: 'read', priority: 1, repoArgIndex: 0 }
 const READ_BG: GitMethodMeta = { lane: 'read', priority: 2, repoArgIndex: 0 }
 const MUTATE: GitMethodMeta = { lane: 'mutate', priority: 0, repoArgIndex: 0 }
-const MUTATE_NETWORK: GitMethodMeta = { lane: 'mutate', priority: 0, repoArgIndex: 0 }
+const NETWORK: GitMethodMeta = { lane: 'network', priority: 0, repoArgIndex: 0 }
+const MAINTENANCE: GitMethodMeta = { lane: 'maintenance', priority: 2, repoArgIndex: 0 }
 const GLOBAL_READ: GitMethodMeta = { lane: 'read', priority: 1, repoArgIndex: -1 }
 
 /** Exhaustive lane/priority metadata for every git-worker RPC method. */
@@ -33,7 +42,7 @@ export const GIT_METHOD_META: Record<GitMethodName, GitMethodMeta> = {
   getRecoveryEntries: READ,
   restoreRecovery: MUTATE,
   deleteRecovery: MUTATE,
-  publishBranch: MUTATE_NETWORK,
+  publishBranch: NETWORK,
   inspectRepository: READ,
   refreshRepoSession: READ_BG,
   createRepository: { lane: 'mutate', priority: 0, repoArgIndex: -1 },
@@ -45,7 +54,7 @@ export const GIT_METHOD_META: Record<GitMethodName, GitMethodMeta> = {
   getCommitDetail: READ,
   getFileDiff: READ,
   getWatchFingerprint: READ_BG,
-  ensureCommitGraph: READ_BG,
+  ensureCommitGraph: MAINTENANCE,
   getWorktreeInfo: READ,
   pruneWorktree: MUTATE,
   getWorkingTreeDiff: READ,
@@ -53,6 +62,7 @@ export const GIT_METHOD_META: Record<GitMethodName, GitMethodMeta> = {
   getBlame: READ,
   getStatus: READ_BG,
   filterIgnoredPaths: READ_BG,
+  filterIgnoredFolders: READ_BG,
   getBranches: READ_BG,
   getRemoteBranches: READ_BG,
   stagePaths: MUTATE,
@@ -61,10 +71,10 @@ export const GIT_METHOD_META: Record<GitMethodName, GitMethodMeta> = {
   planDiscard: MUTATE,
   restoreWorktree: MUTATE,
   commit: MUTATE,
-  fetchRemote: MUTATE_NETWORK,
-  pullRemote: MUTATE_NETWORK,
-  pushRemote: MUTATE_NETWORK,
-  forcePushRemote: MUTATE_NETWORK,
+  fetchRemote: NETWORK,
+  pullRemote: NETWORK,
+  pushRemote: NETWORK,
+  forcePushRemote: NETWORK,
   checkoutRef: MUTATE,
   checkoutRemoteBranch: MUTATE,
   createBranch: MUTATE,
@@ -85,7 +95,7 @@ export const GIT_METHOD_META: Record<GitMethodName, GitMethodMeta> = {
   resetToCommit: MUTATE,
   createTag: MUTATE,
   deleteTag: MUTATE,
-  pushTag: MUTATE_NETWORK,
+  pushTag: NETWORK,
   stashSave: MUTATE,
   listStashes: READ,
   stashApply: MUTATE,
@@ -117,6 +127,8 @@ interface QueuedJob {
 interface Bucket {
   activeReads: number
   activeMutate: boolean
+  activeNetwork: boolean
+  activeMaintenance: boolean
   queue: QueuedJob[]
 }
 
@@ -179,7 +191,7 @@ export function createRepoScheduler(options: RepoSchedulerOptions = {}): {
   const bucketFor = (key: string): Bucket => {
     let bucket = buckets.get(key)
     if (!bucket) {
-      bucket = { activeReads: 0, activeMutate: false, queue: [] }
+      bucket = { activeReads: 0, activeMutate: false, activeNetwork: false, activeMaintenance: false, queue: [] }
       buckets.set(key, bucket)
     }
     return bucket
@@ -192,38 +204,68 @@ export function createRepoScheduler(options: RepoSchedulerOptions = {}): {
     pump(key)
   }
 
+  const start = (key: string, bucket: Bucket, job: QueuedJob, release: () => void): void => {
+    bucket.queue.splice(bucket.queue.indexOf(job), 1)
+    byRequestId.delete(job.id)
+    void Promise.resolve()
+      .then(job.run)
+      .then(job.resolve, job.reject)
+      .finally(() => {
+        release()
+        pump(key)
+      })
+  }
+
   const pump = (key: string): void => {
     const bucket = bucketFor(key)
     bucket.queue.sort((a, b) => a.priority - b.priority || a.order - b.order)
 
-    while (bucket.queue.length > 0) {
-      const next = bucket.queue[0]
-      if (next.lane === 'mutate') {
-        if (bucket.activeMutate || bucket.activeReads > 0) break
-        bucket.queue.shift()
-        byRequestId.delete(next.id)
-        bucket.activeMutate = true
-        void Promise.resolve()
-          .then(next.run)
-          .then(next.resolve, next.reject)
-          .finally(() => {
+    // A mutation or network operation that has to wait keeps the ones queued after it waiting too (FIFO).
+    let exclusiveWaiting = false
+    // A mutation waiting only for running reads: later reads wait, or a stream of them would starve it.
+    let readsHeld = false
+    for (const job of [...bucket.queue]) {
+      if (job.lane === 'mutate') {
+        const free = !bucket.activeMutate && !bucket.activeNetwork
+        if (!exclusiveWaiting && free && bucket.activeReads === 0) {
+          bucket.activeMutate = true
+          start(key, bucket, job, () => {
             bucket.activeMutate = false
-            pump(key)
           })
-        break
+          continue
+        }
+        exclusiveWaiting = true
+        if (free) readsHeld = true
+      } else if (job.lane === 'network') {
+        if (!exclusiveWaiting && !bucket.activeMutate && !bucket.activeNetwork) {
+          bucket.activeNetwork = true
+          start(key, bucket, job, () => {
+            bucket.activeNetwork = false
+          })
+          continue
+        }
+        exclusiveWaiting = true
+      } else if (job.lane === 'read') {
+        if (!bucket.activeMutate && !readsHeld && bucket.activeReads < readLimit) {
+          bucket.activeReads++
+          start(key, bucket, job, () => {
+            bucket.activeReads--
+          })
+        }
+      } else {
+        const idle =
+          !bucket.activeMutate &&
+          !bucket.activeNetwork &&
+          !bucket.activeMaintenance &&
+          bucket.activeReads === 0 &&
+          bucket.queue.every((queued) => queued.lane === 'maintenance')
+        if (idle) {
+          bucket.activeMaintenance = true
+          start(key, bucket, job, () => {
+            bucket.activeMaintenance = false
+          })
+        }
       }
-
-      if (bucket.activeMutate || bucket.activeReads >= readLimit) break
-      bucket.queue.shift()
-      byRequestId.delete(next.id)
-      bucket.activeReads++
-      void Promise.resolve()
-        .then(next.run)
-        .then(next.resolve, next.reject)
-        .finally(() => {
-          bucket.activeReads--
-          pump(key)
-        })
     }
   }
 

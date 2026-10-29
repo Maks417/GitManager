@@ -9,8 +9,8 @@ import type {
 } from '@shared/ipc'
 import { isSha } from '@shared/sha'
 import { toErrorMessage } from '../lib/errors'
-import { workingTreeDiffDelayMs } from '../logic/working-tree-diff-refresh'
-import { defaultSideFor, type DiffSide, type Selection, type ViewMode } from './selection'
+import { statusChangeTouches, workingTreeDiffDelayMs } from '../logic/working-tree-diff-refresh'
+import { defaultSideFor, type DiffSide, type Selection, type StatusChange, type ViewMode } from './selection'
 import { useLatestRef } from './useLatestRef'
 
 /**
@@ -80,8 +80,8 @@ export function useWorkingTreeState(): {
 type UseWorkingTreeArgs = Omit<ReturnType<typeof useWorkingTreeState>, 'diff' | 'diffLoading'> & {
   activeRepo: Repository | null
   status: StatusEntry[]
-  /** Grows with every status refresh, also one that found the same status. */
-  statusRevision: number
+  /** Every status refresh, also one that found the same status, with the files it was for. */
+  statusChange: StatusChange
   commits: Commit[]
   headSha: string | null
   setError: (msg: string | null) => void
@@ -94,7 +94,7 @@ type UseWorkingTreeArgs = Omit<ReturnType<typeof useWorkingTreeState>, 'diff' | 
 export function useWorkingTree({
   activeRepo,
   status,
-  statusRevision,
+  statusChange,
   commits,
   headSha,
   setError,
@@ -126,6 +126,8 @@ export function useWorkingTree({
   const selectedOldPath = selectedFile?.oldPath
   // Until the selected commit's detail arrives, `selectedFile` still belongs to the previous commit.
   const detailSha = detail?.commit.sha ?? null
+  // Sent with the file diff, so the worker need not look the parent up (null: a root commit).
+  const detailParent = detail?.commit.parents[0] ?? null
 
   const selectedInHistory = useMemo(
     () => Boolean(selectedSha && commits.some((c) => c.sha === selectedSha)),
@@ -230,7 +232,8 @@ export function useWorkingTree({
           sha: selectedSha,
           path: selectedPath,
           oldPath: selectedOldPath,
-          parentIndex: 0
+          parentIndex: 0,
+          parentSha: detailParent
         })
         if (cancelled) return
         diffShaRef.current = selectedSha
@@ -258,6 +261,7 @@ export function useWorkingTree({
     selectedPath,
     selectedOldPath,
     detailSha,
+    detailParent,
     setError,
     setDiff,
     setDiffLoading
@@ -265,6 +269,15 @@ export function useWorkingTree({
 
   /** Work-tree diff currently shown; a status refresh reloads it without flashing "Loading diff…". */
   const shownDiffKeyRef = useRef<string | null>(null)
+
+  // Counts the status refreshes that may have changed the focused file's diff; saving another file does not
+  // reload it.
+  const [diffReload, setDiffReload] = useState({ change: statusChange, revision: 0 })
+  if (diffReload.change !== statusChange) {
+    const touched = statusChangeTouches(statusChange.paths, focusedStatusPath)
+    setDiffReload({ change: statusChange, revision: diffReload.revision + (touched ? 1 : 0) })
+  }
+  const diffRevision = diffReload.revision
 
   useEffect(() => {
     if (!repoPath || selectionKind !== 'working-copy' || !focusedStatusPath) {
@@ -300,9 +313,9 @@ export function useWorkingTree({
         if (!cancelled) setDiffLoading(false)
       }
     }
-    // `statusRevision` is a dependency on purpose: every status refresh reloads the focused file's diff
-    // (debounced above when the key is unchanged), also when the status itself did not change: editing a
-    // file that is already modified changes only its diff.
+    // `diffRevision` is a dependency on purpose: a status refresh that may have touched the focused file reloads
+    // its diff (debounced above when the key is unchanged), also when the status itself did not change: editing
+    // a file that is already modified changes only its diff.
     const timer = setTimeout(() => {
       void load()
     }, delayMs)
@@ -315,7 +328,7 @@ export function useWorkingTree({
     selectionKind,
     focusedStatusPath,
     diffSide,
-    statusRevision,
+    diffRevision,
     setError,
     setDiff,
     setDiffLoading

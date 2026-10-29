@@ -24,9 +24,32 @@ type Pending = {
 
 let child: UtilityProcess | null = null
 let childReady = false
+/** Settles true once the worker says it is ready, false if it exits first. */
+let readyWait: Promise<boolean> = Promise.resolve(false)
+let settleReady: (ready: boolean) => void = () => undefined
 let useInline = false
 let nextId = 1
 const pending = new Map<number, Pending>()
+
+/**
+ * The worker is stopped after this long without a Git call (about 25 MB), and forked again by the next one.
+ * Watch events and window focus bring Git calls, so it only stops while the app is left alone.
+ */
+const WORKER_IDLE_MS = 5 * 60_000
+let idleTimer: ReturnType<typeof setTimeout> | null = null
+
+function noteWorkerUse(): void {
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = setTimeout(() => {
+    idleTimer = null
+    if (!child || pending.size > 0) return
+    const idle = child
+    child = null
+    childReady = false
+    idle.kill()
+  }, WORKER_IDLE_MS)
+  idleTimer.unref?.()
+}
 
 function workerScriptPath(): string {
   // electron-vite emits sibling `git-utility.js` next to main `index.js`
@@ -39,6 +62,9 @@ function workerScriptPath(): string {
 function attachChild(proc: UtilityProcess): void {
   child = proc
   childReady = false
+  readyWait = new Promise<boolean>((resolve) => {
+    settleReady = resolve
+  })
   proc.on('message', (msg: unknown) => {
     if (!msg || typeof msg !== 'object') return
     const m = msg as {
@@ -51,6 +77,7 @@ function attachChild(proc: UtilityProcess): void {
     }
     if (m.type === 'ready') {
       childReady = true
+      settleReady(true)
       return
     }
     if (typeof m.id !== 'number') return
@@ -61,12 +88,16 @@ function attachChild(proc: UtilityProcess): void {
       return
     }
     pending.delete(m.id)
+    noteWorkerUse()
     if (m.ok) wait.resolve(m.result)
     else wait.reject(new Error(m.error || 'Git worker error'))
   })
   proc.on('exit', () => {
+    // An idle worker stopped on purpose may exit after its replacement started.
+    if (child !== proc) return
     child = null
     childReady = false
+    settleReady(false)
     for (const [, wait] of pending) {
       wait.reject(new Error('Git worker exited'))
     }
@@ -94,21 +125,37 @@ function ensureWorker(): void {
   }
 }
 
-async function waitReady(timeoutMs = 5000): Promise<boolean> {
+/**
+ * Whether the worker is up. A cold start can take seconds (antivirus scanning it, a slow disk), and running
+ * Git in this process instead stays for the whole session, with its parsing on the main thread; so only a
+ * worker that exits, or says nothing for this long, is given up on.
+ */
+async function waitReady(timeoutMs = 30_000): Promise<boolean> {
   if (useInline) return false
   if (childReady) return true
-  const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
-    if (childReady) return true
-    if (!child) return false
-    await new Promise((r) => setTimeout(r, 20))
+  if (!child) return false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs)
+  })
+  try {
+    return await Promise.race([readyWait, timedOut])
+  } finally {
+    clearTimeout(timer)
   }
-  return childReady
+}
+
+/** Start the worker now, so the first Git call (listing the repositories) does not wait for it. */
+export function startGitWorker(): void {
+  ensureWorker()
 }
 
 type ControlMethod = 'cancelAllGit' | 'cancelGitIn'
 
-async function invoke(method: GitMethodName | ControlMethod, args: unknown[]): Promise<unknown> {
+/** Per slot, the id of the newest request sent with `invokeNewest`. */
+const newestBySlot = new Map<string, number>()
+
+async function invoke(method: GitMethodName | ControlMethod, args: unknown[], slot?: string): Promise<unknown> {
   ensureWorker()
   if (useInline || !child) {
     return invokeInline(method, args)
@@ -120,6 +167,12 @@ async function invoke(method: GitMethodName | ControlMethod, args: unknown[]): P
   }
 
   const id = nextId++
+  if (slot !== undefined) {
+    // The request this one replaces is dropped if it has not started yet; its caller ignores the result.
+    const previous = newestBySlot.get(slot)
+    if (previous !== undefined && pending.has(previous)) child.postMessage({ type: 'cancel', id: previous })
+    newestBySlot.set(slot, id)
+  }
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject })
     try {
@@ -253,6 +306,18 @@ export function runRemoteOp(
 
 export { probeGit }
 
+/**
+ * Like the wrapped methods, but a newer call with the same `slot` drops this one while it still waits in the
+ * worker's queue: the diff of a file the user already moved away from.
+ */
+export function invokeNewest<K extends GitMethodName>(
+  slot: string,
+  method: K,
+  ...args: Parameters<(typeof ops)[K]>
+): ReturnType<(typeof ops)[K]> {
+  return invoke(method, args, slot) as ReturnType<(typeof ops)[K]>
+}
+
 function wrap<K extends GitMethodName>(method: K) {
   return (...args: Parameters<(typeof ops)[K]>) =>
     invoke(method, args) as ReturnType<(typeof ops)[K]>
@@ -283,6 +348,7 @@ export const getStatus = wrap('getStatus')
 export const getWatchFingerprint = wrap('getWatchFingerprint')
 export const ensureCommitGraph = wrap('ensureCommitGraph')
 export const filterIgnoredPaths = wrap('filterIgnoredPaths')
+export const filterIgnoredFolders = wrap('filterIgnoredFolders')
 export const getBranches = wrap('getBranches')
 export const getRemoteBranches = wrap('getRemoteBranches')
 export const stagePaths = wrap('stagePaths')

@@ -1,4 +1,5 @@
 import type { BranchInfo, RemoteBranchInfo, RemoteOpResult, RemoteProgress } from '@shared/ipc'
+import { createHash } from 'crypto'
 import { existsSync } from 'fs'
 import { isAbsolute, join } from 'path'
 import { GitCancelledError, type GitRunResult } from '../git-runner'
@@ -8,6 +9,7 @@ import { assertRevision } from './guards'
 import { currentBranchName, gitOk, resolveHeadSha, runGit } from './shared'
 import { assertRemoteName } from './remotes'
 import { saveCommitRecovery } from './recovery'
+import { chunkPaths } from './status'
 
 /** Network operations fail after this long without any output from Git: a stalled network or a silent prompt. */
 export const NETWORK_IDLE_TIMEOUT_MS = 5 * 60_000
@@ -20,34 +22,87 @@ export interface RemoteOpContext {
   idleTimeoutMs?: number
 }
 
-export async function getBranches(repoPath: string): Promise<BranchInfo[]> {
-  const out = await gitOk(repoPath, [
-    'for-each-ref',
-    '--format=%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(upstream:track)%00%(objectname)',
-    'refs/heads'
-  ])
-  const branches = out
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((line): BranchInfo => {
-      const [name, head, upstream, track, sha] = line.split('\0')
-      let ahead = 0
-      let behind = 0
-      const aheadMatch = track?.match(/ahead (\d+)/)
-      const behindMatch = track?.match(/behind (\d+)/)
-      if (aheadMatch) ahead = Number(aheadMatch[1])
-      if (behindMatch) behind = Number(behindMatch[1])
-      return {
-        name,
-        current: head === '*',
-        upstream: upstream || null,
-        ahead,
-        behind,
-        sha: sha || null
-      }
-    })
+/** The branches, remote branches and a fingerprint of every ref, from one listing of the refs. */
+export interface RefsSnapshot {
+  branches: BranchInfo[]
+  remoteBranches: RemoteBranchInfo[]
+  /** Changes when any ref (tags, stashes and remote branches included) moves. */
+  fingerprint: string
+}
 
+/** Ahead/behind of a branch against its upstream, by `<branch sha>..<upstream sha>`: only moving either changes it. */
+const trackCache = new Map<string, { ahead: number; behind: number }>()
+const TRACK_CACHE_MAX = 5000
+
+/** `%(upstream:short)`: `origin/main` for a remote branch, `dev` for a local one. */
+function shortRefName(ref: string): string {
+  return ref.replace(/^refs\/(heads|remotes)\//, '')
+}
+
+/** Ahead/behind of these branches, in one `for-each-ref` over just them. */
+async function countAheadBehind(repoPath: string, refs: string[]): Promise<Map<string, { ahead: number; behind: number }>> {
+  const counts = new Map<string, { ahead: number; behind: number }>()
+  for (const chunk of chunkPaths(refs)) {
+    const out = await gitOk(repoPath, ['for-each-ref', '--format=%(refname)%00%(upstream:track)', ...chunk])
+    for (const line of out.split('\n')) {
+      const [ref, track = ''] = line.split('\0')
+      if (!ref) continue
+      counts.set(ref, {
+        ahead: Number(track.match(/ahead (\d+)/)?.[1] ?? 0),
+        behind: Number(track.match(/behind (\d+)/)?.[1] ?? 0)
+      })
+    }
+  }
+  return counts
+}
+
+/**
+ * One listing of every ref. Ahead/behind (`%(upstream:track)`) walks history for each tracking branch, most of
+ * a second with dozens of them, so it is only counted for a branch whose sha or upstream sha moved.
+ */
+export async function readRefs(repoPath: string): Promise<RefsSnapshot> {
+  const out = await gitOk(repoPath, ['for-each-ref', '--format=%(objectname)%00%(refname)%00%(HEAD)%00%(upstream)'])
+  const shaOf = new Map<string, string>()
+  const rows: { sha: string; ref: string; head: boolean; upstream: string }[] = []
+  for (const line of out.split('\n')) {
+    const [sha = '', ref = '', head = '', upstream = ''] = line.split('\0')
+    if (!ref) continue
+    shaOf.set(ref, sha)
+    rows.push({ sha, ref, head: head === '*', upstream })
+  }
+
+  const heads = rows.filter((row) => row.ref.startsWith('refs/heads/'))
+  // A gone upstream (deleted on the remote and pruned) has no sha: nothing to count against.
+  const pairKey = (row: (typeof rows)[number]): string | null => {
+    const upstreamSha = row.upstream ? shaOf.get(row.upstream) : undefined
+    return upstreamSha ? `${repoPath}\0${row.sha}..${upstreamSha}` : null
+  }
+  const uncounted = heads.filter((row) => {
+    const key = pairKey(row)
+    return key !== null && !trackCache.has(key)
+  })
+  if (uncounted.length > 0) {
+    const counted = await countAheadBehind(repoPath, uncounted.map((row) => row.ref))
+    if (trackCache.size + counted.size > TRACK_CACHE_MAX) trackCache.clear()
+    for (const row of uncounted) {
+      const count = counted.get(row.ref)
+      const key = pairKey(row)
+      if (count && key) trackCache.set(key, count)
+    }
+  }
+
+  const branches = heads.map((row): BranchInfo => {
+    const key = pairKey(row)
+    const track = key ? trackCache.get(key) : undefined
+    return {
+      name: row.ref.slice('refs/heads/'.length),
+      current: row.head,
+      upstream: row.upstream ? shortRefName(row.upstream) : null,
+      ahead: track?.ahead ?? 0,
+      behind: track?.behind ?? 0,
+      sha: row.sha || null
+    }
+  })
   // Unborn branch: no refs/heads yet, but symbolic-ref still names the branch
   if (branches.length === 0) {
     const name = await currentBranchName(repoPath)
@@ -55,25 +110,28 @@ export async function getBranches(repoPath: string): Promise<BranchInfo[]> {
       branches.push({ name, current: true, upstream: null, ahead: 0, behind: 0, sha: null })
     }
   }
-  return branches
+
+  const remoteBranches: RemoteBranchInfo[] = []
+  for (const row of rows) {
+    if (!row.ref.startsWith('refs/remotes/') || row.ref.endsWith('/HEAD')) continue
+    const name = row.ref.slice('refs/remotes/'.length)
+    const slash = name.indexOf('/')
+    if (slash <= 0) continue
+    remoteBranches.push({ name, remote: name.slice(0, slash), shortName: name.slice(slash + 1), sha: row.sha })
+  }
+
+  const fingerprint = createHash('sha1')
+    .update(rows.map((row) => `${row.sha} ${row.ref}`).join('\n'))
+    .digest('hex')
+  return { branches, remoteBranches, fingerprint }
+}
+
+export async function getBranches(repoPath: string): Promise<BranchInfo[]> {
+  return (await readRefs(repoPath)).branches
 }
 
 export async function getRemoteBranches(repoPath: string): Promise<RemoteBranchInfo[]> {
-  const out = await gitOk(repoPath, ['for-each-ref', '--format=%(refname:short)%00%(objectname)', 'refs/remotes'])
-  const branches: RemoteBranchInfo[] = []
-  for (const line of out.split('\n')) {
-    const [name = '', sha = ''] = line.trim().split('\0')
-    if (!name || name.endsWith('/HEAD')) continue
-    const slash = name.indexOf('/')
-    if (slash <= 0) continue
-    branches.push({
-      name,
-      remote: name.slice(0, slash),
-      shortName: name.slice(slash + 1),
-      sha
-    })
-  }
-  return branches
+  return (await readRefs(repoPath)).remoteBranches
 }
 
 /** Runs a command that talks to a remote: stoppable, with an idle timeout and throttled progress. */

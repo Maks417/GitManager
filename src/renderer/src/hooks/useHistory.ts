@@ -92,7 +92,6 @@ type UseHistoryArgs = {
   activeRepo: Repository | null
   search: string
   historyFilter: 'all' | 'current' | undefined
-  busy: boolean
   /** The view shown; a new repository keeps the working copy selected in Changes. */
   viewMode: ViewMode
   setBusy: (busy: boolean) => void
@@ -110,7 +109,6 @@ export function useHistory({
   activeRepo,
   search,
   historyFilter,
-  busy,
   viewMode,
   setBusy,
   setError,
@@ -257,9 +255,9 @@ export function useHistory({
 
   const loadMoreHistory = useCallback(async (): Promise<void> => {
     const loaded = listRef.current
-    if (!activeRepo || !loaded || loaded.key !== listKey || !loaded.nextCursor || historyLoadingMore || busy) {
-      return
-    }
+    // Not held back by `busy`: a page that a reload overtakes is dropped below, and fetch or push (busy for
+    // their whole run) no longer hold up history reads in the git worker.
+    if (!activeRepo || !loaded || loaded.key !== listKey || !loaded.nextCursor || historyLoadingMore) return
     const repoPath = activeRepo.path
     await runWithBusy(
       async () => {
@@ -293,7 +291,7 @@ export function useHistory({
       // Paging is not an action of its own: it leaves the error of the last one shown.
       { setBusy: setHistoryLoadingMore, setError, clearError: false }
     )
-  }, [activeRepo, listKey, historyLoadingMore, busy, historyFilter, isCurrentRepo, setError, writeList])
+  }, [activeRepo, listKey, historyLoadingMore, historyFilter, isCurrentRepo, setError, writeList])
 
   /**
    * Load the list down to the deepest commit it showed, which keeps its scroll position; false when that commit

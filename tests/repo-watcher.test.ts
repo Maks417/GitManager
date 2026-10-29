@@ -1,10 +1,12 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { filterIgnoredPaths, getGitDirs } from '../src/git-worker/operations'
+import { filterIgnoredFolders, filterIgnoredPaths, getGitDirs } from '../src/git-worker/operations'
 import {
+  batchCovered,
   classifyWatchPath,
   createChangeBatcher,
+  createIgnoredFolderCache,
   planWatchTargets,
   startRepoWatch,
   stopRepoWatch,
@@ -41,6 +43,10 @@ describe('classifyWatchPath', () => {
     expect(classifyWatchPath('.git/COMMIT_EDITMSG')).toBeNull()
     expect(classifyWatchPath('node_modules/lodash/index.js')).toBeNull()
     expect(classifyWatchPath('.DS_Store')).toBeNull()
+    // The fsmonitor daemon writes cookies on every status, the app's own too: a refresh loop otherwise.
+    expect(classifyWatchPath('.git/fsmonitor--daemon/cookies/1234-0')).toBeNull()
+    expect(classifyWatchPath('.git/gc.pid')).toBeNull()
+    expect(classifyWatchPath('.vs/App/v17/.suo')).toBeNull()
   })
 
   it('normalizes Windows separators', () => {
@@ -120,7 +126,7 @@ describe('createChangeBatcher', () => {
     vi.advanceTimersByTime(399)
     expect(batches).toEqual([])
     vi.advanceTimersByTime(1)
-    expect(batches).toEqual([{ kind: 'worktree', paths: ['src/a.ts', 'src/b.ts'], force: false }])
+    expect(batches).toMatchObject([{ kind: 'worktree', paths: ['src/a.ts', 'src/b.ts'], force: false, rulesChanged: false }])
   })
 
   it('forces a refresh when Git metadata changed and escalates to git-meta', () => {
@@ -130,7 +136,33 @@ describe('createChangeBatcher', () => {
     batcher.add('src/a.ts')
     batcher.add('.git/HEAD')
     vi.advanceTimersByTime(400)
-    expect(batches).toEqual([{ kind: 'git-meta', paths: [], force: true }])
+    expect(batches).toMatchObject([{ kind: 'git-meta', paths: [], force: true }])
+  })
+
+  it('flushes after the maximum wait while changes keep coming', () => {
+    vi.useFakeTimers()
+    const batches: WatchBatch[] = []
+    const batcher = createChangeBatcher((b) => batches.push(b), { debounceMs: 400, maxWaitMs: 2000 })
+    for (let t = 0; t < 2000; t += 100) {
+      batcher.add(`src/file${t}.ts`)
+      vi.advanceTimersByTime(100)
+    }
+    expect(batches).toHaveLength(1)
+    expect(batches[0].paths).toHaveLength(20)
+  })
+
+  it('drops skipped paths without delaying the batch, and notes ignore rule changes', () => {
+    vi.useFakeTimers()
+    const batches: WatchBatch[] = []
+    const batcher = createChangeBatcher((b) => batches.push(b), { debounceMs: 400, skip: (rel) => rel.startsWith('obj/') })
+    batcher.add('src/a.ts')
+    vi.advanceTimersByTime(300)
+    batcher.add('obj/Debug/app.dll')
+    vi.advanceTimersByTime(100)
+    expect(batches).toMatchObject([{ paths: ['src/a.ts'], rulesChanged: false }])
+    batcher.add('sub/.gitignore')
+    vi.advanceTimersByTime(400)
+    expect(batches[1]).toMatchObject({ paths: ['sub/.gitignore'], rulesChanged: true })
   })
 
   it('does not flush after cancel', () => {
@@ -142,6 +174,50 @@ describe('createChangeBatcher', () => {
     vi.advanceTimersByTime(1000)
     expect(batches).toEqual([])
   })
+})
+
+describe('batchCovered', () => {
+  it('skips a batch whose changes all came before a finished refresh of that scope', () => {
+    const covered = { meta: 100, status: 200 }
+    expect(batchCovered({ kind: 'worktree', changedAt: 150 }, covered)).toBe(true)
+    expect(batchCovered({ kind: 'worktree', changedAt: 250 }, covered)).toBe(false)
+    // A status refresh does not cover branch or HEAD changes.
+    expect(batchCovered({ kind: 'git-meta', changedAt: 150 }, covered)).toBe(false)
+    expect(batchCovered({ kind: 'git-meta', changedAt: 50 }, covered)).toBe(true)
+  })
+})
+
+describe('createIgnoredFolderCache', () => {
+  it('covers paths below known folders and offers only unknown ancestors', () => {
+    const cache = createIgnoredFolderCache()
+    expect(cache.candidates(['bin/Debug/net8/app.dll', 'debug.log'])).toEqual(['bin', 'bin/Debug', 'bin/Debug/net8'])
+    cache.add(['bin'])
+    expect(cache.covers('bin/Debug/app.dll')).toBe(true)
+    expect(cache.covers('BIN/x')).toBe(true)
+    expect(cache.covers('binary/x')).toBe(false)
+    expect(cache.covers('bin')).toBe(false)
+    expect(cache.candidates(['bin/Release/a.dll'])).toEqual([])
+    cache.clear()
+    expect(cache.covers('bin/Debug/app.dll')).toBe(false)
+  })
+})
+
+describe('filterIgnoredFolders', () => {
+  it('reports ignored folders unless they hold a tracked file', async () => {
+    const dir = await initRepo(tempDir('gm-ignore-folders-'))
+    writeFileSync(join(dir, '.gitignore'), 'dist/\nbin/\nlogs/*\n!logs/keep.txt\n')
+    mkdirSync(join(dir, 'dist'))
+    writeFileSync(join(dir, 'dist', 'keep.txt'), 'tracked\n')
+    await git(dir, 'add', '.gitignore')
+    await git(dir, 'add', '-f', 'dist/keep.txt')
+    await git(dir, 'commit', '-m', 'ignore rules')
+    // The watcher asks about folders it saw changes in, so they exist.
+    for (const folder of ['bin/Debug', 'logs', 'src']) mkdirSync(join(dir, folder), { recursive: true })
+    for (const file of ['bin/Debug/app.dll', 'logs/a.log', 'src/app.ts']) writeFileSync(join(dir, file), 'x')
+
+    // dist holds a tracked file; logs itself is not ignored, only what is in it; src is not ignored.
+    expect(await filterIgnoredFolders(dir, ['dist', 'bin', 'bin/Debug', 'logs', 'src'])).toEqual(['bin', 'bin/Debug'])
+  }, 30000)
 })
 
 describe('filterIgnoredPaths', () => {

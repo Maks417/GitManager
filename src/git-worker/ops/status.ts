@@ -121,6 +121,25 @@ export async function filterIgnoredPaths(repoPath: string, paths: string[]): Pro
   return result.stdout.split('\0').filter(Boolean)
 }
 
+/**
+ * Of these existing folders (repo-relative, no trailing slash), the ones Git excludes by name and that hold no
+ * tracked file: nothing changed inside them can show in status, since Git never re-includes a path below an
+ * excluded folder. A folder whose rules only match its entries (`logs/*`, where `!logs/keep` may re-include
+ * one) is not excluded by name; only tracked files (added with `--force`) could still show, so those folders
+ * are left out.
+ */
+export async function filterIgnoredFolders(repoPath: string, folders: string[]): Promise<string[]> {
+  const ignored = await filterIgnoredPaths(repoPath, folders)
+  if (!ignored.length) return []
+  const tracked = await runGit({
+    cwd: repoPath,
+    args: ['ls-files', '-z', '--', ...ignored.map((folder) => `:(literal)${folder}/`)]
+  })
+  if (tracked.code !== 0) return []
+  const holding = tracked.stdout.split('\0').filter(Boolean)
+  return ignored.filter((folder) => !holding.some((path) => path.startsWith(`${folder}/`)))
+}
+
 /** Split pathspecs so each command line stays far below Windows' 32,767-character limit. */
 export function chunkPaths(paths: string[], maxChars = 8000): string[][] {
   const chunks: string[][] = []

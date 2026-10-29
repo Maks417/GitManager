@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { getDevServerUrl, getRendererEntryFile, isTrustedAppUrl } from './app-url'
 import { registerIpcHandlers } from './ipc'
+import { startGitWorker } from '../git-worker/client'
 import { buildAppMenu } from './menu'
 import { loadPreferences, loadWindowState, saveWindowState } from './storage'
 import { applyThemePreference, applyWindowThemeBackground, resolvedWindowBackground } from './theme'
@@ -122,6 +123,8 @@ app.whenReady().then(() => {
   // CSP is a <meta> tag generated per build mode (see electron.vite.config.ts): response-header
   // injection does not apply to the file:// page of packaged builds.
   registerIpcHandlers()
+  // Forked while the window loads, not on the first Git call.
+  startGitWorker()
   // Before any window exists, so its frame and menu bar start in the saved theme.
   applyThemePreference()
   buildAppMenu()

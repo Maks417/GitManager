@@ -52,7 +52,10 @@ import type { ProviderId } from '../providers'
 
 export interface GitManagerApi {
   repo: {
+    /** The saved list at once; each repository is inspected afterwards and arrives via `onListRefreshed`. */
     list: () => Promise<Repository[]>
+    /** The saved repositories as just inspected (current branch, remotes), after `list`. */
+    onListRefreshed: (callback: (repos: Repository[]) => void) => () => void
     add: (path: string) => Promise<Repository>
     /** Drop from the list; optionally move the folder to the Trash and prune a linked worktree's record. */
     remove: (id: string, options?: RepoRemoveOptions) => Promise<RepoRemoveResult>

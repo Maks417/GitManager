@@ -173,4 +173,61 @@ describe('createRepoScheduler', () => {
     await first
     await expect(second).rejects.toBeInstanceOf(GitCancelledError)
   })
+  it('runs reads beside a network operation, but no mutation', async () => {
+    const scheduler = createRepoScheduler({ readConcurrency: 2 })
+    const order: string[] = []
+    const fetchGate = deferred<void>()
+    const fetch = scheduler.schedule('fetchRemote', ['C:/repo'], async () => {
+      order.push('fetch-start')
+      await fetchGate.promise
+      order.push('fetch-end')
+    })
+    const commit = scheduler.schedule('commit', ['C:/repo', 'msg'], async () => {
+      order.push('commit')
+    })
+    const push = scheduler.schedule('pushRemote', ['C:/repo'], async () => {
+      order.push('push')
+    })
+    const diff = scheduler.schedule('getCommitDetail', ['C:/repo', 'abc'], async () => {
+      order.push('detail')
+    })
+
+    await flush()
+    await diff
+    // The read ran during the fetch; the commit and the second network operation wait for it.
+    expect(order).toEqual(['fetch-start', 'detail'])
+    fetchGate.resolve()
+    await Promise.all([fetch, commit, push])
+    expect(order).toEqual(['fetch-start', 'detail', 'fetch-end', 'commit', 'push'])
+  })
+
+  it('starts maintenance only when the repository is idle, and lets mutations run beside it', async () => {
+    const scheduler = createRepoScheduler({ readConcurrency: 2 })
+    const order: string[] = []
+    const readGate = deferred<void>()
+    const graphGate = deferred<void>()
+    const read = scheduler.schedule('loadHistory', ['C:/repo'], async () => {
+      order.push('history')
+      await readGate.promise
+    })
+    const graph = scheduler.schedule('ensureCommitGraph', ['C:/repo'], async () => {
+      order.push('graph-start')
+      await graphGate.promise
+      order.push('graph-end')
+    })
+    await flush()
+    expect(order).toEqual(['history'])
+    readGate.resolve()
+    await read
+    await flush()
+    expect(order).toEqual(['history', 'graph-start'])
+
+    const commit = scheduler.schedule('commit', ['C:/repo', 'msg'], async () => {
+      order.push('commit')
+    })
+    await commit
+    expect(order).toEqual(['history', 'graph-start', 'commit'])
+    graphGate.resolve()
+    await graph
+  })
 })

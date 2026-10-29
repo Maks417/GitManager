@@ -2,6 +2,7 @@ import { createContext, useCallback, useMemo, useRef } from 'react'
 import type React from 'react'
 import type { Repository, StatusEntry } from '@shared/ipc'
 import { useRepoSession, type HistoryFns } from '../hooks/useRepoSession'
+import type { StatusChange } from '../hooks/selection'
 import { useAppStatusActions } from './AppStatusProvider'
 import { useRequiredContext } from './context'
 import { useDialogActions } from './DialogsProvider'
@@ -59,7 +60,7 @@ export type SessionActions = Pick<
 const SessionContext = createContext<SessionState | null>(null)
 const StatusContext = createContext<StatusState | null>(null)
 /** Apart from the status, so a refresh that found the same status renders only what reloads diffs. */
-const StatusRevisionContext = createContext<number | null>(null)
+const StatusChangeContext = createContext<StatusChange | null>(null)
 const SessionActionsContext = createContext<SessionActions | null>(null)
 
 /** Repository list, the active repository, its branches and status, and live-watch refreshes. */
@@ -92,7 +93,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
     repoRemoveError,
     repoRemoveWarning,
     status,
-    statusRevision,
+    statusChange,
     setActiveRepo,
     getActiveRepo,
     setRemoteBranches,
@@ -198,7 +199,7 @@ export function RepoSessionProvider({ children }: { children: React.ReactNode })
     <SessionActionsContext.Provider value={actions}>
       <SessionContext.Provider value={state}>
         <StatusContext.Provider value={statusState}>
-          <StatusRevisionContext.Provider value={statusRevision}>{children}</StatusRevisionContext.Provider>
+          <StatusChangeContext.Provider value={statusChange}>{children}</StatusChangeContext.Provider>
         </StatusContext.Provider>
       </SessionContext.Provider>
     </SessionActionsContext.Provider>
@@ -210,7 +211,7 @@ export const useSession = (): SessionState => useRequiredContext(SessionContext,
 export const useStatus = (): StatusState => useRequiredContext(StatusContext, 'useStatus')
 
 /** Changes with every status refresh, including one that found the same status. */
-export const useStatusRevision = (): number => useRequiredContext(StatusRevisionContext, 'useStatusRevision')
+export const useStatusChange = (): StatusChange => useRequiredContext(StatusChangeContext, 'useStatusChange')
 
 export const useSessionActions = (): SessionActions =>
   useRequiredContext(SessionActionsContext, 'useSessionActions')

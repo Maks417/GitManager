@@ -478,15 +478,20 @@ export async function getFileDiff(
   sha: string,
   path: string,
   parentIndex = 0,
-  oldPath?: string
+  oldPath?: string,
+  /** The parent at `parentIndex` when the caller has it (null for a root commit): no Git to look it up. */
+  knownParent?: string | null
 ): Promise<DiffResult> {
   assertSha(sha)
   resolveRepoPath(repoPath, path)
   if (oldPath) resolveRepoPath(repoPath, oldPath)
-  const parentsOut = await gitOk(repoPath, ['rev-list', '--parents', '-n', '1', sha])
-  const tokens = parentsOut.trim().split(/\s+/)
-  const parents = tokens.slice(1)
-  const parent = parents[parentIndex]
+  if (knownParent) assertSha(knownParent)
+  let parent = knownParent
+  if (parent === undefined) {
+    const parentsOut = await gitOk(repoPath, ['rev-list', '--parents', '-n', '1', sha])
+    const tokens = parentsOut.trim().split(/\s+/)
+    parent = tokens.slice(1)[parentIndex]
+  }
 
   return getTreeFileDiff(repoPath, parent ?? null, sha, path, oldPath)
 }

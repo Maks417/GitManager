@@ -4,6 +4,8 @@ import { getGitDirs, runGit } from './shared'
 
 /** Repositories whose commit-graph this worker already wrote or found, by common directory. */
 const checked = new Set<string>()
+/** The same by work-tree path, so a history load of a checked repository spawns no Git to find that out. */
+const checkedPaths = new Set<string>()
 
 function hasCommitGraph(commonDir: string): { any: boolean; split: boolean } {
   const info = join(commonDir, 'objects', 'info')
@@ -22,12 +24,15 @@ function hasCommitGraph(commonDir: string): { any: boolean; split: boolean } {
  * layout this writes), leaving a single-file graph from Git's own maintenance alone. Never throws.
  */
 export async function ensureCommitGraph(repoPath: string, opts: { afterFetch?: boolean } = {}): Promise<boolean> {
+  const pathKey = repoPath.replace(/\\/g, '/').toLowerCase()
+  if (!opts.afterFetch && checkedPaths.has(pathKey)) return false
   try {
     const { commonDir } = await getGitDirs(repoPath)
     const key = commonDir.toLowerCase()
     const existing = hasCommitGraph(commonDir)
     const write = opts.afterFetch ? existing.split || !existing.any : !checked.has(key) && !existing.any
     checked.add(key)
+    checkedPaths.add(pathKey)
     if (!write) return false
     const enabled = await runGit({ cwd: repoPath, args: ['config', '--type=bool', 'core.commitGraph'] })
     if (enabled.stdout.trim() === 'false') return false

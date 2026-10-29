@@ -190,7 +190,9 @@ async function readFileDiff(repoPath: string, path: string, side: 'staged' | 'un
     '--',
     path
   ]
-  const result = await runGit({ cwd: repoPath, args })
+  // A diff past the limit is never split into hunks, so only enough of it to tell is kept: a modified 300 MB
+  // data file is not held in memory on every status refresh.
+  const result = await runGit({ cwd: repoPath, args, maxStdoutChars: MAX_PARTIAL_DIFF_CHARS + 1 })
   if (result.code !== 0) throw new Error(result.stderr.trim() || `git diff failed (${result.code})`)
   return result.stdout
 }
