@@ -97,6 +97,11 @@ export function buildAppMenu(): void {
           accelerator: 'CmdOrCtrl+B',
           click: () => sendMenu(MenuChannels.toggleSidebar)
         },
+        {
+          label: 'Find Branch',
+          accelerator: 'CmdOrCtrl+Shift+B',
+          click: () => sendMenu(MenuChannels.findBranch)
+        },
         { type: 'separator' },
         { role: 'resetZoom' },
         { role: 'zoomIn' },

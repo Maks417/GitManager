@@ -63,7 +63,7 @@
 |---|---|
 | **History-first graph** | Large commit topology with search, branch filter, and inline or side-by-side diffs |
 | **Working tree** | Stage whole files, hunks or lines; commit with a message draft saved per repository |
-| **Branches & sync** | Create/switch branches, merge/rebase, fetch, pull and push; configure remotes and choose publication destinations |
+| **Branches & sync** | Create/switch branches, merge/rebase, fetch, pull and push; filter thousands of branches and browse them in folders; configure remotes and choose publication destinations |
 | **Reference comparison** | Compare branches, tags or commits as exact snapshots or changes since their common ancestor |
 | **Recovery** | Restore tracked-change backups and create branches from saved commits or recent HEAD history |
 | **Commit actions** | Cherry-pick, revert, reset, create/delete tags and push tags from the commit actions menu |
@@ -168,6 +168,7 @@ Menu shortcuts use <kbd>Ctrl</kbd> on Windows and <kbd>⌘</kbd> on macOS:
 | <kbd>Ctrl</kbd>+<kbd>1</kbd> / <kbd>Ctrl</kbd>+<kbd>2</kbd> | Show History / Changes |
 | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Focus the history search |
 | <kbd>Ctrl</kbd>+<kbd>B</kbd> | Show or hide the sidebar |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> | Filter branches |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | Dock the inspector at the bottom or on the right |
 | <kbd>Ctrl</kbd>+<kbd>N</kbd>, <kbd>Ctrl</kbd>+<kbd>O</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> | New, add local, or clone a repository |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> | Fetch / pull (push has no shortcut on purpose) |

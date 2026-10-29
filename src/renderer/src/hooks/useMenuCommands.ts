@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent } from 'react'
 import { MenuChannels, type MenuChannel } from '@shared/ipc'
+import { focusBranchFilter } from '../shell/BranchFilterBox'
 import { useDialogActions } from '../state/DialogsProvider'
 import { useGitActions } from '../state/GitActionsProvider'
 import { useHistoryActions } from '../state/HistoryProvider'
@@ -12,7 +13,7 @@ export function useMenuCommands(): void {
   const { addRepo, openClone, openNewRepo, runSync } = useGitActions()
   const { searchInputRef } = useHistoryActions()
   const { goHistory, selectWorkingCopy } = useWorkingTreeActions()
-  const { toggleDiffView, toggleDock, toggleSidebar, setSyntaxHighlighting, syntaxHighlighting } =
+  const { toggleDiffView, toggleDock, toggleSidebar, sidebarCollapsed, setSyntaxHighlighting, syntaxHighlighting } =
     useLayoutPrefsState()
 
   // The menu is subscribed once; each command runs with the state of the latest render.
@@ -40,7 +41,12 @@ export function useMenuCommands(): void {
       [MenuChannels.toggleDock]: toggleDock,
       [MenuChannels.toggleDiffView]: toggleDiffView,
       [MenuChannels.toggleSyntaxHighlighting]: () => setSyntaxHighlighting(!syntaxHighlighting),
-      [MenuChannels.toggleSidebar]: toggleSidebar
+      [MenuChannels.toggleSidebar]: toggleSidebar,
+      [MenuChannels.findBranch]: () => {
+        // A collapsed sidebar has no filter box: it takes focus once the sidebar shows it.
+        if (sidebarCollapsed) toggleSidebar()
+        focusBranchFilter()
+      }
     }
     commands[channel]()
   })

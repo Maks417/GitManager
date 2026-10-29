@@ -1,7 +1,9 @@
-import { memo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import type React from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Ellipsis, ListFilter, Locate, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { confirmDeleteBranch, confirmMerge, confirmRebase } from '../lib/copy'
+import { loadBranchFolders, saveBranchFolders } from '../logic/branch-folders'
+import { buildBranchRows, filterBranchNames, folderChain, type BranchLeafRow, type BranchRow } from '../logic/branch-tree'
 import { Button, ContextMenu, IconButton, isMenuKey, menuPointFor, type MenuItem } from '../components/ui'
 import { useRovingList } from '../hooks/useRovingList'
 import { useAppStatus } from '../state/AppStatusProvider'
@@ -11,6 +13,8 @@ import { useGitActions, useRemoteOp } from '../state/GitActionsProvider'
 import { useHistoryActions } from '../state/HistoryProvider'
 import { useLayoutPrefsState } from '../state/LayoutProvider'
 import { useActiveRepo, useSession } from '../state/RepoSessionProvider'
+import { BranchFilterBox } from './BranchFilterBox'
+import { BranchLabel, BranchTreeList, type BranchRowView } from './BranchTreeList'
 
 const stopRowEvents = {
   onClick: (e: React.MouseEvent) => e.stopPropagation(),
@@ -20,6 +24,23 @@ const stopRowEvents = {
 }
 
 type SidebarMenu = { kind: 'local' | 'remote' | 'remotes'; name: string; x: number; y: number }
+
+interface BranchListView {
+  rows: BranchRow[]
+  /** Matching branches (all of them without a filter), rendered or not. */
+  total: number
+}
+
+/** A filter's results as a flat list, or else the branches in folders. */
+function branchListView(
+  names: readonly string[],
+  filter: string,
+  isOpen: (key: string) => boolean,
+  remoteOf?: (name: string) => string | null
+): BranchListView {
+  if (filter.trim()) return filterBranchNames(filter, names, remoteOf)
+  return { rows: buildBranchRows(names, isOpen), total: names.length }
+}
 
 export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
   const { busy } = useAppStatus()
@@ -34,26 +55,58 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
   const fetching = remoteOp?.kind === 'fetch'
   const { showBranchHistory, revealCommit } = useHistoryActions()
   const [menu, setMenu] = useState<SidebarMenu | null>(null)
+  // Branch filter text per repository, for this session.
+  const [filters, setFilters] = useState<Readonly<Record<string, string>>>({})
+  const [folders, setFolders] = useState(() => loadBranchFolders(activeRepo.path))
   // The sidebar stays mounted across repositories (keeping its scroll and the focused repository row); what
   // belonged to the previous repository's branches is dropped here.
-  const [menuRepo, setMenuRepo] = useState(activeRepo.path)
-  if (menuRepo !== activeRepo.path) {
-    setMenuRepo(activeRepo.path)
+  const [shownRepo, setShownRepo] = useState(activeRepo.path)
+  if (shownRepo !== activeRepo.path) {
+    setShownRepo(activeRepo.path)
     setMenu(null)
+    setFolders(loadBranchFolders(activeRepo.path))
   }
+  const filter = filters[activeRepo.path] ?? ''
+  const filtering = filter.trim() !== ''
 
   const repoRows = useRovingList(repos.length, repos.findIndex((repo) => repo.id === activeRepo.id), (index) => {
     const repo = repos[index]
     if (repo) selectRepo(repo)
   })
-  const branchRows = useRovingList(branches.length, branches.findIndex((branch) => branch.current), (index) => {
-    const branch = branches[index]
-    if (branch && !blocked) void checkoutBranch(branch.name)
-  }, activeRepo.path)
-  const remoteRows = useRovingList(remoteBranches.length, 0, (index) => {
-    const branch = remoteBranches[index]
-    if (branch && !blocked) void checkoutRemote(branch.name)
-  }, activeRepo.path)
+
+  const localByName = useMemo(() => new Map(branches.map((branch) => [branch.name, branch])), [branches])
+  const remoteByName = useMemo(() => new Map(remoteBranches.map((branch) => [branch.name, branch])), [remoteBranches])
+  const currentName = currentBranch?.name ?? null
+  const upstreamName = currentBranch?.upstream ?? null
+  // Folders start closed, except those holding the current branch and its upstream, and each remote.
+  const localView = useMemo(
+    () => branchListView([...localByName.keys()], filter, (key) =>
+      folders[`local:${key}`] ?? (currentName !== null && folderChain(currentName).includes(key))
+    ),
+    [localByName, filter, folders, currentName]
+  )
+  const remoteView = useMemo(
+    () => branchListView(
+      [...remoteByName.keys()],
+      filter,
+      (key) => folders[`remote:${key}`] ?? (!key.includes('/') || (upstreamName !== null && folderChain(upstreamName).includes(key))),
+      (name) => remoteByName.get(name)?.remote ?? null
+    ),
+    [remoteByName, filter, folders, upstreamName]
+  )
+  const toggleFolder = (section: 'local' | 'remote') => (key: string, open: boolean): void => {
+    const next = { ...folders, [`${section}:${key}`]: open }
+    saveBranchFolders(activeRepo.path, next)
+    setFolders(next)
+  }
+  const filterNote = (view: BranchListView): React.ReactNode =>
+    view.total === 0 ? (
+      <li className="muted text-xs branch-list-note">No matching branches</li>
+    ) : view.total > view.rows.length ? (
+      <li className="muted text-xs branch-list-note">{view.total - view.rows.length} more — refine the filter</li>
+    ) : null
+  const filterCount = (view: BranchListView, all: number): React.ReactNode =>
+    filtering ? <span className="branch-filter-count" title={`${view.total} of ${all} match the filter`}>{view.total}/{all}</span> : null
 
   const tracking = (name: string): void => openBranchDialog({ kind: 'tracking', repoPath: activeRepo.path, branchName: name })
   const pushTo = (name: string): void => openBranchDialog({ kind: 'publish', repoPath: activeRepo.path, branchName: name })
@@ -87,6 +140,44 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
       </IconButton>
     </>
   )
+
+  const showLocal = filtering || branchesExpanded
+  const showRemote = filtering || remoteBranchesExpanded
+  const renderLocal = (row: BranchLeafRow): BranchRowView => {
+    const branch = localByName.get(row.name)
+    return {
+      props: {
+        ...menuHandlers('local', row.name),
+        className: branch?.current ? 'active' : '',
+        title: 'Double-click or press Enter to check out',
+        onDoubleClick: () => { if (!blocked) void checkoutBranch(row.name) }
+      },
+      content: <>
+        <div className="branch-row-main">
+          <BranchLabel row={row} />
+          {branch && (branch.ahead > 0 || branch.behind > 0) && <div className="muted ahead-behind text-xs"><ArrowUp size={12} strokeWidth={2} />{branch.ahead}<ArrowDown size={12} strokeWidth={2} />{branch.behind}</div>}
+        </div>
+        <div className="branch-row-actions" {...stopRowEvents}>{historyButtons(row.name, branch?.sha ?? null)}{menuButton('local', row.name)}</div>
+      </>
+    }
+  }
+  const renderRemote = (row: BranchLeafRow): BranchRowView => {
+    const branch = remoteByName.get(row.name)
+    const hasLocal = Boolean(branch && localBranchNames.has(branch.shortName))
+    return {
+      props: {
+        ...menuHandlers('remote', row.name),
+        title: hasLocal
+          ? `Double-click or press Enter to check out local "${branch?.shortName}"`
+          : 'Double-click or press Enter to create a local tracking branch and check it out',
+        onDoubleClick: () => { if (!blocked) void checkoutRemote(row.name) }
+      },
+      content: <>
+        <div className="branch-row-main"><BranchLabel row={row} />{hasLocal && <div className="muted text-xs">local</div>}</div>
+        <div className="branch-row-actions" {...stopRowEvents}>{historyButtons(row.name, branch?.sha ?? null)}{menuButton('remote', row.name)}</div>
+      </>
+    }
+  }
 
   const local = menu?.kind === 'local' ? branches.find((branch) => branch.name === menu.name) : undefined
   const remote = menu?.kind === 'remote' ? remoteBranches.find((branch) => branch.name === menu.name) : undefined
@@ -142,36 +233,39 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
               {!currentBranch.upstream && <Button className="branch-publish" disabled={blocked || !currentBranch.sha} onClick={() => void runSync('push')}>Publish branch</Button>}
             </>}
           </div>
+          <BranchFilterBox value={filter} onChange={(value) => setFilters((all) => ({ ...all, [activeRepo.path]: value }))} />
           <div className="panel-disclosure-row">
-            <button type="button" className="panel-title panel-disclosure" onClick={toggleBranches}><span>Branches</span><span className="muted">{branchesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span></button>
+            <button type="button" className="panel-title panel-disclosure" disabled={filtering} title={filtering ? 'Clear the filter to collapse' : undefined} onClick={toggleBranches}><span>Branches{filterCount(localView, branches.length)}</span><span className="muted">{showLocal ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span></button>
             <IconButton label="New branch" onClick={() => openDialog('createBranch')}><Plus size={16} /></IconButton>
           </div>
-          {/* Keyed by repository: another repository's branch list opens at its top. */}
-          {branchesExpanded && <ul key={activeRepo.path} className="branch-list" aria-label="Branches" onKeyDown={branchRows.onKeyDown}>
-            {branches.map((branch, index) => (
-              <li key={branch.name} {...branchRows.rowProps(index)} {...menuHandlers('local', branch.name)} className={branch.current ? 'active' : ''} onDoubleClick={() => { if (!blocked) void checkoutBranch(branch.name) }} title="Double-click or press Enter to check out">
-                <div className="branch-row-main">
-                  <div className="cell-ellipsis">{branch.name}</div>
-                  {(branch.ahead > 0 || branch.behind > 0) && <div className="muted ahead-behind text-xs"><ArrowUp size={12} strokeWidth={2} />{branch.ahead}<ArrowDown size={12} strokeWidth={2} />{branch.behind}</div>}
-                </div>
-                <div className="branch-row-actions" {...stopRowEvents}>{historyButtons(branch.name, branch.sha)}{menuButton('local', branch.name)}</div>
-              </li>
-            ))}
-          </ul>}
+          {showLocal && <BranchTreeList
+            // Keyed by repository: another repository's branch list opens at its top.
+            key={activeRepo.path}
+            label="Branches"
+            listKey={activeRepo.path}
+            rows={localView.rows}
+            preferredIndex={localView.rows.findIndex((row) => row.kind === 'branch' && row.name === currentName)}
+            onToggleFolder={toggleFolder('local')}
+            onActivateBranch={(name) => { if (!blocked) void checkoutBranch(name) }}
+            renderBranch={renderLocal}
+            footer={filtering && filterNote(localView)}
+          />}
           <div className="panel-disclosure-row">
-            <button type="button" className="panel-title panel-disclosure" onClick={toggleRemoteBranches}><span>Remote branches</span><span className="muted">{remoteBranchesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span></button>
+            <button type="button" className="panel-title panel-disclosure" disabled={filtering} title={filtering ? 'Clear the filter to collapse' : undefined} onClick={toggleRemoteBranches}><span>Remote branches{filterCount(remoteView, remoteBranches.length)}</span><span className="muted">{showRemote ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span></button>
             <IconButton label={fetching ? 'Fetching remote branches' : 'Fetch remote branches'} disabled={blocked || !activeRepo.remotes.length} onClick={() => void runSync('fetch')}><RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'spin' : undefined} /></IconButton>
             <IconButton label="Remote actions" disabled={blocked} aria-haspopup="menu" aria-expanded={menu?.kind === 'remotes'} onClick={(e) => setMenu({ kind: 'remotes', name: '', ...menuPointFor(e.currentTarget) })}><Ellipsis size={16} strokeWidth={1.75} /></IconButton>
           </div>
-          {remoteBranchesExpanded && <ul key={activeRepo.path} className="branch-list" aria-label="Remote branches" onKeyDown={remoteRows.onKeyDown}>
-            {remoteBranches.map((branch, index) => (
-              <li key={branch.name} {...remoteRows.rowProps(index)} {...menuHandlers('remote', branch.name)} onDoubleClick={() => { if (!blocked) void checkoutRemote(branch.name) }} title={localBranchNames.has(branch.shortName) ? `Double-click or press Enter to check out local "${branch.shortName}"` : 'Double-click or press Enter to create a local tracking branch and check it out'}>
-                <div className="branch-row-main"><div className="cell-ellipsis">{branch.name}</div>{localBranchNames.has(branch.shortName) && <div className="muted text-xs">local</div>}</div>
-                <div className="branch-row-actions" {...stopRowEvents}>{historyButtons(branch.name, branch.sha)}{menuButton('remote', branch.name)}</div>
-              </li>
-            ))}
-            {remoteBranches.length === 0 && <li className="muted text-xs" style={{ pointerEvents: 'none' }}>{activeRepo.remotes.length ? 'No remote branches — fetch to refresh' : 'No remotes configured'}</li>}
-          </ul>}
+          {showRemote && <BranchTreeList
+            key={activeRepo.path}
+            label="Remote branches"
+            listKey={activeRepo.path}
+            rows={remoteView.rows}
+            preferredIndex={0}
+            onToggleFolder={toggleFolder('remote')}
+            onActivateBranch={(name) => { if (!blocked) void checkoutRemote(name) }}
+            renderBranch={renderRemote}
+            footer={filtering ? filterNote(remoteView) : remoteBranches.length === 0 && <li className="muted text-xs branch-list-note">{activeRepo.remotes.length ? 'No remote branches — fetch to refresh' : 'No remotes configured'}</li>}
+          />}
         </>
       )}
     </aside>

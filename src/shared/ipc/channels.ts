@@ -21,7 +21,8 @@ export const MenuChannels = {
   toggleDock: 'menu:toggle-dock',
   toggleDiffView: 'menu:toggle-diff-view',
   toggleSyntaxHighlighting: 'menu:toggle-syntax-highlighting',
-  toggleSidebar: 'menu:toggle-sidebar'
+  toggleSidebar: 'menu:toggle-sidebar',
+  findBranch: 'menu:find-branch'
 } as const
 
 export type MenuChannel = (typeof MenuChannels)[keyof typeof MenuChannels]

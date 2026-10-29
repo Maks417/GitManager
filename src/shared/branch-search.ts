@@ -31,7 +31,8 @@ export function isRemoteHead(branch: BranchName): boolean {
   return branch.remote !== null && branchLocalName(branch) === 'HEAD'
 }
 
-function globRegExp(pattern: string): RegExp {
+/** A `*` / `?` pattern as a whole-name, case-insensitive expression. */
+export function branchGlob(pattern: string): RegExp {
   const source = pattern
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*')
@@ -50,7 +51,7 @@ export function matchBranches<T extends BranchName>(pattern: string, branches: r
   if (!needle) return []
   const candidates = branches.filter((b) => !isRemoteHead(b))
   if (/[*?]/.test(needle)) {
-    const glob = globRegExp(needle)
+    const glob = branchGlob(needle)
     return candidates.filter((b) => glob.test(b.name) || glob.test(branchLocalName(b)))
   }
   const lower = needle.toLowerCase()
