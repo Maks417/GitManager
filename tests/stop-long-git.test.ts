@@ -11,7 +11,8 @@ const tempDir = trackTempDirs()
 describe('stopLongGit', () => {
   it('stops a commit stuck in a hook and removes the index lock it left', async () => {
     const dir = await initRepo(tempDir('gm-stop-'))
-    writeFileSync(join(dir, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nsleep 60\n')
+    // Executable: Git skips a hook without the bit on Linux and macOS, and the commit would finish at once.
+    writeFileSync(join(dir, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\nsleep 60\n', { mode: 0o755 })
     writeFileSync(join(dir, 'README.md'), '# changed\n')
 
     // `commit -a` locks the index before its hooks run.
