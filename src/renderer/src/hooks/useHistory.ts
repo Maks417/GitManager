@@ -22,6 +22,7 @@ import { searchSkipsCommits } from '@shared/history-query'
 import { toErrorMessage } from '../lib/errors'
 import { sameRepoPath } from '../lib/paths'
 import { runWithBusy } from '../lib/useAsyncAction'
+import { createHistoryLoadTracker } from '../logic/history-load-tracker'
 import { selectionForNewRepository } from '../logic/new-repo-selection'
 import type { Selection, ViewMode } from './selection'
 import { useLatestRef } from './useLatestRef'
@@ -65,6 +66,8 @@ export function historyListKey(
 export interface LoadHistoryOptions {
   /** Load down to this commit. When it is not found, the list stays as it was. */
   revealSha?: string
+  /** Not asked for by the user (a refresh): an error shown from another action stays. */
+  background?: boolean
 }
 
 interface HistoryList {
@@ -140,6 +143,8 @@ export function useHistory({
   ) => Promise<HistoryPage | undefined>
   loadMoreHistory: () => Promise<void>
   refreshHistoryTip: (repo: Repository) => Promise<void>
+  /** Reload the list after refs changed, as deep as it was loaded, so the scroll position stays. */
+  reloadHistoryKeepingDepth: (repo: Repository) => Promise<void>
 } {
   const [list, setList] = useState<HistoryList | null>(null)
   const [historyLoadingMore, setHistoryLoadingMore] = useState(false)
@@ -154,10 +159,10 @@ export function useHistory({
   const activePathRef = useLatestRef(activeRepo?.path ?? null)
   /** Search that produced the visible list. Paging and refreshes reuse it, not unsubmitted text. */
   const appliedSearchRef = useRef(search)
-  /** Grows with every load that replaces the list: an older load, or a tip refresh started before it, must not apply. */
-  const loadSeqRef = useRef(0)
-  /** Lists with a load running, so a key change does not start a second, identical load. */
-  const loadingKeysRef = useRef(new Map<string, number>())
+  /** Orders the loads that replace the list (see createHistoryLoadTracker). */
+  const [loads] = useState(createHistoryLoadTracker)
+  /** Grows with every tip refresh: of two overlapping ones, only the later applies. */
+  const tipSeqRef = useRef(0)
   /** Repository whose branches the key-change effect last requested. */
   const metaPathRef = useRef<string | null>(null)
 
@@ -197,9 +202,7 @@ export function useHistory({
       if (!key) return undefined
       const reveal = Boolean(options.revealSha)
       // A jump may find nothing and change nothing, so only its success replaces other loads.
-      const seq = reveal ? loadSeqRef.current : ++loadSeqRef.current
-      const loading = loadingKeysRef.current
-      loading.set(key, (loading.get(key) ?? 0) + 1)
+      const seq = reveal ? loads.beginReveal() : loads.begin(key)
       try {
         return await runWithBusy(
           async () => {
@@ -216,8 +219,8 @@ export function useHistory({
             // A jump that did not find its commit changes nothing; the caller decides what to show.
             if (reveal && !page.revealed) return page
             // A newer search or reload started meanwhile; its result replaces this one.
-            if (seq !== loadSeqRef.current) return undefined
-            if (reveal) loadSeqRef.current++
+            if (!loads.isLatest(seq)) return undefined
+            if (reveal) loads.supersede()
             appliedSearchRef.current = searchText
             const unlinked = searchSkipsCommits(searchText)
             const laidOut = layoutCommitGraphWithCheckpoint(page.commits, { unlinked })
@@ -240,18 +243,16 @@ export function useHistory({
               return first ? { kind: 'commit', sha: first } : { kind: 'working-copy' }
             })
             if (!page.headSha && page.commits.length === 0) setViewMode('changes')
-            setError(null)
+            if (!options.background) setError(null)
             return page
           },
-          { setBusy, setError }
+          { setBusy, setError, clearError: !options.background }
         )
       } finally {
-        const left = (loading.get(key) ?? 1) - 1
-        if (left > 0) loading.set(key, left)
-        else loading.delete(key)
+        if (!reveal) loads.finish(key, seq)
       }
     },
-    [historyFilter, isCurrentRepo, setBusy, setError, setSelection, setViewMode, writeList]
+    [historyFilter, isCurrentRepo, loads, setBusy, setError, setSelection, setViewMode, writeList]
   )
 
   const loadMoreHistory = useCallback(async (): Promise<void> => {
@@ -289,9 +290,34 @@ export function useHistory({
           nextCursor: page.nextCursor
         })
       },
-      { setBusy: setHistoryLoadingMore, setError }
+      // Paging is not an action of its own: it leaves the error of the last one shown.
+      { setBusy: setHistoryLoadingMore, setError, clearError: false }
     )
   }, [activeRepo, listKey, historyLoadingMore, busy, historyFilter, isCurrentRepo, setError, writeList])
+
+  /**
+   * Load the list down to the deepest commit it showed, which keeps its scroll position; false when that commit
+   * is gone (its branch was deleted, say) or a newer load replaced the list meanwhile.
+   */
+  const revealDepth = useCallback(
+    async (repo: Repository, loaded: Commit[]): Promise<boolean> => {
+      const deepest = loaded[loaded.length - 1]?.sha
+      if (!deepest || loaded.length <= HISTORY_PAGE_SIZE) return false
+      const page = await loadHistory(repo, appliedSearchRef.current, { revealSha: deepest, background: true })
+      return Boolean(page?.revealed)
+    },
+    [loadHistory]
+  )
+
+  const reloadHistoryKeepingDepth = useCallback(
+    async (repo: Repository): Promise<void> => {
+      const current = listRef.current
+      const loaded = current && current.key === historyListKey(repo, historyFilter) ? current.commits : []
+      if (await revealDepth(repo, loaded)) return
+      await loadHistory(repo, appliedSearchRef.current, { background: true })
+    },
+    [historyFilter, loadHistory, revealDepth]
+  )
 
   const refreshHistoryTip = useCallback(
     async (repo: Repository): Promise<void> => {
@@ -299,7 +325,8 @@ export function useHistory({
       // Another branch or repository is being shown (a checkout with "Current branch", say): the full
       // load of its list replaces this one, so there is nothing to splice into.
       if (!key || listRef.current?.key !== key) return
-      const seq = loadSeqRef.current
+      const seq = loads.current()
+      const tip = ++tipSeqRef.current
       try {
         const page = await window.gitManager.history.load(
           buildHistoryQuery({
@@ -309,14 +336,16 @@ export function useHistory({
             historyFilter
           })
         )
-        // A load that started meanwhile replaces the list with fresher results.
-        if (!isCurrentRepo(repo.path) || seq !== loadSeqRef.current) return
+        // A load or a later tip refresh that started meanwhile has fresher results.
+        if (!isCurrentRepo(repo.path) || !loads.isLatest(seq) || tip !== tipSeqRef.current) return
 
         // Never splice another repository's or branch's tips into the visible history.
         const current = listRef.current
         const loaded = current?.key === key ? current.commits : []
         // null when history was rewritten (amend, rebase, reset, pruned branches): replace, don't splice.
         const spliced = mergeTipPage(loaded, page.commits, page.nextCursor !== null)
+        // Rewritten below a deeper list: reload as deep as before rather than dropping back to one page.
+        if (spliced === null && loaded.length > page.commits.length && (await revealDepth(repo, loaded))) return
         // Unchanged commits keep their objects, so their rows do not render again.
         const commits = reuseLoadedCommits(spliced ?? page.commits, loaded)
         // Splicing keeps the loaded depth; a replaced list pages on from the fresh first page.
@@ -361,7 +390,7 @@ export function useHistory({
         setError(toErrorMessage(err))
       }
     },
-    [historyFilter, isCurrentRepo, setError, setSelection, writeList]
+    [historyFilter, isCurrentRepo, loads, revealDepth, setError, setSelection, writeList]
   )
 
   // Loads the list of a new key: another repository, another filter, or (filtered) another branch.
@@ -373,6 +402,8 @@ export function useHistory({
     if (!sameRepoPath(metaPathRef.current, activeRepo.path)) {
       // Nothing selected in the previous repository exists in this one.
       metaPathRef.current = activeRepo.path
+      // Another repository's error no longer applies; this list's loads leave errors alone.
+      setError(null)
       setSelection(selectionForNewRepository(viewMode))
       setDetail(null)
       setSelectedFile(null)
@@ -381,7 +412,7 @@ export function useHistory({
       void refreshRepoMeta(activeRepo)
     }
     // The Git action that changed the branch may be loading this list already.
-    if (!loadingKeysRef.current.has(key)) void loadHistory(activeRepo, search)
+    if (loads.needsLoad(key)) void loadHistory(activeRepo, search, { background: true })
   })
 
   useEffect(() => {
@@ -409,6 +440,7 @@ export function useHistory({
     hasCommit,
     loadHistory,
     loadMoreHistory,
-    refreshHistoryTip
+    refreshHistoryTip,
+    reloadHistoryKeepingDepth
   }
 }

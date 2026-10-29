@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { Locate } from 'lucide-react'
 import type { Commit } from '@shared/ipc'
@@ -68,7 +68,9 @@ export const HistoryGraph = memo(function HistoryGraph(): React.JSX.Element {
     )
   }, [])
 
-  useEffect(() => {
+  // Layout effects: the rows of a new list (or of the list shown again) are in place before the first paint,
+  // which otherwise shows an empty body for a frame.
+  useLayoutEffect(() => {
     const el = listRef.current
     if (!el) return
     const measure = (): void => {
@@ -82,7 +84,7 @@ export const HistoryGraph = memo(function HistoryGraph(): React.JSX.Element {
     return () => ro.disconnect()
   }, [commits.length, syncWindow])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     syncWindow(scrollTopRef.current, viewportH, commits.length)
   }, [commits.length, viewportH, syncWindow])
 
@@ -111,6 +113,18 @@ export const HistoryGraph = memo(function HistoryGraph(): React.JSX.Element {
     } else if (rowTop + ROW_HEIGHT > el.scrollTop + el.clientHeight) {
       el.scrollTop = rowTop + ROW_HEIGHT - el.clientHeight
     }
+  }, [])
+
+  // Back from Changes the list mounts again at its top; the commit still selected is scrolled to instead.
+  const showSelectedOnMount = useEffectEvent((): void => {
+    const el = listRef.current
+    if (!el || selectedIndex < 0) return
+    scrollRowIntoView(selectedIndex, 'center')
+    scrollTopRef.current = el.scrollTop
+    syncWindow(el.scrollTop, el.clientHeight, commits.length)
+  })
+  useLayoutEffect(() => {
+    showSelectedOnMount()
   }, [])
 
   // Scroll a jumped-to commit to the middle of the list once it is loaded.
@@ -152,6 +166,13 @@ export const HistoryGraph = memo(function HistoryGraph(): React.JSX.Element {
     },
     [hasMore, loadMoreHistory, loadingMore, busy]
   )
+
+  // Scrolling is what loads more, so a list left at its end while a load was not allowed (busy, a page
+  // already loading, a refresh that replaced the list) would stay short until scrolled up and down again.
+  useEffect(() => {
+    const el = listRef.current
+    if (el) maybeLoadMore(el)
+  }, [maybeLoadMore, commits.length])
 
   const onScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {

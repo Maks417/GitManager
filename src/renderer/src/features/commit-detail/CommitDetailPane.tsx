@@ -1,4 +1,4 @@
-import { memo, useRef } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { Copy, Ellipsis, GitBranch, GitMerge } from 'lucide-react'
 import { DiffViewSwitch } from '../diff/DiffViewSwitch'
@@ -23,6 +23,7 @@ import {
 } from '../../state/LayoutProvider'
 import {
   useSelectionActions,
+  useSelectionCore,
   useSelectionDetail,
   useSelectionDiffContent
 } from '../../state/SelectionProvider'
@@ -33,6 +34,7 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
   const { busy } = useAppStatus()
   const { detail, selectedFile } = useSelectionDetail()
   const { diff, diffLoading } = useSelectionDiffContent()
+  const { selectedSha } = useSelectionCore()
   const { setSelectedFile } = useSelectionActions()
   const { diffView, syntaxHighlighting } = useLayoutPrefsState()
   const { persistLayout } = useLayoutActions()
@@ -44,6 +46,16 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
   const filesRef = useRef<HTMLUListElement>(null)
   // A commit can change thousands of files; only the rows near the viewport are rendered.
   const filesWindow = useListWindow(filesRef, filesRef, detail?.files.length ?? 0)
+  const detailSha = detail?.commit.sha ?? null
+  // The commit a diff was loaded for: while the next commit's diff loads, the last one stays on screen and
+  // must keep its editor rather than remount under the new commit's key.
+  const [diffOwner, setDiffOwner] = useState({ diff, sha: detailSha })
+  if (diffOwner.diff !== diff) setDiffOwner({ diff, sha: detailSha })
+
+  // Each commit's file list starts at its top, where its first file is selected.
+  useEffect(() => {
+    if (filesRef.current) filesRef.current.scrollTop = 0
+  }, [detailSha])
 
   if (!detail) {
     return (
@@ -57,6 +69,8 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
   }
 
   const { commit, files } = detail
+  // Moving to another commit: this one stays shown, dimmed, until the new detail arrives.
+  const stale = commit.sha !== selectedSha
   const selectedIndex = files.findIndex((f) => f.path === selectedFile?.path)
 
   const fileTarget = (f: (typeof files)[number]): FileTarget => ({
@@ -72,8 +86,13 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
       if (!file) return
       e.preventDefault()
       filesWindow.scrollToRow(selectedIndex)
-      const row = document.getElementById(fileOptionId(selectedIndex))
-      if (row) openFileMenu(fileTarget(file), menuPointFor(row))
+      // Next frame: a row scrolled into the window is rendered by then, and the scroll's own event (which
+      // closes open menus) has fired.
+      const id = fileOptionId(selectedIndex)
+      requestAnimationFrame(() => {
+        const row = document.getElementById(id)
+        if (row) openFileMenu(fileTarget(file), menuPointFor(row))
+      })
       return
     }
     if (e.key === 'Escape') {
@@ -92,7 +111,7 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
   }
 
   return (
-    <div className="detail-fill inspector-fill">
+    <div className={`detail-fill inspector-fill${stale ? ' is-stale' : ''}`}>
       <div className="commit-meta commit-meta-compact">
         <div className="commit-meta-line">
           <span className="commit-meta-subject cell-ellipsis" title={commit.subject}>
@@ -122,7 +141,7 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
               icon={<GitMerge size={14} strokeWidth={1.75} />}
               hint="Merge this commit into the current branch"
               title="Merge this commit into the current branch"
-              disabled={busy}
+              disabled={busy || stale}
               onClick={() =>
                 void confirm(confirmMerge(commit.shortSha)).then((ok) => {
                   if (ok) void runMergeOrRebase('merge', commit.sha)
@@ -136,7 +155,7 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
               icon={<GitBranch size={14} strokeWidth={1.75} />}
               hint="Rebase the current branch onto this commit"
               title="Rebase the current branch onto this commit"
-              disabled={busy}
+              disabled={busy || stale}
               onClick={() =>
                 void confirm(confirmRebase(commit.shortSha)).then((ok) => {
                   if (ok) void runMergeOrRebase('rebase', commit.sha)
@@ -226,16 +245,16 @@ export const CommitDetailPane = memo(function CommitDetailPane(): React.JSX.Elem
               <DiffViewSwitch />
             </div>
           </div>
-          <div className="diff-editor-slot">
-            {diffLoading ? (
-              <div className="empty-state muted">Loading diff…</div>
-            ) : diff ? (
+          <div className={`diff-editor-slot${diffLoading && diff ? ' is-stale' : ''}`}>
+            {diff ? (
               <FileDiffViewer
                 diff={diff}
-                editorKey={`${commit.sha}:${diff.path}`}
+                editorKey={`${diffOwner.sha ?? commit.sha}:${diff.path}`}
                 sideBySide={diffView === 'side-by-side'}
                 syntaxHighlighting={syntaxHighlighting}
               />
+            ) : diffLoading ? (
+              <div className="empty-state muted">Loading diff…</div>
             ) : (
               <div className="empty-state muted">Select a file</div>
             )}

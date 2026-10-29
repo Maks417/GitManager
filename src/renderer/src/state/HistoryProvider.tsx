@@ -88,7 +88,8 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
     hasCommit,
     loadHistory,
     loadMoreHistory,
-    refreshHistoryTip
+    refreshHistoryTip,
+    reloadHistoryKeepingDepth
   } = useHistory({
     activeRepo,
     search,
@@ -108,8 +109,8 @@ export function HistoryProvider({ children }: { children: React.ReactNode }): Re
 
   // Session refreshes (after Git actions and watcher events) reload history through this bridge.
   useLayoutEffect(() => {
-    historyFnsRef.current = { loadHistory, refreshHistoryTip }
-  }, [historyFnsRef, loadHistory, refreshHistoryTip])
+    historyFnsRef.current = { reloadHistoryKeepingDepth, refreshHistoryTip }
+  }, [historyFnsRef, reloadHistoryKeepingDepth, refreshHistoryTip])
 
   const submitSearch = useCallback(
     (text?: string): void => {

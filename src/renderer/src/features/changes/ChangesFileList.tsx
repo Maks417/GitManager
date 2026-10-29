@@ -161,8 +161,13 @@ export const ChangesFileList = memo(function ChangesFileList({
       if (!row) return
       e.preventDefault()
       revealRow(row)
-      const el = document.getElementById(changesRowId(navIndex))
-      if (el) openFileMenu(fileTarget(row.entry), menuPointFor(el))
+      // Next frame: a row scrolled into the window is rendered by then, and the scroll's own event (which
+      // closes open menus) has fired.
+      const id = changesRowId(navIndex)
+      requestAnimationFrame(() => {
+        const el = document.getElementById(id)
+        if (el) openFileMenu(fileTarget(row.entry), menuPointFor(el))
+      })
       return
     }
     if (e.key === ' ') {

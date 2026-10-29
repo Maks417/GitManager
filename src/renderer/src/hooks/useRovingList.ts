@@ -11,13 +11,20 @@ export interface RovingRowProps {
 /**
  * A list whose rows share one Tab stop: ↑/↓, Home and End move focus between the rows and Enter
  * activates the focused one. The row focused last keeps the Tab stop; before that, `preferredIndex`.
+ * A new `listKey` (another repository's branches) forgets the row focused last.
  */
 export function useRovingList(
   count: number,
   preferredIndex: number,
-  activate: (index: number) => void
+  activate: (index: number) => void,
+  listKey?: string
 ): { rowProps: (index: number) => RovingRowProps; onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void } {
   const [focused, setFocused] = useState<number | null>(null)
+  const [focusedIn, setFocusedIn] = useState(listKey)
+  if (focusedIn !== listKey) {
+    setFocusedIn(listKey)
+    setFocused(null)
+  }
   const tabStop =
     focused !== null && focused < count ? focused : Math.min(Math.max(preferredIndex, 0), Math.max(count - 1, 0))
 

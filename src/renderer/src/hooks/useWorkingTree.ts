@@ -22,6 +22,9 @@ const DETAIL_DELAY_MS = 120
 /** Status-driven reloads of the same focused file coalesce into one working-tree diff request. */
 const WORKING_TREE_DIFF_REFRESH_MS = 150
 
+/** Moving between the files of one commit: holding an arrow key does not load every diff it passes. */
+const FILE_DIFF_DELAY_MS = 80
+
 /** Selection / detail / diff state (call before session + history). */
 export function useWorkingTreeState(): {
   selection: Selection | null
@@ -199,24 +202,28 @@ export function useWorkingTree({
     setSelection
   ])
 
+  /** Commit whose file diff was shown last: moving to another of its files waits a moment first. */
+  const diffShaRef = useRef<string | null>(null)
+
   useEffect(() => {
-    if (
-      !repoPath ||
-      selectionKind !== 'commit' ||
-      !selectedSha ||
-      !selectedPath ||
-      detailSha !== selectedSha
-    ) {
+    if (!repoPath || selectionKind !== 'commit' || !selectedSha) {
       if (selectionKind === 'commit') {
         setDiff(null)
         setDiffLoading(false)
       }
       return
     }
+    // Until the selected commit's detail arrives, the last diff stays on screen (dimmed) instead of blanking.
+    if (detailSha !== selectedSha) return
+    if (!selectedPath) {
+      setDiff(null)
+      setDiffLoading(false)
+      return
+    }
     let cancelled = false
+    // The diff shown stays until the next one arrives; the pane dims it meanwhile.
     setDiffLoading(true)
-    setDiff(null)
-    void (async () => {
+    const load = async (): Promise<void> => {
       try {
         const d = await window.gitManager.history.fileDiff({
           repoPath,
@@ -225,15 +232,24 @@ export function useWorkingTree({
           oldPath: selectedOldPath,
           parentIndex: 0
         })
-        if (!cancelled) setDiff(d)
+        if (cancelled) return
+        diffShaRef.current = selectedSha
+        setDiff(d)
       } catch (err) {
-        if (!cancelled) setError(toErrorMessage(err))
+        if (cancelled) return
+        // The diff kept on screen belongs to another file.
+        setDiff(null)
+        setError(toErrorMessage(err))
       } finally {
         if (!cancelled) setDiffLoading(false)
       }
-    })()
+    }
+    const timer = setTimeout(() => {
+      void load()
+    }, diffShaRef.current === selectedSha ? FILE_DIFF_DELAY_MS : 0)
     return () => {
       cancelled = true
+      clearTimeout(timer)
     }
   }, [
     repoPath,
@@ -262,11 +278,9 @@ export function useWorkingTree({
     const key = `${repoPath}\0${focusedStatusPath}\0${diffSide}`
     const delayMs = workingTreeDiffDelayMs(shownDiffKeyRef.current, key, WORKING_TREE_DIFF_REFRESH_MS)
     let cancelled = false
-    // New file/side: clear immediately. Same key: keep the last diff while the debounced reload runs.
-    if (delayMs === 0) {
-      setDiffLoading(true)
-      setDiff(null)
-    }
+    // New file/side: load at once, the last diff staying dimmed until it arrives. Same key: keep the last diff
+    // while the debounced reload runs.
+    if (delayMs === 0) setDiffLoading(true)
     const load = async (): Promise<void> => {
       try {
         const d = await window.gitManager.history.workingTreeDiff({
@@ -278,7 +292,10 @@ export function useWorkingTree({
         shownDiffKeyRef.current = key
         setDiff(d)
       } catch (err) {
-        if (!cancelled) setError(toErrorMessage(err))
+        if (cancelled) return
+        // The diff kept on screen belongs to another file or side; it must not stay as if it were this one.
+        if (shownDiffKeyRef.current !== key) setDiff(null)
+        setError(toErrorMessage(err))
       } finally {
         if (!cancelled) setDiffLoading(false)
       }
@@ -304,18 +321,23 @@ export function useWorkingTree({
     setDiffLoading
   ])
 
+  // Read by the select callbacks without re-creating them whenever the selection changes.
+  const selectionRef = useLatestRef(selection)
+
   const selectWorkingCopy = useCallback((): void => {
     setViewMode('changes')
+    if (selectionRef.current?.kind !== 'working-copy') {
+      // The commit's diff goes; the work-tree diff left from the last visit is not shown, so the first one
+      // loads at once with "Loading diff…" rather than after the refresh delay with an empty pane.
+      shownDiffKeyRef.current = null
+      setDiff(null)
+    }
     setSelection({ kind: 'working-copy' })
     // The commit detail and file stay: going back to History shows them again without reloading.
-    setDiff(null)
     const first = status[0]
     setFocusedStatusPath(first?.path ?? null)
     if (first) setDiffSide(defaultSideFor(first))
-  }, [status, setViewMode, setSelection, setDiff, setFocusedStatusPath, setDiffSide])
-
-  // Read by selectCommit without re-creating it whenever the selection changes.
-  const selectionRef = useLatestRef(selection)
+  }, [status, selectionRef, setViewMode, setSelection, setDiff, setFocusedStatusPath, setDiffSide])
 
   const selectCommit = useCallback(
     (sha: string): void => {
@@ -323,9 +345,11 @@ export function useWorkingTree({
       const current = selectionRef.current
       // Selecting the selected commit again keeps its diff: nothing would load it again.
       if (current?.kind === 'commit' && current.sha === sha) return
+      // From the working copy its diff goes; from another commit, that commit's diff stays dimmed until
+      // this one's detail and diff arrive.
+      if (current?.kind !== 'commit') setDiff(null)
       setSelection({ kind: 'commit', sha })
       setFocusedStatusPath(null)
-      setDiff(null)
     },
     [selectionRef, setViewMode, setSelection, setFocusedStatusPath, setDiff]
   )

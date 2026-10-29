@@ -66,9 +66,11 @@ export function FileDiffViewer({
     return <div className="empty-state">Binary file — cannot display diff</div>
   }
 
+  const viewKey = editorKey ?? diff.path
   const editor = (
     <DiffEditorHost
-      key={`${editorKey ?? diff.path}:${content.version}`}
+      key={`${viewKey}:${content.version}`}
+      viewKey={viewKey}
       original={diff.oldText}
       modified={diff.newText}
       language={syntaxLanguageFor(
@@ -103,7 +105,14 @@ export function FileDiffViewer({
   )
 }
 
+/**
+ * Where the last torn-down editor was scrolled. New text for the same file mounts a new editor (staging a hunk,
+ * saving the file); it opens at this place instead of the top.
+ */
+let lastScroll: { viewKey: string; scrollTop: number; scrollLeft: number } | null = null
+
 function DiffEditorHost({
+  viewKey,
   original,
   modified,
   language,
@@ -111,6 +120,8 @@ function DiffEditorHost({
   hunks,
   hunkActions
 }: {
+  /** The file and side shown, without the text version. */
+  viewKey: string
   original: string
   modified: string
   language: string
@@ -124,7 +135,7 @@ function DiffEditorHost({
   const theme = monacoThemeFor(useResolvedTheme())
   // Text is fixed for a mounted host (the parent re-keys it); language, layout and theme are applied to
   // the live editor by the effects below, so switching syntax colors keeps the diff and its scroll position.
-  const [initial] = useState(() => ({ original, modified, language, sideBySide, theme }))
+  const [initial] = useState(() => ({ viewKey, original, modified, language, sideBySide, theme }))
 
   useEffect(() => {
     const container = containerRef.current
@@ -146,7 +157,20 @@ function DiffEditorHost({
     editorRef.current = editor
     modelsRef.current = [originalModel, modifiedModel]
 
+    // Restored once the diff is computed: an inline diff's deleted lines change the scroll height.
+    const saved = lastScroll?.viewKey === initial.viewKey ? lastScroll : null
+    lastScroll = null
+    const restore = saved
+      ? editor.onDidUpdateDiff(() => {
+          restore?.dispose()
+          editor.getModifiedEditor().setScrollPosition({ scrollTop: saved.scrollTop, scrollLeft: saved.scrollLeft })
+        })
+      : null
+
     return () => {
+      restore?.dispose()
+      const view = editor.getModifiedEditor()
+      lastScroll = { viewKey: initial.viewKey, scrollTop: view.getScrollTop(), scrollLeft: view.getScrollLeft() }
       editorRef.current = null
       modelsRef.current = []
       host.remove()

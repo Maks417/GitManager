@@ -41,6 +41,8 @@ export function attachHunkActions(
   modified.addOverlayWidget(widget)
 
   let active = hunks.length > 0 ? 0 : -1
+  /** Until the pointer or cursor picks a hunk, the toolbar follows the first hunk in view. */
+  let picked = false
   let pending = false
   let disposed = false
   /** The editor whose selection picks lines: the original one only in a side-by-side diff. */
@@ -118,18 +120,36 @@ export function attachHunkActions(
     position()
   }
 
-  /** Above the hunk's first change, at the right edge; pinned to the top while the hunk is scrolled through. */
-  const position = (): void => {
-    if (active < 0) return
-    const hunk = hunks[active]
-    const lineCount = modified.getModel()?.getLineCount() ?? 0
+  /** The hunk's toolbar top and the hunk's bottom, in view coordinates. */
+  const hunkBounds = (index: number, lineCount: number, height: number): { top: number; bottom: number } => {
+    const hunk = hunks[index]
     const { end } = hunkLineRange(hunk)
     const anchor = Math.min(firstChangeLine(hunk), Math.max(1, lineCount))
     const scrollTop = modified.getScrollTop()
+    return {
+      top: modified.getTopForLineNumber(anchor, true) - scrollTop - height - 2,
+      bottom: modified.getBottomForLineNumber(Math.min(end, Math.max(1, lineCount))) - scrollTop
+    }
+  }
+
+  /** Above the hunk's first change, at the right edge; pinned to the top while the hunk is scrolled through. */
+  const position = (): void => {
+    if (active < 0) return
+    const lineCount = modified.getModel()?.getLineCount() ?? 0
     const height = node.offsetHeight || 24
     const viewHeight = modified.getLayoutInfo().height
-    const top = modified.getTopForLineNumber(anchor, true) - scrollTop - height - 2
-    const bottom = modified.getBottomForLineNumber(Math.min(end, Math.max(1, lineCount))) - scrollTop
+    const inView = (b: { top: number; bottom: number }): boolean => b.bottom >= 0 && b.top <= viewHeight
+    const bounds = hunkBounds(active, lineCount, height)
+    if (!picked && lineCount > 0 && !inView(bounds)) {
+      // A diff reopened further down (after staging a hunk) offers the hunk on screen, not the first one.
+      const visible = hunks.findIndex((_, i) => inView(hunkBounds(i, lineCount, height)))
+      if (visible >= 0 && visible !== active) {
+        active = visible
+        render()
+        return
+      }
+    }
+    const { top, bottom } = bounds
     if (lineCount === 0 || bottom < 0 || top > viewHeight) {
       node.style.display = 'none'
       return
@@ -140,7 +160,9 @@ export function attachHunkActions(
   }
 
   const activate = (index: number): void => {
-    if (index < 0 || index === active) return
+    if (index < 0) return
+    picked = true
+    if (index === active) return
     active = index
     render()
   }

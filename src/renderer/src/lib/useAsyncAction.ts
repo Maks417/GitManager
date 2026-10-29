@@ -43,10 +43,12 @@ export async function runWithBusy<T>(
   opts: {
     setBusy?: (busy: boolean) => void
     setError: (msg: string | null) => void
+    /** When false, an earlier error stays shown unless this action fails too (default true). */
+    clearError?: boolean
   }
 ): Promise<T | undefined> {
   opts.setBusy?.(true)
-  opts.setError(null)
+  if (opts.clearError !== false) opts.setError(null)
   try {
     return await fn()
   } catch (err) {

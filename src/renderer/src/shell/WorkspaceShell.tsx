@@ -59,7 +59,7 @@ export function WorkspaceShell(): React.JSX.Element {
         } as React.CSSProperties
       }
     >
-      <RepoSidebar key={activeRepo.path} />
+      <RepoSidebar />
 
       <Splitter
         axis="x"

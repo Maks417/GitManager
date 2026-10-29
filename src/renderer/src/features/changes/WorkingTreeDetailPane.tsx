@@ -73,6 +73,11 @@ export const WorkingTreeDetailPane = memo(function WorkingTreeDetailPane(): Reac
 
   const [checked, setChecked] = useState<ReadonlySet<string>>(NONE_CHECKED)
   const [busy, setBusy] = useState(false)
+  /**
+   * The diff a hunk or line action was applied to. Its toolbar stays hidden until the reloaded diff arrives:
+   * a second action on the old one would only fail as stale.
+   */
+  const [appliedTo, setAppliedTo] = useState<typeof diff>(null)
   const [stashes, setStashes] = useState<StashEntry[]>([])
   const [stashesExpanded, setStashesExpanded] = useState(false)
 
@@ -135,10 +140,15 @@ export const WorkingTreeDetailPane = memo(function WorkingTreeDetailPane(): Reac
     if (action === 'discard' && !(await confirm(confirmDiscardPart('hunk' in selection ? 'hunk' : 'lines', path)))) {
       return
     }
+    setAppliedTo(diff)
     await run(() =>
       window.gitManager.git.applyPartial({ repoPath, path, side: diffSide, action, fingerprint, selection })
     )
   }
+
+  // The diff on screen is not the one being reloaded (a file or side change, a refresh in between, a load
+  // while busy) or a new load arrived: hunk actions apply to what is shown.
+  const awaitingReload = appliedTo !== null && appliedTo === diff
 
   const toggleChecked = useCallback((path: string): void => {
     setChecked((prev) => {
@@ -475,17 +485,21 @@ export const WorkingTreeDetailPane = memo(function WorkingTreeDetailPane(): Reac
             <DiffViewSwitch />
           </div>
         </div>
-        <div className="diff-editor-slot">
-          {diffLoading ? (
-            <div className="empty-state muted">Loading diff…</div>
-          ) : diff ? (
+        <div className={`diff-editor-slot${diffLoading && diff ? ' is-stale' : ''}`}>
+          {diff ? (
             <FileDiffViewer
               diff={diff}
               editorKey={`${diff.path}:${diffSide}`}
               sideBySide={diffView === 'side-by-side'}
               syntaxHighlighting={syntaxHighlighting}
-              hunkActions={busy || focused?.conflicted ? undefined : { side: diffSide, run: applyPartial }}
+              hunkActions={
+                busy || diffLoading || awaitingReload || focused?.conflicted
+                  ? undefined
+                  : { side: diffSide, run: applyPartial }
+              }
             />
+          ) : diffLoading ? (
+            <div className="empty-state muted">Loading diff…</div>
           ) : (
             <div className="empty-state muted">Select a file to view its changes</div>
           )}

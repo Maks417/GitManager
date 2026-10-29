@@ -31,7 +31,7 @@ import type { HistoryRefreshMode, Selection, ViewMode } from './selection'
 import { useLatestRef } from './useLatestRef'
 
 export type HistoryFns = {
-  loadHistory: (repo: Repository, searchText?: string) => Promise<unknown>
+  reloadHistoryKeepingDepth: (repo: Repository) => Promise<void>
   refreshHistoryTip: (repo: Repository) => Promise<void>
 }
 
@@ -280,7 +280,7 @@ export function useRepoSession({
       const mode = opts?.history ?? 'tip'
       const fns = historyFnsRef.current
       if (!fns || !sameRepoPath(activeRepoRef.current?.path, repo.path)) return
-      if (mode === 'full') await fns.loadHistory(fresh)
+      if (mode === 'full') await fns.reloadHistoryKeepingDepth(fresh)
       // Staging, discarding or stashing leaves HEAD and refs alone: no history to reload. When a refresh
       // that started meanwhile already saw the change, it reloads the history itself.
       else if (mode === 'tip' && shouldRefreshHistoryTip(previousFingerprint, historyFingerprintRef.current)) {

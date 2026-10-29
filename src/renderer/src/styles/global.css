@@ -837,6 +837,13 @@ input:is(:not([type]), [type="text"], [type="search"], [type="email"], [type="pa
   min-height: 0;
 }
 
+/* Content kept on screen while the next commit or diff loads. Quick steps (an arrow key held) never dim:
+   the fade only starts after a short delay, and leaving the state is instant. */
+.is-stale {
+  opacity: 0.55;
+  transition: opacity 120ms ease 180ms;
+}
+
 /* Docked right, the file list narrows before the diff, which keeps room for its Inline / Side by side switch. */
 .inspector-body {
   display: grid;

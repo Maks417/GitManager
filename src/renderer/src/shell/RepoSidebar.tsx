@@ -34,6 +34,13 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
   const fetching = remoteOp?.kind === 'fetch'
   const { showBranchHistory, revealCommit } = useHistoryActions()
   const [menu, setMenu] = useState<SidebarMenu | null>(null)
+  // The sidebar stays mounted across repositories (keeping its scroll and the focused repository row); what
+  // belonged to the previous repository's branches is dropped here.
+  const [menuRepo, setMenuRepo] = useState(activeRepo.path)
+  if (menuRepo !== activeRepo.path) {
+    setMenuRepo(activeRepo.path)
+    setMenu(null)
+  }
 
   const repoRows = useRovingList(repos.length, repos.findIndex((repo) => repo.id === activeRepo.id), (index) => {
     const repo = repos[index]
@@ -42,11 +49,11 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
   const branchRows = useRovingList(branches.length, branches.findIndex((branch) => branch.current), (index) => {
     const branch = branches[index]
     if (branch && !blocked) void checkoutBranch(branch.name)
-  })
+  }, activeRepo.path)
   const remoteRows = useRovingList(remoteBranches.length, 0, (index) => {
     const branch = remoteBranches[index]
     if (branch && !blocked) void checkoutRemote(branch.name)
-  })
+  }, activeRepo.path)
 
   const tracking = (name: string): void => openBranchDialog({ kind: 'tracking', repoPath: activeRepo.path, branchName: name })
   const pushTo = (name: string): void => openBranchDialog({ kind: 'publish', repoPath: activeRepo.path, branchName: name })
@@ -139,7 +146,8 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
             <button type="button" className="panel-title panel-disclosure" onClick={toggleBranches}><span>Branches</span><span className="muted">{branchesExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span></button>
             <IconButton label="New branch" onClick={() => openDialog('createBranch')}><Plus size={16} /></IconButton>
           </div>
-          {branchesExpanded && <ul className="branch-list" aria-label="Branches" onKeyDown={branchRows.onKeyDown}>
+          {/* Keyed by repository: another repository's branch list opens at its top. */}
+          {branchesExpanded && <ul key={activeRepo.path} className="branch-list" aria-label="Branches" onKeyDown={branchRows.onKeyDown}>
             {branches.map((branch, index) => (
               <li key={branch.name} {...branchRows.rowProps(index)} {...menuHandlers('local', branch.name)} className={branch.current ? 'active' : ''} onDoubleClick={() => { if (!blocked) void checkoutBranch(branch.name) }} title="Double-click or press Enter to check out">
                 <div className="branch-row-main">
@@ -155,7 +163,7 @@ export const RepoSidebar = memo(function RepoSidebar(): React.JSX.Element {
             <IconButton label={fetching ? 'Fetching remote branches' : 'Fetch remote branches'} disabled={blocked || !activeRepo.remotes.length} onClick={() => void runSync('fetch')}><RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'spin' : undefined} /></IconButton>
             <IconButton label="Remote actions" disabled={blocked} aria-haspopup="menu" aria-expanded={menu?.kind === 'remotes'} onClick={(e) => setMenu({ kind: 'remotes', name: '', ...menuPointFor(e.currentTarget) })}><Ellipsis size={16} strokeWidth={1.75} /></IconButton>
           </div>
-          {remoteBranchesExpanded && <ul className="branch-list" aria-label="Remote branches" onKeyDown={remoteRows.onKeyDown}>
+          {remoteBranchesExpanded && <ul key={activeRepo.path} className="branch-list" aria-label="Remote branches" onKeyDown={remoteRows.onKeyDown}>
             {remoteBranches.map((branch, index) => (
               <li key={branch.name} {...remoteRows.rowProps(index)} {...menuHandlers('remote', branch.name)} onDoubleClick={() => { if (!blocked) void checkoutRemote(branch.name) }} title={localBranchNames.has(branch.shortName) ? `Double-click or press Enter to check out local "${branch.shortName}"` : 'Double-click or press Enter to create a local tracking branch and check it out'}>
                 <div className="branch-row-main"><div className="cell-ellipsis">{branch.name}</div>{localBranchNames.has(branch.shortName) && <div className="muted text-xs">local</div>}</div>

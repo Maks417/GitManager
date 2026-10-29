@@ -33,6 +33,14 @@ export function ColumnResizeHandle({
     latest.current = value
   }, [value])
 
+  // Unmounted mid-drag (the view changed under the pointer): the resize cursor must not stay on the page.
+  useEffect(
+    () => () => {
+      if (dragging.current) document.body.classList.remove('resizing-col')
+    },
+    []
+  )
+
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>): void => {
       e.preventDefault()
@@ -108,6 +116,7 @@ export function ColumnResizeHandle({
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
+      onLostPointerCapture={endDrag}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
     />
