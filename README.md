@@ -198,7 +198,7 @@ npm run dist:mac
 npm run dist:linux
 ```
 
-Pushing a `v*` tag that matches `package.json` runs [`.github/workflows/release.yml`](.github/workflows/release.yml): it builds all three platforms and publishes the release with the built-in `GITHUB_TOKEN` after the required Windows and macOS jobs succeed; Linux is optional. Release notes come from `docs/releases/<version>.md` when present. Signing is optional: add `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD` and `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` for a notarized macOS build, or `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` for Windows. Without them macOS builds are ad-hoc signed. See [release preparation](docs/releases.md) and the [1.2.0 release notes](docs/releases/1.2.0.md). The website in [`site/`](site/) deploys through [`.github/workflows/pages.yml`](.github/workflows/pages.yml).
+Pushing a `v*` tag that matches `package.json` runs [`.github/workflows/release.yml`](.github/workflows/release.yml): it builds all three platforms and publishes the release with the built-in `GITHUB_TOKEN` after the required Windows and macOS jobs succeed; Linux is optional. Release notes come from `docs/releases/<version>.md` when present. Signing is optional: add `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD` and `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` for a notarized macOS build, or `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` for Windows. Without them macOS builds are ad-hoc signed. See [release preparation](docs/releases.md) and the [1.3.0 release notes](docs/releases/1.3.0.md). The website in [`site/`](site/) deploys through [`.github/workflows/pages.yml`](.github/workflows/pages.yml).
 
 ## Architecture
 

@@ -12,6 +12,7 @@ Start at the root [README](../README.md).
 | [Domain model](domain-model.md) | Entities, relationships, invariants |
 | [Brandbook & design system](brandbook.md) | Ink & Ember brand, colors, typography, tokens, components |
 | [Release preparation](releases.md) | Versioning, checks, publication and withdrawal |
+| [1.3.0 release notes](releases/1.3.0.md) | Worktrees, branch filter, resizable commit messages, speed and fixes |
 | [1.2.0 release notes](releases/1.2.0.md) | New features and fixes in 1.2.0 |
 
 ### Features
